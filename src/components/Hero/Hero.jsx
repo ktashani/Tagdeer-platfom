@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Sparkles, PlusCircle, Gift, Zap, ThumbsUp, ChevronDown, ChevronUp, ShieldAlert, BadgeCheck, MapPin } from 'lucide-react';
+import { Search, Sparkles, PlusCircle, Gift, Zap, ThumbsUp, ChevronDown, ChevronUp, ShieldAlert, BadgeCheck, MapPin,HeartHandshake } from 'lucide-react';
 
 export function Hero({ 
   t, 
