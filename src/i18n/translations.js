@@ -206,7 +206,7 @@ export const translations = {
     "Real Estate": "عقارات",
     "Home Maintenance": "صيانة منزلية",
     "Education": "تعليم وتدريب",
-    "Travel": "سفر وسياحة"
+    "Travel": "سفر وسياحة",
     "Food & Beverage": "أغذية و مشروبات"
   }
 };
