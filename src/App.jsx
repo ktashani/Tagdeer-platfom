@@ -50,7 +50,7 @@ export const CATEGORIES = [
   "All", "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery", 
   "Healthcare", "Electronics", "Tech & Telecommunication", "Construction", 
   "Home Maintenance", "Automotive", "Beauty & Salon", "Real Estate", 
-  "Education", "Travel", "Fashion & Retail", "Services", "Food & Beverage"
+  "Education", "Travel", "Fashion & Retail", "Services", "Food & Beverage", "Delivery & Shipping"
 ];
 
 export const REGIONS = ["All", "Tripoli", "Benghazi"];
