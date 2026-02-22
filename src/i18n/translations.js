@@ -102,7 +102,8 @@ export const translations = {
     "Home Maintenance": "Home Maintenance",
     "Education": "Education",
     "Travel": "Travel",
-    "Food & Beverage":"Food & Beverage"
+    "Food & Beverage":"Food & Beverage",
+    "Delivery & Shipping":"Delivery & Shipping"
   },
   ar: {
     home: "الرئيسية",
@@ -208,5 +209,6 @@ export const translations = {
     "Education": "تعليم وتدريب",
     "Travel": "سفر وسياحة",
     "Food & Beverage": "أغذية و مشروبات"
+    "Delivery & Shipping": "التوصيل و الشحن"
   }
 };
