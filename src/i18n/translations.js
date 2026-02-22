@@ -208,7 +208,7 @@ export const translations = {
     "Home Maintenance": "صيانة منزلية",
     "Education": "تعليم وتدريب",
     "Travel": "سفر وسياحة",
-    "Food & Beverage": "أغذية و مشروبات"
+    "Food & Beverage": "أغذية و مشروبات",
     "Delivery & Shipping": "التوصيل و الشحن"
   }
 };
