@@ -16,15 +16,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/discover/page.js"
     ],
-    "/add/page": [
+    "/profile/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/add/page.js"
-    ],
-    "/about/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/about/page.js"
+      "static/chunks/app/profile/page.js"
     ]
   }
 }

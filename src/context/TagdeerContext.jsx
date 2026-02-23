@@ -38,6 +38,25 @@ export function TagdeerProvider({ children }) {
     const [showVerifySoonModal, setShowVerifySoonModal] = useState(false);
     const [showPreRegModal, setShowPreRegModal] = useState(false);
 
+    // Mock Authentication State
+    const [user, setUser] = useState(null);
+    const [showLoginModal, setShowLoginModal] = useState(false);
+
+    const login = (phone) => {
+        // Generate a mock VIP userId for QR Code security
+        const randomAlphanumeric = Math.random().toString(36).substring(2, 7).toUpperCase();
+        const mockUserId = `VIP-${randomAlphanumeric}`;
+
+        setUser({ phone, userId: mockUserId, gader: 50, vipTier: 'Bronze Tier' });
+        setShowLoginModal(false);
+        showToast(t('login_success') || 'Successfully logged in');
+    };
+
+    const logout = () => {
+        setUser(null);
+        showToast(t('logout_success') || 'Successfully logged out');
+    };
+
     useEffect(() => {
         const fetchBusinesses = async () => {
             if (!supabase) return;
@@ -108,7 +127,8 @@ export function TagdeerProvider({ children }) {
             voteModal, setVoteModal,
             voteReason, setVoteReason,
             showVerifySoonModal, setShowVerifySoonModal,
-            showPreRegModal, setShowPreRegModal
+            showPreRegModal, setShowPreRegModal,
+            user, setUser, showLoginModal, setShowLoginModal, login, logout
         }}>
             {children}
         </TagdeerContext.Provider>

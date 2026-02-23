@@ -95,7 +95,7 @@ export default function DiscoverRoute() {
 }
 
 function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook, expandedLogs, toggleLogs }) {
-    const { healthScore, rawRecommends, rawComplains } = calculateBusinessScore(business.logs || []);
+    const { gaderIndex, rawRecommends, rawComplains } = calculateBusinessScore(business.logs || []);
     const avatarLetter = business.name ? business.name.charAt(0).toUpperCase() : '?';
 
     const getGradient = (category) => {
@@ -137,7 +137,7 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                 </div>
 
                 <div className="flex gap-2 shrink-0">
-                    <button onClick={() => shareToFacebook(business.name, `Tagdeer Gader Score: ${healthScore}%`)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-500 transition-colors">
+                    <button onClick={() => shareToFacebook(business.name, `Tagdeer Gader Index: ${gaderIndex}%`)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-500 transition-colors">
                         <Share2 className="h-5 w-5" />
                     </button>
                     {business.isShielded && (
@@ -148,18 +148,36 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                 </div>
             </div>
 
-            <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100 mt-2">
-                <div className="flex justify-between text-sm mb-2 font-medium">
-                    <span className="text-slate-600">{t('health_score')}</span>
-                    <span className={healthScore > 50 ? 'text-green-600' : 'text-red-500'}>{healthScore}%</span>
+            <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100 mt-2 hover:border-blue-200 transition-colors cursor-help">
+                <div className="flex justify-between items-end mb-2">
+                    <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-md ${gaderIndex >= 50 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                            <Zap className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-slate-700 font-bold text-lg leading-tight">{t('gader_index')}</span>
+                            <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">{t('migdar')}</span>
+                        </div>
+                    </div>
+                    <span className={`text-2xl font-black tracking-tight ${gaderIndex > 50 ? 'text-green-600' : 'text-red-500'}`}>
+                        {gaderIndex}%
+                    </span>
                 </div>
-                <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden flex mb-2">
-                    <div className="bg-green-500 h-3" style={{ width: `${healthScore}%` }}></div>
-                    <div className="bg-red-400 h-3" style={{ width: `${100 - healthScore}%` }}></div>
+
+                <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden flex mb-3 shadow-inner">
+                    <div className="bg-gradient-to-r from-green-400 to-green-500 h-3 transition-all duration-1000 ease-out" style={{ width: `${gaderIndex}%` }}></div>
+                    <div className="bg-gradient-to-r from-red-400 to-red-500 h-3 transition-all duration-1000 ease-out" style={{ width: `${100 - gaderIndex}%` }}></div>
                 </div>
-                <div className="flex justify-between text-xs font-semibold">
-                    <span className="text-green-600">{rawRecommends} {t('recommend')}</span>
-                    <span className="text-red-500">{rawComplains} {t('complain')}</span>
+
+                <div className="flex justify-between text-xs font-bold px-1">
+                    <div className="flex items-center gap-1.5 text-green-700 bg-green-50 px-2 py-0.5 rounded">
+                        <ThumbsUp className="w-3 h-3" />
+                        {rawRecommends} {t('recommend')}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-red-700 bg-red-50 px-2 py-0.5 rounded">
+                        {rawComplains} {t('complain')}
+                        <ThumbsDown className="w-3 h-3" />
+                    </div>
                 </div>
             </div>
 

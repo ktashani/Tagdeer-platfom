@@ -7,6 +7,7 @@ import { VoteModal } from '../components/Modals/VoteModal';
 import { PreRegModal } from '../components/Modals/PreRegModal';
 import { LimitModal } from '../components/Modals/LimitModal';
 import { VerifySoonModal } from '../components/Modals/VerifySoonModal';
+import { LoginModal } from '../components/Auth/LoginModal';
 import { Toast } from '../components/Toast';
 import { Facebook, Twitter, BadgeCheck } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -185,6 +186,8 @@ export function ClientLayout({ children }) {
                 onClose={() => setShowVerifySoonModal(false)}
                 t={t}
             />
+
+            <LoginModal />
 
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />
         </div>
