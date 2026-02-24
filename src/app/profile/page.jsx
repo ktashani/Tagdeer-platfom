@@ -4,23 +4,71 @@ import React, { useEffect, useState } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useRouter } from 'next/navigation';
 import QRCode from 'react-qr-code';
+import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { BadgeCheck, LogOut, History, Ticket, AlertCircle, Mail, User, ShieldCheck, Target } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Toast } from '@/components/Toast';
 
 export default function ProfilePage() {
     const { user, logout, t, isRTL, setShowLoginModal, lang } = useTagdeer();
     const router = useRouter();
     const [activeTab, setActiveTab] = useState('history');
+    const [toastMessage, setToastMessage] = useState('');
 
     // Personal Details State
-    const [name, setName] = useState('');
-    const [dob, setDob] = useState('');
-    const [city, setCity] = useState('');
-    const [gender, setGender] = useState('');
+    const [name, setName] = useState(user?.full_name || '');
+    const [dob, setDob] = useState(user?.birth_date || '');
+    const [city, setCity] = useState(user?.city || '');
+    const [gender, setGender] = useState(user?.gender || '');
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Sync state if user loads later
+    useEffect(() => {
+        if (user) {
+            if (user.full_name) setName(user.full_name);
+            if (user.birth_date) setDob(user.birth_date);
+            if (user.city) setCity(user.city);
+            if (user.gender) setGender(user.gender);
+        }
+    }, [user]);
+
+    // Handle Profile Update
+    const handleSaveProfile = async () => {
+        if (!user || !user.id || user.id === 'mock-uuid') return;
+
+        setIsSaving(true);
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    full_name: name || null,
+                    birth_date: dob ? dob : null,
+                    city: city || null,
+                    gender: gender || null
+                })
+                .eq('id', user.id);
+
+            if (error) {
+                console.error("Error updating profile:");
+                console.error("Message:", error.message);
+                console.error("Details:", error.details);
+                console.error("Hint:", error.hint);
+                setToastMessage(t('prereg_error') || 'Failed to save profile. Please try again.');
+            } else {
+                setToastMessage(lang === 'ar' ? 'تم حفظ التغييرات' : 'Profile Updated');
+            }
+        } catch (err) {
+            console.error("Exception saving profile:", err);
+            setToastMessage('Connection Error.');
+        } finally {
+            setIsSaving(false);
+            setTimeout(() => setToastMessage(''), 3000);
+        }
+    };
 
     // Email OTP Flow State
     const [email, setEmail] = useState('');
@@ -197,7 +245,7 @@ export default function ProfilePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                     <div className="space-y-2">
                         <Label htmlFor="name">{t('full_name') || 'Full Name'}</Label>
-                        <Input id="name" value={name} onChange={e => setName(e.target.value)} placeholder="Omar Mukhtar" />
+                        <Input id="name" value={name} onChange={e => setName(e.target.value)} onBlur={handleSaveProfile} placeholder="Omar Mukhtar" />
                     </div>
                     <div className="space-y-2">
                         <Label htmlFor="city">{t('city') || 'City'}</Label>
@@ -205,6 +253,7 @@ export default function ProfilePage() {
                             id="city"
                             value={city}
                             onChange={e => setCity(e.target.value)}
+                            onBlur={handleSaveProfile}
                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <option value="">{t('select_city') || 'Select City'}</option>
@@ -216,7 +265,7 @@ export default function ProfilePage() {
                     <div className="space-y-2">
                         <Label htmlFor="dob">{t('date_of_birth') || 'Date of Birth'}</Label>
                         <div className="flex gap-4">
-                            <Input id="dob" type="date" value={dob} onChange={e => setDob(e.target.value)} className="flex-grow" />
+                            <Input id="dob" type="date" value={dob} onChange={e => setDob(e.target.value)} onBlur={handleSaveProfile} className="flex-grow" />
                             <div className="bg-slate-50 border border-slate-200 rounded-md px-4 flex items-center justify-center shrink-0 w-24">
                                 <span className="font-semibold text-slate-600">{calculateAge(dob)} {t('age') || 'Age'}</span>
                             </div>
@@ -227,11 +276,11 @@ export default function ProfilePage() {
                         <Label>{t('gender') || 'Gender'}</Label>
                         <div className="flex gap-4 h-10 items-center">
                             <label className="flex items-center gap-2">
-                                <input type="radio" name="gender" value="male" checked={gender === 'male'} onChange={() => setGender('male')} className="w-4 h-4 text-blue-600" />
+                                <input type="radio" name="gender" value="male" checked={gender === 'male'} onChange={() => setGender('male')} onBlur={handleSaveProfile} className="w-4 h-4 text-blue-600" />
                                 <span>{t('male') || 'Male'}</span>
                             </label>
                             <label className="flex items-center gap-2">
-                                <input type="radio" name="gender" value="female" checked={gender === 'female'} onChange={() => setGender('female')} className="w-4 h-4 text-blue-600" />
+                                <input type="radio" name="gender" value="female" checked={gender === 'female'} onChange={() => setGender('female')} onBlur={handleSaveProfile} className="w-4 h-4 text-blue-600" />
                                 <span>{t('female') || 'Female'}</span>
                             </label>
                         </div>
@@ -354,6 +403,8 @@ export default function ProfilePage() {
                     </div>
                 </TabsContent>
             </Tabs>
+
+            <Toast message={toastMessage} onClose={() => setToastMessage('')} />
         </div>
     );
 }

@@ -35,6 +35,8 @@ import { PreRegModal } from './components/Modals/PreRegModal';
 import { LimitModal } from './components/Modals/LimitModal';
 import { VerifySoonModal } from './components/Modals/VerifySoonModal';
 import { Toast } from './components/Toast';
+import { getDeviceFingerprint } from './lib/fingerprint';
+import { containsBadWords } from './lib/contentFilter';
 import './App.css';
 
 const INITIAL_BUSINESSES = [
@@ -151,28 +153,60 @@ export default function App() {
     if (storedInteractions) setAnonInteractions(parseInt(storedInteractions));
   }, []);
 
-  const openVoteModal = (businessId, type, isShielded) => {
+  const openVoteModal = async (businessId, type, isShielded) => {
     if (type === 'complain' && isShielded) {
       showToast(t('shielded_warning'));
       return;
     }
-    if (anonInteractions >= 3) {
+
+    // Check Fingerprint Limit Database-side
+    const fingerprint = getDeviceFingerprint();
+    if (supabase && fingerprint.startsWith('anon-')) {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      try {
+        const { count, error } = await supabase
+          .from('interactions')
+          .select('*', { count: 'exact', head: true })
+          .eq('fingerprint', fingerprint)
+          .gte('created_at', twentyFourHoursAgo);
+
+        if (!error && count >= 3) {
+          setShowLimitModal(true);
+          return;
+        }
+      } catch (e) {
+        console.error("Error checking limits:", e);
+      }
+    } else if (anonInteractions >= 3) {
+      // Fallback to local storage count if offline
       setShowLimitModal(true);
       return;
     }
+
     setVoteModal({ isOpen: true, businessId, type });
     setVoteReason('');
   };
 
   const submitVote = async () => {
     const { businessId, type } = voteModal;
+    const fingerprint = getDeviceFingerprint();
+    let logStatus = 'approved';
+
+    if (containsBadWords(voteReason)) {
+      logStatus = 'flagged';
+      showToast(lang === 'ar' ? "تم استلام ملاحظتك وهي قيد المراجعة لمخالفتها الشروط." : "Log received. It is pending review due to community guidelines.");
+      // Still insert it, but it's flagged and won't count towards the score depending on the SQL view/logic
+    }
 
     if (supabase) {
       try {
         const { error } = await supabase.from('interactions').insert([{
           business_id: businessId,
           interaction_type: type,
-          reason_text: voteReason
+          reason_text: voteReason,
+          fingerprint: fingerprint,
+          status: logStatus
         }]);
 
         if (error) {
@@ -191,23 +225,26 @@ export default function App() {
     setAnonInteractions(newCount);
     localStorage.setItem('trust_ledger_interactions', newCount.toString());
 
-    setBusinesses(businesses.map(b => {
-      if (b.id === businessId) {
-        const newLog = {
-          id: Date.now(),
-          type: type,
-          text: voteReason || (type === 'recommend' ? 'User recommended' : 'User complained'),
-          date: new Date().toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US')
-        };
-        return {
-          ...b,
-          recommends: type === 'recommend' ? b.recommends + 1 : b.recommends,
-          complains: type === 'complain' ? b.complains + 1 : b.complains,
-          logs: [newLog, ...b.logs]
-        };
-      }
-      return b;
-    }));
+    // Only update local UI if not flagged, so user knows it's pending vs approved
+    if (logStatus === 'approved') {
+      setBusinesses(businesses.map(b => {
+        if (b.id === businessId) {
+          const newLog = {
+            id: Date.now(),
+            type: type,
+            text: voteReason || (type === 'recommend' ? 'User recommended' : 'User complained'),
+            date: new Date().toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US')
+          };
+          return {
+            ...b,
+            recommends: type === 'recommend' ? b.recommends + 1 : b.recommends,
+            complains: type === 'complain' ? b.complains + 1 : b.complains,
+            logs: [newLog, ...b.logs]
+          };
+        }
+        return b;
+      }));
+    }
 
     setVoteModal({ isOpen: false, businessId: null, type: null });
     showToast(`Successfully logged. (${3 - newCount} anonymous logs remaining)`);

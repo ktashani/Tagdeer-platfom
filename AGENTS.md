@@ -17,3 +17,32 @@ Migdar (مقدار): The Measure. Used for UI elements like progress bars, tier 
 Slogan: "أعطيهم تقديرك، واكسب قدرك" (Give them your evaluation, and earn your value/rewards).
 
 When generating UI components or updating state context, agents should map these concepts directly into the Arabic i18n files and use corresponding English variable names (e.g., gaderIndex, userGader) to maintain alignment between the code and the brand.
+
+Security, Traceability & Governance
+1. Anonymous Traceability (Shadow Profiles):
+
+For unverified users, use Fingerprinting (Device info + IP Hash + LocalStorage UUID) to anchor logs.
+
+Log Limits: Unverified devices are limited to 3 logs per 24 hours.
+
+Business Creation: Strictly restricted to Verified Accounts only.
+
+2. Content Integrity (The Judge):
+
+Implement a Bad Word Dictionary filter for all logs.
+
+If a log contains prohibited slang or harassment, it must be flagged for review and not impact the Gader Index until cleared.
+
+3. Business Scanning (The Digital Gader Card):
+
+The QR code scan must resolve to a Business-Facing Preview.
+
+This preview shows the user's Profile Picture, Gader Points, and VIP Tier.
+
+It includes a "Grant Recognition" button for the business owner to award coupons.
+
+4. Quality Assurance & Automated Testing:
+
+NEVER finalize a component without ensuring all imports are present.
+
+Before claiming a feature is complete, you must write a basic Unit/Component test (using Vitest/Jest and React Testing Library) to verify that the component mounts without crashing and that core state interactions (like clicking save) behave as expected.

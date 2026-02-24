@@ -42,14 +42,76 @@ export function TagdeerProvider({ children }) {
     const [user, setUser] = useState(null);
     const [showLoginModal, setShowLoginModal] = useState(false);
 
-    const login = (phone) => {
-        // Generate a mock VIP userId for QR Code security
-        const randomAlphanumeric = Math.random().toString(36).substring(2, 7).toUpperCase();
-        const mockUserId = `VIP-${randomAlphanumeric}`;
+    const login = async (phone) => {
+        // Temporary mock OTP bypass - we assume phone is verified here for MVP
 
-        setUser({ phone, userId: mockUserId, gader: 50, vipTier: 'Bronze Tier' });
-        setShowLoginModal(false);
-        showToast(t('login_success') || 'Successfully logged in');
+        if (supabase) {
+            try {
+                // Check if profile exists
+                let { data: profile, error: selectErr } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('phone', phone)
+                    .single();
+
+                if (selectErr && selectErr.code !== 'PGRST116') {
+                    // Ignore "row not found" error code PGRST116, throw rest
+                    console.error("Error fetching profile:", selectErr);
+                    showToast(t('prereg_error') || 'Error fetching profile');
+                    return;
+                }
+
+                if (!profile) {
+                    // Create new profile with mock VIP userId
+                    const randomAlphanumeric = Math.random().toString(36).substring(2, 7).toUpperCase();
+                    const mockUserId = `VIP-${randomAlphanumeric}`;
+
+                    const { data: newProfile, error: insertErr } = await supabase
+                        .from('profiles')
+                        .insert([{
+                            phone,
+                            user_id: mockUserId,
+                            gader_points: 50,
+                            vip_tier: 'Bronze Tier'
+                        }])
+                        .select()
+                        .single();
+
+                    if (insertErr) {
+                        console.error("Error creating profile:", insertErr);
+                        showToast(t('prereg_error') || 'Error creating profile');
+                        return;
+                    }
+                    profile = newProfile;
+                }
+
+                // Set state using actual DB row
+                setUser({
+                    id: profile.id, // Actual UUID
+                    phone: profile.phone,
+                    userId: profile.user_id, // The VIP-XXXXX ID
+                    gader: profile.gader_points,
+                    vipTier: profile.vip_tier,
+                    full_name: profile.full_name,
+                    city: profile.city,
+                    gender: profile.gender,
+                    birth_date: profile.birth_date
+                });
+                setShowLoginModal(false);
+                showToast(t('login_success') || 'Successfully logged in');
+
+            } catch (err) {
+                console.error("Login exception:", err);
+                showToast("Connection failed.");
+            }
+        } else {
+            // Fallback if supabase isn't connected
+            const randomAlphanumeric = Math.random().toString(36).substring(2, 7).toUpperCase();
+            const mockUserId = `VIP-${randomAlphanumeric}`;
+            setUser({ phone, userId: mockUserId, gader: 50, vipTier: 'Bronze Tier', id: 'mock-uuid' });
+            setShowLoginModal(false);
+            showToast(t('login_success') || 'Successfully logged in (Offline)');
+        }
     };
 
     const logout = () => {
