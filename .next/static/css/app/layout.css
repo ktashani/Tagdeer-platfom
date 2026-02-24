@@ -705,6 +705,9 @@ video {
 .top-full {
   top: 100%;
 }
+.bottom-24 {
+  bottom: 6rem;
+}
 .isolate {
   isolation: isolate;
 }
@@ -722,6 +725,9 @@ video {
 }
 .z-\[1\] {
   z-index: 1;
+}
+.z-\[200\] {
+  z-index: 200;
 }
 .order-first {
   order: -9999;
@@ -1684,6 +1690,14 @@ video {
 .border-white\/20 {
   border-color: rgb(255 255 255 / 0.2);
 }
+.border-amber-200 {
+  --tw-border-opacity: 1;
+  border-color: rgb(253 230 138 / var(--tw-border-opacity, 1));
+}
+.border-amber-300 {
+  --tw-border-opacity: 1;
+  border-color: rgb(252 211 77 / var(--tw-border-opacity, 1));
+}
 .border-l-transparent {
   border-left-color: transparent;
 }
@@ -1871,6 +1885,20 @@ video {
 }
 .bg-white\/5 {
   background-color: rgb(255 255 255 / 0.05);
+}
+.bg-emerald-500\/90 {
+  background-color: rgb(16 185 129 / 0.9);
+}
+.bg-rose-500\/90 {
+  background-color: rgb(244 63 94 / 0.9);
+}
+.bg-amber-50 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 251 235 / var(--tw-bg-opacity, 1));
+}
+.bg-indigo-50 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(238 242 255 / var(--tw-bg-opacity, 1));
 }
 .bg-\[url\(\'https\:\/\/www\.transparenttextures\.com\/patterns\/cubes\.png\'\)\] {
   background-image: url('https://www.transparenttextures.com/patterns/cubes.png');
@@ -2468,6 +2496,10 @@ video {
   --tw-text-opacity: 1;
   color: rgb(250 204 21 / var(--tw-text-opacity, 1));
 }
+.text-amber-700 {
+  --tw-text-opacity: 1;
+  color: rgb(180 83 9 / var(--tw-text-opacity, 1));
+}
 .underline-offset-4 {
   text-underline-offset: 4px;
 }
@@ -2751,6 +2783,28 @@ video {
   animation: fade-in-up 0.3s ease-out forwards;
 }
 
+/* Impact Bubble Float-Up Animation (GPU-accelerated) */
+@keyframes impact-float-up {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-30px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-60px) scale(0.9);
+  }
+}
+
+.animate-impact-bubble {
+  animation: impact-float-up 1.8s ease-out forwards;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
 @keyframes slide-in-right {
   from {
     opacity: 0;
@@ -3011,6 +3065,10 @@ video {
 }
 .hover\:bg-white\/20:hover {
   background-color: rgb(255 255 255 / 0.2);
+}
+.hover\:bg-amber-100:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(254 243 199 / var(--tw-bg-opacity, 1));
 }
 .hover\:text-accent-foreground:hover {
   color: hsl(var(--accent-foreground));

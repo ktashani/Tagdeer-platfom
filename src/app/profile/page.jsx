@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import QRCode from 'react-qr-code';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
-import { BadgeCheck, LogOut, History, Ticket, AlertCircle, Mail, User, ShieldCheck, Target } from 'lucide-react';
+import { BadgeCheck, LogOut, History, Ticket, AlertCircle, Mail, User, ShieldCheck, Target, Zap, Trash2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,6 +26,10 @@ export default function ProfilePage() {
     const [gender, setGender] = useState(user?.gender || '');
     const [isSaving, setIsSaving] = useState(false);
 
+    // Real Log History State
+    const [historyLogs, setHistoryLogs] = useState([]);
+    const [isLoadingLogs, setIsLoadingLogs] = useState(true);
+
     // Sync state if user loads later
     useEffect(() => {
         if (user) {
@@ -34,6 +38,39 @@ export default function ProfilePage() {
             if (user.city) setCity(user.city);
             if (user.gender) setGender(user.gender);
         }
+    }, [user]);
+
+    // Fetch real log history from Supabase
+    useEffect(() => {
+        const fetchLogs = async () => {
+            if (!user?.id || user.id === 'mock-uuid' || !supabase) {
+                setIsLoadingLogs(false);
+                return;
+            }
+            try {
+                const { data, error } = await supabase
+                    .from('logs')
+                    .select('*, businesses(name)')
+                    .eq('profile_id', user.id)
+                    .order('created_at', { ascending: false });
+
+                if (!error && data) {
+                    setHistoryLogs(data.map(log => ({
+                        id: log.id,
+                        business: log.businesses?.name || 'Unknown Business',
+                        date: log.created_at,
+                        type: log.interaction_type,
+                        text: log.reason_text || (log.interaction_type === 'recommend' ? 'Recommended' : 'Complained'),
+                        weight: log.weight || 1.0,
+                    })));
+                }
+            } catch (err) {
+                console.error('Error fetching log history:', err);
+            } finally {
+                setIsLoadingLogs(false);
+            }
+        };
+        fetchLogs();
     }, [user]);
 
     // Handle Profile Update
@@ -96,11 +133,11 @@ export default function ProfilePage() {
         );
     }
 
-    // Mock Data for History
-    const mockHistoryLogs = [
-        { id: 1, business: "Al-Madina Tech", date: "2026-02-23", type: "recommend", text: "Excellent customer service and repair." },
-        { id: 2, business: "Omar's Auto Repair", date: "2026-02-20", type: "complain", text: "Long waiting times to get an appointment." },
-        { id: 3, business: "Tripoli Central Clinic", date: "2026-02-15", type: "recommend", text: "Very clean facilities and professional doctors." }
+    // Fallback mock data if no real logs fetched
+    const displayLogs = historyLogs.length > 0 ? historyLogs : [
+        { id: 1, business: "Al-Madina Tech", date: "2026-02-23", type: "recommend", text: "Excellent customer service and repair.", weight: 1.0 },
+        { id: 2, business: "Omar's Auto Repair", date: "2026-02-20", type: "complain", text: "Long waiting times to get an appointment.", weight: 0.5 },
+        { id: 3, business: "Tripoli Central Clinic", date: "2026-02-15", type: "recommend", text: "Very clean facilities and professional doctors.", weight: 1.5 }
     ];
 
     // Helper: Calculate Age from DOB
@@ -209,7 +246,7 @@ export default function ProfilePage() {
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="text-sm text-blue-200 uppercase tracking-wider font-semibold">{t('logs') || 'Logs'}</span>
-                                    <span className="text-3xl font-bold">{mockHistoryLogs.length}</span>
+                                    <span className="text-3xl font-bold">{displayLogs.length}</span>
                                 </div>
                             </div>
                         </div>
@@ -365,27 +402,69 @@ export default function ProfilePage() {
                 </TabsList>
 
                 <TabsContent value="history" className="mt-0 outline-none">
-                    <div className="space-y-4">
-                        {mockHistoryLogs.map((log) => (
-                            <div key={log.id} className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-slate-300 transition-colors">
-                                <div className="flex gap-4 items-start w-full">
-                                    <div className={`p-3 rounded-full mt-1 shrink-0 ${log.type === 'recommend' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-                                        {log.type === 'recommend' ? <BadgeCheck className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
-                                    </div>
-                                    <div className="flex-grow">
-                                        <h3 className="font-bold text-lg text-slate-800">{log.business}</h3>
-                                        <p className="text-slate-500 text-sm mt-1 mb-2">{log.text}</p>
-                                        <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded inline-block">
-                                            {new Date(log.date).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className={`font-medium whitespace-nowrap px-3 py-1 rounded-full text-sm ${log.type === 'recommend' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                                    {log.type === 'recommend' ? (t('recommended') || 'Recommended') : (t('complained') || 'Complained')}
-                                </div>
+                    {/* Dev-only: Reset Cooldowns Button */}
+                    {process.env.NODE_ENV === 'development' && user?.id && user.id !== 'mock-uuid' && (
+                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
+                            <span className="text-sm text-amber-700 font-medium flex items-center gap-2">
+                                <Trash2 className="w-4 h-4" /> Dev Tool: Reset your cooldowns for testing
+                            </span>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-amber-700 border-amber-300 hover:bg-amber-100"
+                                onClick={async () => {
+                                    if (!supabase) return;
+                                    const { error } = await supabase
+                                        .from('logs')
+                                        .delete()
+                                        .eq('profile_id', user.id);
+                                    if (!error) {
+                                        setHistoryLogs([]);
+                                        setToastMessage('Cooldowns reset! All your logs deleted.');
+                                        setTimeout(() => setToastMessage(''), 3000);
+                                    }
+                                }}
+                            >
+                                Reset Logs
+                            </Button>
+                        </div>
+                    )}
+
+                    {isLoadingLogs ? (
+                        <div className="flex justify-center py-12">
+                            <div className="animate-pulse flex flex-col items-center gap-3">
+                                <div className="h-8 w-8 bg-slate-200 rounded-full"></div>
+                                <div className="h-4 w-32 bg-slate-200 rounded"></div>
                             </div>
-                        ))}
-                    </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {displayLogs.map((log) => (
+                                <div key={log.id} className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-slate-300 transition-colors">
+                                    <div className="flex gap-4 items-start w-full">
+                                        <div className={`p-3 rounded-full mt-1 shrink-0 ${log.type === 'recommend' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                                            {log.type === 'recommend' ? <BadgeCheck className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+                                        </div>
+                                        <div className="flex-grow">
+                                            <h3 className="font-bold text-lg text-slate-800">{log.business}</h3>
+                                            <p className="text-slate-500 text-sm mt-1 mb-2">{log.text}</p>
+                                            <div className="flex items-center gap-3 flex-wrap">
+                                                <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded inline-block">
+                                                    {new Date(log.date).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                                </span>
+                                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-flex items-center gap-1">
+                                                    <Zap className="w-3 h-3" /> {log.weight}x Impact
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className={`font-medium whitespace-nowrap px-3 py-1 rounded-full text-sm ${log.type === 'recommend' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                                        {log.type === 'recommend' ? (t('recommended') || 'Recommended') : (t('complained') || 'Complained')}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </TabsContent>
 
                 <TabsContent value="coupons" className="mt-0 outline-none">

@@ -37,6 +37,7 @@ import { VerifySoonModal } from './components/Modals/VerifySoonModal';
 import { Toast } from './components/Toast';
 import { getDeviceFingerprint } from './lib/fingerprint';
 import { containsBadWords } from './lib/contentFilter';
+import { calculateVoteWeight } from './lib/trustEngine';
 import './App.css';
 
 const INITIAL_BUSINESSES = [
@@ -107,7 +108,7 @@ export default function App() {
       try {
         const { data, error } = await supabase
           .from('businesses')
-          .select('*, interactions(*)');
+          .select('*, logs(*)');
 
         if (error) {
           console.warn('Supabase fetch failed, falling back to mock data.', error);
@@ -115,9 +116,9 @@ export default function App() {
         }
         if (data) {
           const formattedData = data.map(b => {
-            const rawInteractions = b.interactions || [];
-            const derivedRecommends = rawInteractions.filter(i => i.interaction_type === 'recommend').length;
-            const derivedComplains = rawInteractions.filter(i => i.interaction_type === 'complain').length;
+            const rawLogs = b.logs || [];
+            const derivedRecommends = rawLogs.filter(i => i.interaction_type === 'recommend').length;
+            const derivedComplains = rawLogs.filter(i => i.interaction_type === 'complain').length;
 
             return {
               id: b.id,
@@ -129,7 +130,7 @@ export default function App() {
               isShielded: b.is_shielded,
               source: b.source,
               external_url: b.external_url,
-              logs: rawInteractions
+              logs: rawLogs
                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                 .map(log => ({
                   id: log.id,
@@ -166,7 +167,7 @@ export default function App() {
 
       try {
         const { count, error } = await supabase
-          .from('interactions')
+          .from('logs')
           .select('*', { count: 'exact', head: true })
           .eq('fingerprint', fingerprint)
           .gte('created_at', twentyFourHoursAgo);
@@ -178,8 +179,8 @@ export default function App() {
       } catch (e) {
         console.error("Error checking limits:", e);
       }
-    } else if (anonInteractions >= 3) {
-      // Fallback to local storage count if offline
+    } else if (!user && anonInteractions >= 3) {
+      // Fallback to local storage count if offline (anonymous only)
       setShowLimitModal(true);
       return;
     }
@@ -196,17 +197,51 @@ export default function App() {
     if (containsBadWords(voteReason)) {
       logStatus = 'flagged';
       showToast(lang === 'ar' ? "تم استلام ملاحظتك وهي قيد المراجعة لمخالفتها الشروط." : "Log received. It is pending review due to community guidelines.");
-      // Still insert it, but it's flagged and won't count towards the score depending on the SQL view/logic
     }
 
     if (supabase) {
       try {
-        const { error } = await supabase.from('interactions').insert([{
+        // ── Step 1: 24-Hour Same-Business Cooldown ──────────────
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { count: recentCount, error: cooldownErr } = await supabase
+          .from('logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('business_id', businessId)
+          .eq('fingerprint', fingerprint)
+          .gte('created_at', twentyFourHoursAgo);
+
+        if (!cooldownErr && recentCount > 0) {
+          showToast(lang === 'ar'
+            ? 'لقد قيّمت هذا النشاط مؤخرًا. يرجى الانتظار 24 ساعة قبل تسجيل تجربة أخرى هنا.'
+            : 'You recently evaluated this business. Please wait 24 hours before logging another experience here.'
+          );
+          setVoteModal({ isOpen: false, businessId: null, type: null });
+          return;
+        }
+
+        // ── Step 2: Diminishing Returns (30-day count) ──────────
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const { count: pastVoteCount, error: dimErr } = await supabase
+          .from('logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('business_id', businessId)
+          .eq('fingerprint', fingerprint)
+          .gte('created_at', thirtyDaysAgo);
+
+        const safeCount = (!dimErr && pastVoteCount) ? pastVoteCount : 0;
+
+        // ── Step 3: Calculate Dynamic Weight ────────────────────
+        // App.jsx has no user context, so always anonymous (null)
+        const weight = calculateVoteWeight(null, safeCount);
+
+        // ── Step 4: Insert with weight ─────────────────────────
+        const { error } = await supabase.from('logs').insert([{
           business_id: businessId,
           interaction_type: type,
           reason_text: voteReason,
           fingerprint: fingerprint,
-          status: logStatus
+          status: logStatus,
+          weight: weight
         }]);
 
         if (error) {
@@ -225,7 +260,7 @@ export default function App() {
     setAnonInteractions(newCount);
     localStorage.setItem('trust_ledger_interactions', newCount.toString());
 
-    // Only update local UI if not flagged, so user knows it's pending vs approved
+    // Only update local UI if not flagged
     if (logStatus === 'approved') {
       setBusinesses(businesses.map(b => {
         if (b.id === businessId) {

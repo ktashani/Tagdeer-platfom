@@ -13,7 +13,7 @@ const CATEGORIES = [
 const REGIONS = ["All", "Tripoli", "Benghazi"];
 
 export default function DiscoverRoute() {
-    const { t, lang, isRTL, businesses, anonInteractions, showToast, setShowLimitModal, setVoteModal, setVoteReason } = useTagdeer();
+    const { t, lang, isRTL, businesses, anonInteractions, showToast, setShowLimitModal, setVoteModal, setVoteReason, user } = useTagdeer();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedRegion, setSelectedRegion] = useState('All');
@@ -36,7 +36,8 @@ export default function DiscoverRoute() {
             showToast(t('shielded_warning'));
             return;
         }
-        if (anonInteractions >= 3) {
+        // Only apply the 3-vote global limit to anonymous users
+        if (!user && anonInteractions >= 3) {
             setShowLimitModal(true);
             return;
         }

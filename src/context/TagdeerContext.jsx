@@ -125,7 +125,7 @@ export function TagdeerProvider({ children }) {
             try {
                 const { data, error } = await supabase
                     .from('businesses')
-                    .select('*, interactions(*)');
+                    .select('*, logs(*)');
 
                 if (error) {
                     console.warn('Supabase fetch failed, falling back to mock data.', error);
@@ -133,9 +133,9 @@ export function TagdeerProvider({ children }) {
                 }
                 if (data) {
                     const formattedData = data.map(b => {
-                        const rawInteractions = b.interactions || [];
-                        const derivedRecommends = rawInteractions.filter(i => i.interaction_type === 'recommend').length;
-                        const derivedComplains = rawInteractions.filter(i => i.interaction_type === 'complain').length;
+                        const rawLogs = b.logs || [];
+                        const derivedRecommends = rawLogs.filter(i => i.interaction_type === 'recommend').length;
+                        const derivedComplains = rawLogs.filter(i => i.interaction_type === 'complain').length;
 
                         return {
                             id: b.id,
@@ -147,7 +147,7 @@ export function TagdeerProvider({ children }) {
                             isShielded: b.is_shielded,
                             source: b.source,
                             external_url: b.external_url,
-                            logs: rawInteractions
+                            logs: rawLogs
                                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                                 .map(log => ({
                                     id: log.id,

@@ -13,15 +13,24 @@ vi.mock('next/navigation', () => ({
     useRouter: () => ({ push: vi.fn() }),
 }));
 
-vi.mock('@/lib/supabaseClient', () => ({
-    supabase: {
-        from: vi.fn(() => ({
-            update: vi.fn(() => ({
-                eq: vi.fn(() => Promise.resolve({ error: null }))
-            }))
-        }))
-    }
-}));
+vi.mock('@/lib/supabaseClient', () => {
+    const chainable = () => {
+        const self = {
+            select: vi.fn(() => self),
+            eq: vi.fn(() => self),
+            order: vi.fn(() => Promise.resolve({ data: [], error: null })),
+            update: vi.fn(() => self),
+            single: vi.fn(() => Promise.resolve({ data: null, error: null })),
+            then: (resolve) => resolve({ data: [], error: null }),
+        };
+        return self;
+    };
+    return {
+        supabase: {
+            from: vi.fn(() => chainable()),
+        },
+    };
+});
 
 // Provide a mock ResizeObserver to prevent Radix UI from crashing in jsdom
 global.ResizeObserver = class ResizeObserver {

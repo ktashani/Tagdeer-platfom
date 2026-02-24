@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { useTagdeer } from '../context/TagdeerContext';
+import { getDeviceFingerprint } from '../lib/fingerprint';
+import { calculateVoteWeight } from '../lib/trustEngine';
 import { Navigation } from '../components/Navigation/Navigation';
 import { VoteModal } from '../components/Modals/VoteModal';
 import { PreRegModal } from '../components/Modals/PreRegModal';
@@ -40,10 +42,12 @@ export function ClientLayout({ children }) {
         voteModal, setVoteModal,
         voteReason, setVoteReason,
         showVerifySoonModal, setShowVerifySoonModal,
-        showPreRegModal, setShowPreRegModal
+        showPreRegModal, setShowPreRegModal,
+        user
     } = useTagdeer();
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [impactBubble, setImpactBubble] = useState(null); // { weight: number, type: string }
     const router = useRouter();
     const pathname = usePathname();
 
@@ -57,13 +61,65 @@ export function ClientLayout({ children }) {
 
     const submitVote = async () => {
         const { businessId, type } = voteModal;
+        const fingerprint = getDeviceFingerprint();
+        let weight = calculateVoteWeight(user, 0); // default for offline
 
         if (supabase) {
             try {
-                const { error } = await supabase.from('interactions').insert([{
+                // ── Step 1: 24-Hour Same-Business Cooldown ──────────────
+                const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                const cooldownFilter = supabase
+                    .from('logs')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('business_id', businessId)
+                    .gte('created_at', twentyFourHoursAgo);
+
+                // Match by profile_id if logged in, otherwise by fingerprint
+                if (user?.id) {
+                    cooldownFilter.eq('profile_id', user.id);
+                } else {
+                    cooldownFilter.eq('fingerprint', fingerprint);
+                }
+
+                const { count: recentCount, error: cooldownErr } = await cooldownFilter;
+
+                if (!cooldownErr && recentCount > 0) {
+                    showToast(lang === 'ar'
+                        ? 'لقد قيّمت هذا النشاط مؤخرًا. يرجى الانتظار 24 ساعة قبل تسجيل تجربة أخرى هنا.'
+                        : 'You recently evaluated this business. Please wait 24 hours before logging another experience here.'
+                    );
+                    setVoteModal({ isOpen: false, businessId: null, type: null });
+                    return;
+                }
+
+                // ── Step 2: Diminishing Returns (30-day count) ──────────
+                const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+                const diminishingFilter = supabase
+                    .from('logs')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('business_id', businessId)
+                    .gte('created_at', thirtyDaysAgo);
+
+                if (user?.id) {
+                    diminishingFilter.eq('profile_id', user.id);
+                } else {
+                    diminishingFilter.eq('fingerprint', fingerprint);
+                }
+
+                const { count: pastVoteCount, error: dimErr } = await diminishingFilter;
+                const safeCount = (!dimErr && pastVoteCount) ? pastVoteCount : 0;
+
+                // ── Step 3: Calculate Dynamic Weight ────────────────────
+                weight = calculateVoteWeight(user, safeCount);
+
+                // ── Step 4: Insert with weight ─────────────────────────
+                const { error } = await supabase.from('logs').insert([{
                     business_id: businessId,
                     interaction_type: type,
-                    reason_text: voteReason
+                    reason_text: voteReason,
+                    profile_id: user?.id || null,
+                    fingerprint: fingerprint,
+                    weight: weight
                 }]);
 
                 if (error) {
@@ -78,13 +134,15 @@ export function ClientLayout({ children }) {
             }
         }
 
-        const newCount = anonInteractions + 1;
-        setAnonInteractions(newCount);
-        localStorage.setItem('trust_ledger_interactions', newCount.toString());
+        // Only track anonymous vote count for non-verified users
+        if (!user) {
+            const newCount = anonInteractions + 1;
+            setAnonInteractions(newCount);
+            localStorage.setItem('trust_ledger_interactions', newCount.toString());
+        }
 
         setBusinesses(businesses.map(b => {
             if (b.id === businessId) {
-                // Will be updated with math engine correctly, but for now simple fallback
                 const newLog = {
                     id: Date.now(),
                     type: type,
@@ -102,7 +160,17 @@ export function ClientLayout({ children }) {
         }));
 
         setVoteModal({ isOpen: false, businessId: null, type: null });
-        showToast(`Successfully logged. (${3 - newCount} anonymous logs remaining)`);
+
+        // Trigger Impact Bubble animation
+        setImpactBubble({ weight, type });
+        setTimeout(() => setImpactBubble(null), 2000);
+
+        if (user) {
+            showToast(lang === 'ar' ? 'تم تسجيل تقييمك بنجاح!' : 'Vote logged successfully!');
+        } else {
+            const remaining = 3 - anonInteractions - 1;
+            showToast(`Successfully logged. (${remaining} anonymous logs remaining)`);
+        }
     };
 
     const submitPreRegistration = async (preRegData, setPreRegData) => {
@@ -190,6 +258,19 @@ export function ClientLayout({ children }) {
             <LoginModal />
 
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+
+            {/* Impact Bubble Animation */}
+            {impactBubble && (
+                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] animate-impact-bubble">
+                    <div className={`px-5 py-3 rounded-2xl shadow-lg font-bold text-lg flex items-center gap-2 backdrop-blur-sm ${impactBubble.type === 'recommend'
+                        ? 'bg-emerald-500/90 text-white'
+                        : 'bg-rose-500/90 text-white'
+                        }`}>
+                        <span className="text-2xl">{impactBubble.type === 'recommend' ? '👍' : '👎'}</span>
+                        <span>+{impactBubble.weight}x Impact</span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
