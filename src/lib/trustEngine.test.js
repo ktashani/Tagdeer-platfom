@@ -10,30 +10,54 @@ describe('trustEngine – getTierMultiplier', () => {
         expect(getTierMultiplier(undefined)).toBe(0.2);
     });
 
-    it('returns 1.0 for Bronze Tier users', () => {
-        expect(getTierMultiplier({ vipTier: 'Bronze Tier' })).toBe(1.0);
+    it('returns 1.0 for Bronze Tier users (string)', () => {
+        expect(getTierMultiplier({ vipTier: 'Bronze Tier', gader: 50 })).toBe(1.0);
     });
 
-    it('returns 1.0 for users with no tier set', () => {
-        expect(getTierMultiplier({ vipTier: '' })).toBe(1.0);
-        expect(getTierMultiplier({})).toBe(1.0);
+    it('returns 1.0 for users with no tier set and low points', () => {
+        expect(getTierMultiplier({ vipTier: '', gader: 10 })).toBe(1.0);
+        expect(getTierMultiplier({ gader: 0 })).toBe(1.0);
     });
 
-    it('returns 1.5 for Silver Tier users', () => {
+    it('returns 1.5 for Silver Tier users (string)', () => {
         expect(getTierMultiplier({ vipTier: 'Silver Tier' })).toBe(1.5);
     });
 
-    it('returns 2.0 for Gold Tier users', () => {
+    it('returns 2.0 for Gold Tier users (string)', () => {
         expect(getTierMultiplier({ vipTier: 'Gold Tier' })).toBe(2.0);
     });
 
-    it('returns 2.0 for VIP Tier users', () => {
-        expect(getTierMultiplier({ vipTier: 'VIP Tier' })).toBe(2.0);
+    it('returns 2.5 for VIP Tier users (string)', () => {
+        expect(getTierMultiplier({ vipTier: 'VIP Tier' })).toBe(2.5);
     });
 
     it('is case-insensitive for tier names', () => {
         expect(getTierMultiplier({ vipTier: 'silver tier' })).toBe(1.5);
         expect(getTierMultiplier({ vipTier: 'GOLD TIER' })).toBe(2.0);
+    });
+
+    // Points-based tier (exponential scale)
+    it('returns 1.0 for users with 200 gader points (still Bronze)', () => {
+        expect(getTierMultiplier({ vipTier: 'Bronze Tier', gader: 200 })).toBe(1.0);
+    });
+
+    it('returns 1.5 for users with 1500 gader points (Silver via points)', () => {
+        expect(getTierMultiplier({ vipTier: 'Bronze Tier', gader: 1500 })).toBe(1.5);
+    });
+
+    it('returns 2.0 for users with 5000 gader points (Gold via points)', () => {
+        expect(getTierMultiplier({ vipTier: 'Bronze Tier', gader: 5000 })).toBe(2.0);
+    });
+
+    it('returns 2.5 for users with 25000 gader points (VIP via points)', () => {
+        expect(getTierMultiplier({ vipTier: 'Bronze Tier', gader: 25000 })).toBe(2.5);
+    });
+
+    it('uses the higher of string tier vs points tier', () => {
+        // Gold string but only 50 points → still 2.0 from string
+        expect(getTierMultiplier({ vipTier: 'Gold Tier', gader: 50 })).toBe(2.0);
+        // Bronze string but 5000 points → 2.0 from points
+        expect(getTierMultiplier({ vipTier: 'Bronze Tier', gader: 5000 })).toBe(2.0);
     });
 });
 

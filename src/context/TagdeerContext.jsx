@@ -114,7 +114,63 @@ export function TagdeerProvider({ children }) {
         }
     };
 
-    const logout = () => {
+    const loginWithOtp = async (phone, token) => {
+        if (!supabase) {
+            // Offline fallback — mock login
+            const randomAlphanumeric = Math.random().toString(36).substring(2, 7).toUpperCase();
+            setUser({ phone, userId: `VIP-${randomAlphanumeric}`, gader: 500, vipTier: 'Bronze Tier', id: 'mock-uuid' });
+            setShowLoginModal(false);
+            showToast(lang === 'ar' ? 'مرحباً بك في تقدير! حصلت على +500 نقطة' : 'Welcome to Tagdeer! You earned +500 points!');
+            return;
+        }
+
+        // Call the verify Edge Function
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+        const res = await fetch(`${supabaseUrl}/functions/v1/whatsapp-otp-verify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify({ phone, code: token }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.error || (lang === 'ar' ? 'رمز غير صحيح' : 'Invalid verification code'));
+        }
+
+        // Set user state from Edge Function response
+        const profile = data.profile;
+        setUser({
+            id: profile.id,
+            phone: profile.phone,
+            userId: profile.user_id,
+            gader: profile.gader_points,
+            vipTier: profile.vip_tier,
+            full_name: profile.full_name,
+            city: profile.city,
+            gender: profile.gender,
+            birth_date: profile.birth_date
+        });
+        setShowLoginModal(false);
+
+        if (data.isNewUser) {
+            showToast(lang === 'ar'
+                ? 'مرحباً بك في تقدير! حصلت على +500 نقطة لتوثيق حسابك 🎉'
+                : 'Welcome to Tagdeer! You earned +500 points for verifying your account! 🎉');
+        } else {
+            showToast(lang === 'ar' ? 'تم تسجيل الدخول بنجاح' : 'Successfully logged in');
+        }
+    };
+
+    const logout = async () => {
+        if (supabase) {
+            await supabase.auth.signOut().catch(() => { });
+        }
         setUser(null);
         showToast(t('logout_success') || 'Successfully logged out');
     };
@@ -190,7 +246,7 @@ export function TagdeerProvider({ children }) {
             voteReason, setVoteReason,
             showVerifySoonModal, setShowVerifySoonModal,
             showPreRegModal, setShowPreRegModal,
-            user, setUser, showLoginModal, setShowLoginModal, login, logout
+            user, setUser, showLoginModal, setShowLoginModal, login, loginWithOtp, logout
         }}>
             {children}
         </TagdeerContext.Provider>

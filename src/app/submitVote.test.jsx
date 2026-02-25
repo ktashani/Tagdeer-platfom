@@ -110,10 +110,13 @@ describe('Log Submission Flow (submitVote)', () => {
         await act(async () => { submitButton.click(); });
 
         const tableNames = sbMock.getTableNames();
-        // All calls (cooldown, diminishing, insert) should target 'logs'
-        expect(tableNames.length).toBeGreaterThanOrEqual(3);
+        // Vote queries target 'logs', point awarding targets 'profiles'
+        const logsCalls = tableNames.filter(n => n === 'logs');
+        expect(logsCalls.length).toBeGreaterThanOrEqual(3);
+        // profiles call is allowed for point awarding
+        const allowedTables = ['logs', 'profiles'];
         tableNames.forEach(name => {
-            expect(name).toBe('logs');
+            expect(allowedTables).toContain(name);
         });
         expect(tableNames).not.toContain('interactions');
     });

@@ -68,20 +68,19 @@ export function ClientLayout({ children }) {
             try {
                 // ── Step 1: 24-Hour Same-Business Cooldown ──────────────
                 const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-                const cooldownFilter = supabase
-                    .from('logs')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('business_id', businessId)
-                    .gte('created_at', twentyFourHoursAgo);
 
-                // Match by profile_id if logged in, otherwise by fingerprint
-                if (user?.id) {
-                    cooldownFilter.eq('profile_id', user.id);
-                } else {
-                    cooldownFilter.eq('fingerprint', fingerprint);
-                }
+                // Build the full query in one chain to avoid mutation issues
+                const cooldownQuery = user?.id
+                    ? supabase.from('logs').select('*', { count: 'exact', head: true })
+                        .eq('business_id', businessId)
+                        .eq('profile_id', user.id)
+                        .gte('created_at', twentyFourHoursAgo)
+                    : supabase.from('logs').select('*', { count: 'exact', head: true })
+                        .eq('business_id', businessId)
+                        .eq('fingerprint', fingerprint)
+                        .gte('created_at', twentyFourHoursAgo);
 
-                const { count: recentCount, error: cooldownErr } = await cooldownFilter;
+                const { count: recentCount, error: cooldownErr } = await cooldownQuery;
 
                 if (!cooldownErr && recentCount > 0) {
                     showToast(lang === 'ar'
@@ -94,19 +93,18 @@ export function ClientLayout({ children }) {
 
                 // ── Step 2: Diminishing Returns (30-day count) ──────────
                 const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-                const diminishingFilter = supabase
-                    .from('logs')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('business_id', businessId)
-                    .gte('created_at', thirtyDaysAgo);
 
-                if (user?.id) {
-                    diminishingFilter.eq('profile_id', user.id);
-                } else {
-                    diminishingFilter.eq('fingerprint', fingerprint);
-                }
+                const diminishingQuery = user?.id
+                    ? supabase.from('logs').select('*', { count: 'exact', head: true })
+                        .eq('business_id', businessId)
+                        .eq('profile_id', user.id)
+                        .gte('created_at', thirtyDaysAgo)
+                    : supabase.from('logs').select('*', { count: 'exact', head: true })
+                        .eq('business_id', businessId)
+                        .eq('fingerprint', fingerprint)
+                        .gte('created_at', thirtyDaysAgo);
 
-                const { count: pastVoteCount, error: dimErr } = await diminishingFilter;
+                const { count: pastVoteCount, error: dimErr } = await diminishingQuery;
                 const safeCount = (!dimErr && pastVoteCount) ? pastVoteCount : 0;
 
                 // ── Step 3: Calculate Dynamic Weight ────────────────────
@@ -131,6 +129,21 @@ export function ClientLayout({ children }) {
                 console.error("Supabase insert exception:", err);
                 showToast("Connection failed.");
                 return;
+            }
+        }
+
+        // Award +10 Gader Points to verified users
+        if (user?.id && supabase) {
+            try {
+                const newPoints = (user.gader || 0) + 10;
+                await supabase
+                    .from('profiles')
+                    .update({ gader_points: newPoints })
+                    .eq('id', user.id);
+                // Update local state so UI reflects immediately
+                user.gader = newPoints;
+            } catch (e) {
+                console.error('Error awarding points:', e);
             }
         }
 

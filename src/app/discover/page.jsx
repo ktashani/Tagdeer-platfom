@@ -97,6 +97,8 @@ export default function DiscoverRoute() {
 
 function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook, expandedLogs, toggleLogs }) {
     const { gaderIndex, rawRecommends, rawComplains } = calculateBusinessScore(business.logs || []);
+    const totalVotes = rawRecommends + rawComplains;
+    const safeIndex = totalVotes === 0 ? 50 : (isNaN(gaderIndex) ? 50 : gaderIndex);
     const avatarLetter = business.name ? business.name.charAt(0).toUpperCase() : '?';
 
     const getGradient = (category) => {
@@ -138,7 +140,7 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                 </div>
 
                 <div className="flex gap-2 shrink-0">
-                    <button onClick={() => shareToFacebook(business.name, `Tagdeer Gader Index: ${gaderIndex}%`)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-500 transition-colors">
+                    <button onClick={() => shareToFacebook(business.name, `Tagdeer Gader Index: ${safeIndex}%`)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-500 transition-colors">
                         <Share2 className="h-5 w-5" />
                     </button>
                     {business.isShielded && (
@@ -150,9 +152,9 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
             </div>
 
             <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100 mt-2 hover:border-blue-200 transition-colors cursor-help">
-                <div className="flex justify-between items-end mb-2">
+                <div className="flex justify-between items-end mb-3">
                     <div className="flex items-center gap-2">
-                        <div className={`p-1.5 rounded-md ${gaderIndex >= 50 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                        <div className={`p-1.5 rounded-md ${totalVotes === 0 ? 'bg-slate-100 text-slate-400' : safeIndex >= 50 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
                             <Zap className="w-4 h-4" />
                         </div>
                         <div className="flex flex-col">
@@ -160,15 +162,47 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                             <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">{t('migdar')}</span>
                         </div>
                     </div>
-                    <span className={`text-2xl font-black tracking-tight ${gaderIndex > 50 ? 'text-green-600' : 'text-red-500'}`}>
-                        {gaderIndex}%
-                    </span>
+                    {/* Score label: neutral for zero votes, dual split otherwise */}
+                    {totalVotes === 0 ? (
+                        <span className="text-sm font-medium text-slate-400 italic">
+                            {lang === 'ar' ? 'لا توجد تجارب بعد' : 'No experiences yet'}
+                        </span>
+                    ) : (
+                        <div className="flex items-center gap-1.5 text-sm font-bold">
+                            <span className="text-green-600">{safeIndex}%</span>
+                            <span className="text-slate-300">/</span>
+                            <span className="text-red-500">{100 - safeIndex}%</span>
+                        </div>
+                    )}
                 </div>
 
-                <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden flex mb-3 shadow-inner">
-                    <div className="bg-gradient-to-r from-green-400 to-green-500 h-3 transition-all duration-1000 ease-out" style={{ width: `${gaderIndex}%` }}></div>
-                    <div className="bg-gradient-to-r from-red-400 to-red-500 h-3 transition-all duration-1000 ease-out" style={{ width: `${100 - gaderIndex}%` }}></div>
-                </div>
+                {/* Tug-of-War Progress Bar */}
+                {totalVotes === 0 ? (
+                    /* Neutral 50/50 bar for zero votes */
+                    <div className="w-full rounded-full h-4 overflow-hidden flex shadow-inner border border-slate-200 mb-3">
+                        <div className="bg-slate-300 h-4 w-1/2 flex items-center justify-end">
+                            <span className="text-[10px] font-bold text-slate-500/70 pr-1.5">⚖️</span>
+                        </div>
+                        <div className="bg-slate-300 h-4 w-1/2 border-l border-slate-400/30 flex items-center justify-start">
+                            <span className="text-[10px] font-bold text-slate-500/70 pl-1.5">⚖️</span>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="w-full rounded-full h-4 overflow-hidden flex shadow-inner border border-slate-200 mb-3">
+                        <div
+                            className="bg-gradient-to-r from-green-400 to-green-500 h-4 transition-all duration-1000 ease-out flex items-center justify-end"
+                            style={{ width: `${Math.max(safeIndex, 8)}%` }}
+                        >
+                            {safeIndex >= 20 && <span className="text-[10px] font-bold text-white/90 pr-1.5">👍</span>}
+                        </div>
+                        <div
+                            className="bg-gradient-to-r from-red-400 to-red-500 h-4 transition-all duration-1000 ease-out flex items-center justify-start"
+                            style={{ width: `${Math.max(100 - safeIndex, 8)}%` }}
+                        >
+                            {(100 - safeIndex) >= 20 && <span className="text-[10px] font-bold text-white/90 pl-1.5">👎</span>}
+                        </div>
+                    </div>
+                )}
 
                 <div className="flex justify-between text-xs font-bold px-1">
                     <div className="flex items-center gap-1.5 text-green-700 bg-green-50 px-2 py-0.5 rounded">
