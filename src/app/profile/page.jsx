@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import QRCode from 'react-qr-code';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
-import { BadgeCheck, LogOut, History, Ticket, AlertCircle, Mail, User, ShieldCheck, Target, Zap, Trash2 } from 'lucide-react';
+import { BadgeCheck, LogOut, History, Ticket, AlertCircle, Mail, User, ShieldCheck, Target, Zap, Trash2, X, Phone, AlertTriangle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,6 +18,7 @@ export default function ProfilePage() {
     const router = useRouter();
     const [activeTab, setActiveTab] = useState('history');
     const [toastMessage, setToastMessage] = useState('');
+    const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
     // Personal Details State
     const [name, setName] = useState(user?.full_name || '');
@@ -85,7 +86,8 @@ export default function ProfilePage() {
                     full_name: name || null,
                     birth_date: dob ? dob : null,
                     city: city || null,
-                    gender: gender || null
+                    gender: gender || null,
+                    email: email || null
                 })
                 .eq('id', user.id);
 
@@ -107,9 +109,13 @@ export default function ProfilePage() {
         }
     };
 
-    // Email OTP Flow State
-    const [email, setEmail] = useState('');
-    const [emailStep, setEmailStep] = useState('idle'); // idle, sending, otp, verified
+    // Derive a clean phone number (exclude emails that may leak into profile.phone)
+    const safePhone = (user?.phone && !user.phone.includes('@')) ? user.phone : null;
+
+    // Email state — read from DB profile_email first, then auth session fallback
+    const savedEmail = user?.profile_email || null;
+    const [email, setEmail] = useState(savedEmail || user?.email || '');
+    const [emailStep, setEmailStep] = useState(savedEmail ? 'verified' : 'idle'); // idle, otp, saving, verified
     const [emailOtp, setEmailOtp] = useState('');
     const [emailError, setEmailError] = useState('');
 
@@ -176,28 +182,85 @@ export default function ProfilePage() {
 
     const progressInfo = getProgressInfo(user.gader);
 
-    // Mock Email OTP Methods
-    const handleSendEmailOtp = () => {
-        if (!email.includes('@')) {
-            setEmailError('Invalid email format');
+    // Step 1: Confirm email → show OTP input
+    const handleConfirmEmail = () => {
+        if (!email || !email.includes('@')) {
+            setEmailError(lang === 'ar' ? 'يرجى إدخال بريد إلكتروني صحيح' : 'Invalid email format');
             return;
         }
         setEmailError('');
-        setEmailStep('sending');
-        setTimeout(() => setEmailStep('otp'), 1500);
+        setEmailOtp('');
+        setEmailStep('otp');
     };
 
-    const handleVerifyEmailOtp = () => {
-        if (emailOtp === '123456') {
-            setEmailError('');
+    // Step 2: Verify OTP → update Auth Vault → then save to profiles DB
+    const handleVerifyEmailOtp = async () => {
+        if (emailOtp.length < 6) {
+            setEmailError(lang === 'ar' ? 'يرجى إدخال الرمز المكون من 6 أرقام' : 'Please enter the full 6-digit code');
+            return;
+        }
+        if (!user || !user.id || user.id === 'mock-uuid') return;
+
+        setEmailError('');
+        setEmailStep('saving');
+        try {
+            // ── Step 1: Register email in Supabase Auth vault ──
+            const { data: authData, error: authError } = await supabase.auth.updateUser({ email: email });
+
+            if (authError) {
+                console.error('Auth Update Error:', authError);
+                const isUnique = authError.message?.toLowerCase().includes('already') ||
+                    authError.message?.toLowerCase().includes('unique') ||
+                    authError.message?.toLowerCase().includes('duplicate');
+                setEmailError(isUnique
+                    ? (lang === 'ar' ? 'هذا البريد الإلكتروني مستخدم بالفعل' : 'This email is already in use')
+                    : (lang === 'ar' ? 'حدث خطأ أثناء تحديث البريد' : 'Error updating email'));
+                setEmailStep('otp');
+                return; // HALT — do not update profiles table
+            }
+
+            // ── Step 2: Update profiles table (only if Step 1 succeeded) ──
+            const { error: profileError } = await supabase
+                .from('profiles')
+                .update({ email: email })
+                .eq('id', user.id);
+
+            if (profileError) {
+                console.error('DB Update Error:', profileError);
+                setEmailError(lang === 'ar' ? 'فشل حفظ البريد الإلكتروني' : 'Failed to save email');
+                setEmailStep('otp');
+                return; // HALT — do not show verified badge
+            }
+
+            // ── Step 3: Both succeeded → show verified state ──
             setEmailStep('verified');
-        } else {
-            setEmailError(t('invalid_otp') || 'Invalid OTP');
+            setToastMessage(lang === 'ar' ? 'تم توثيق البريد الإلكتروني بنجاح' : 'Email verified successfully');
+            setTimeout(() => setToastMessage(''), 3000);
+
+        } catch (err) {
+            console.error('Exception during email verification:', err);
+            setEmailError(lang === 'ar' ? 'خطأ في الاتصال' : 'Connection error');
+            setEmailStep('otp');
         }
     };
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-10" dir={isRTL ? 'rtl' : 'ltr'}>
+
+            {/* Account Status Banner (if phone is missing) */}
+            {!safePhone && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl mb-4 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                        <p className="text-sm font-medium leading-relaxed">
+                            {lang === 'ar'
+                                ? '⚠️ حسابك غير مكتمل. للحصول على الصلاحيات الكاملة ونقاط قَدِّر، يرجى ربط وتوثيق رقم هاتفك.'
+                                : '⚠️ Your account is incomplete. To get full access and Gader Points, please link and verify your phone number.'}
+                        </p>
+                    </div>
+                </div>
+            )}
+
             {/* Header Profile Card */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
                 <div className="bg-blue-800 p-6 sm:p-10 text-white flex flex-col relative overflow-hidden">
@@ -221,14 +284,8 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 z-10 w-full pt-12 sm:pt-0 sm:pe-32">
-                        <div className="bg-white p-2 rounded-xl shadow-inner shrink-0 transition-transform hover:scale-105">
-                            <QRCode
-                                value={user.userId || `tagdeer-user-${user.phone}`}
-                                size={120}
-                                bgColor="#ffffff"
-                                fgColor="#1e40af"
-                                level="Q"
-                            />
+                        <div className="bg-white/20 backdrop-blur-sm w-20 h-20 rounded-2xl flex items-center justify-center text-4xl shrink-0 border-2 border-white/30">
+                            {(user.gader || 0) >= 500 ? '🥇' : (user.gader || 0) >= 100 ? '🥈' : '🥉'}
                         </div>
 
                         <div className="flex flex-col items-center sm:items-start flex-grow text-center sm:text-start">
@@ -236,7 +293,7 @@ export default function ProfilePage() {
                                 <BadgeCheck className="w-4 h-4 text-emerald-400" />
                                 <span>{user.vipTier}</span>
                             </div>
-                            <h1 className="text-3xl font-bold mb-1 font-mono tracking-wider">{user.phone}</h1>
+                            <h1 className="text-3xl font-bold mb-1 font-mono tracking-wider">{user.full_name || (lang === 'ar' ? 'عضو قَدِّر' : 'Gader Member')}</h1>
                             <p className="text-blue-200 text-lg mb-4">{t('member_since') || 'Member since 2026'}</p>
 
                             <div className="flex gap-6 mt-auto">
@@ -271,6 +328,23 @@ export default function ProfilePage() {
                     </p>
                 </div>
             </div>
+
+            {/* 🛡️ Show My Gader Pass Button */}
+            {safePhone ? (
+                <button
+                    onClick={() => setIsQrModalOpen(true)}
+                    className="w-full max-w-md mx-auto mt-4 mb-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:from-blue-700 hover:to-blue-800 transition-all flex justify-center items-center gap-2"
+                >
+                    🛡️ {lang === 'ar' ? 'عرض بطاقة قَدِّر الرقمية' : 'Show My Gader Pass'}
+                </button>
+            ) : (
+                <button
+                    disabled
+                    className="w-full max-w-md mx-auto mt-4 mb-8 py-3 bg-gray-300 text-gray-500 rounded-xl font-bold shadow-sm flex justify-center items-center gap-2 cursor-not-allowed"
+                >
+                    🔒 {lang === 'ar' ? 'وثق رقمك لعرض البطاقة' : 'Verify phone to show card'}
+                </button>
+            )}
 
             {/* Personal Details & Email Section */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8 p-6 sm:p-10">
@@ -324,12 +398,45 @@ export default function ProfilePage() {
                     </div>
                 </div>
 
+                {/* Phone Verification Row */}
+                <div className="bg-slate-50 rounded-xl p-6 border border-slate-100 mb-6">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Phone className="w-5 h-5 text-slate-600" />
+                        <h3 className="font-bold text-slate-800">{lang === 'ar' ? 'رقم الهاتف' : 'Phone Number'}</h3>
+                        {safePhone && <ShieldCheck className="w-5 h-5 text-emerald-500 ml-auto" />}
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <div className="flex-grow space-y-2">
+                            <Input
+                                type="tel"
+                                placeholder="+218..."
+                                value={safePhone || ''}
+                                readOnly={!!safePhone}
+                                disabled={!!safePhone}
+                                className={safePhone ? 'border-emerald-200 bg-emerald-50' : ''}
+                            />
+                        </div>
+                        {safePhone ? (
+                            <span className="inline-flex items-center gap-1.5 text-emerald-600 font-semibold text-sm shrink-0 self-center">
+                                <ShieldCheck className="w-4 h-4" /> {lang === 'ar' ? '✅ موثق' : '✅ Verified'}
+                            </span>
+                        ) : (
+                            <button
+                                onClick={() => setShowLoginModal(true)}
+                                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 shrink-0 font-medium"
+                            >
+                                {lang === 'ar' ? 'توثيق الرقم' : 'Verify Number'}
+                            </button>
+                        )}
+                    </div>
+                </div>
+
                 {/* Email Verification Flow */}
                 <div className="bg-slate-50 rounded-xl p-6 border border-slate-100">
                     <div className="flex items-center gap-2 mb-4">
                         <Mail className="w-5 h-5 text-slate-600" />
                         <h3 className="font-bold text-slate-800">{t('email_address') || 'Email Address'}</h3>
-                        {emailStep === 'verified' && <ShieldCheck className="w-5 h-5 text-emerald-500 ml-auto" />}
+                        {(emailStep === 'verified' || savedEmail) && <ShieldCheck className="w-5 h-5 text-emerald-500 ml-auto" />}
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-4">
@@ -340,51 +447,66 @@ export default function ProfilePage() {
                                 value={email}
                                 onChange={e => {
                                     setEmail(e.target.value);
-                                    if (emailStep === 'verified') setEmailStep('idle');
+                                    if (emailStep !== 'idle') setEmailStep('idle');
+                                    setEmailError('');
                                 }}
-                                disabled={emailStep === 'sending' || emailStep === 'otp'}
-                                className={emailStep === 'verified' ? 'border-emerald-200 bg-emerald-50' : ''}
+                                readOnly={!!savedEmail || emailStep === 'otp' || emailStep === 'saving'}
+                                disabled={emailStep === 'saving'}
+                                className={emailStep === 'verified' || savedEmail ? 'border-emerald-200 bg-emerald-50' : ''}
                             />
-                            {emailError && emailStep === 'idle' && <p className="text-xs text-rose-500">{emailError}</p>}
+                            {emailError && emailStep !== 'otp' && <p className="text-xs text-rose-500">{emailError}</p>}
                         </div>
 
-                        {emailStep === 'idle' && (
-                            <Button onClick={handleSendEmailOtp} disabled={!email} className="bg-slate-800 hover:bg-slate-900 text-white shrink-0">
-                                {t('verify') || 'Verify'}
+                        {!savedEmail && emailStep === 'idle' && (
+                            <Button onClick={handleConfirmEmail} disabled={!email} className="bg-slate-800 hover:bg-slate-900 text-white shrink-0">
+                                {lang === 'ar' ? 'تأكيد' : 'Confirm'}
                             </Button>
                         )}
 
-                        {emailStep === 'sending' && (
+                        {!savedEmail && emailStep === 'saving' && (
                             <Button disabled className="bg-slate-400 shrink-0">
-                                {t('sending') || 'Sending...'}
+                                {lang === 'ar' ? 'جارٍ التحقق...' : 'Verifying...'}
                             </Button>
                         )}
 
-                        {emailStep === 'verified' && (
-                            <Button disabled className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 shrink-0">
-                                {t('verified') || 'Verified ✅'}
-                            </Button>
+                        {(emailStep === 'verified' || savedEmail) && (
+                            <span className="inline-flex items-center gap-1.5 text-green-600 font-bold text-sm shrink-0 self-center">
+                                ✅ {lang === 'ar' ? 'موثق' : 'Verified'}
+                            </span>
                         )}
                     </div>
 
+                    {/* OTP Verification Step */}
                     {emailStep === 'otp' && (
-                        <div className="mt-4 flex gap-4 animate-in fade-in slide-in-from-top-2">
-                            <div className="flex-grow space-y-2">
+                        <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-lg animate-in fade-in slide-in-from-top-2">
+                            <p className="text-sm text-blue-700 font-medium mb-3">
+                                {lang === 'ar'
+                                    ? `تم إرسال رمز التحقق إلى ${email}`
+                                    : `A verification code has been sent to ${email}`}
+                            </p>
+                            <div className="flex gap-3">
                                 <Input
                                     type="text"
                                     placeholder="123456"
                                     value={emailOtp}
-                                    onChange={e => setEmailOtp(e.target.value)}
+                                    onChange={e => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                     maxLength={6}
-                                    className="text-center tracking-widest font-mono"
+                                    className="text-center tracking-widest font-mono flex-grow"
                                 />
-                                {emailError && <p className="text-xs text-rose-500">{emailError}</p>}
+                                <Button onClick={handleVerifyEmailOtp} disabled={emailOtp.length < 6} className="bg-blue-600 hover:bg-blue-700 text-white shrink-0">
+                                    {lang === 'ar' ? 'تحقق' : 'Verify'}
+                                </Button>
                             </div>
-                            <Button onClick={handleVerifyEmailOtp} className="bg-blue-600 hover:bg-blue-700 shrink-0">
-                                {t('verify') || 'Verify'}
-                            </Button>
+                            {emailError && <p className="text-xs text-rose-500 mt-2">{emailError}</p>}
+                            <button
+                                onClick={() => { setEmailStep('idle'); setEmailOtp(''); setEmailError(''); }}
+                                className="text-xs text-blue-500 hover:text-blue-700 mt-2 font-medium"
+                            >
+                                {lang === 'ar' ? '← تغيير البريد' : '← Change email'}
+                            </button>
                         </div>
                     )}
+
                 </div>
             </div>
 
@@ -482,6 +604,58 @@ export default function ProfilePage() {
                     </div>
                 </TabsContent>
             </Tabs>
+
+            {/* ═══ Gader Pass QR Modal ═══ */}
+            {isQrModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setIsQrModalOpen(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden relative border border-gray-100" onClick={e => e.stopPropagation()}>
+                        {/* Top Bar */}
+                        <div className="bg-gray-50 border-b border-gray-100 px-5 py-3 flex items-center justify-between">
+                            <span className="text-sm font-semibold text-gray-600">{lang === 'ar' ? 'بطاقة قَدِّر الرقمية' : 'Digital Gader Pass'}</span>
+                            <button onClick={() => setIsQrModalOpen(false)} className="text-gray-500 hover:text-gray-800 transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex flex-col items-center p-8">
+                            {/* Tier Badge */}
+                            <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold mb-6 ${(user.gader || 0) >= 500
+                                ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+                                : (user.gader || 0) >= 100
+                                    ? 'bg-slate-50 text-slate-600 border border-slate-300'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}>
+                                <span className="text-lg">{(user.gader || 0) >= 500 ? '🥇' : (user.gader || 0) >= 100 ? '🥈' : '🥉'}</span>
+                                {(user.gader || 0) >= 500 ? 'Gold' : (user.gader || 0) >= 100 ? 'Silver' : 'Bronze'}
+                            </div>
+
+                            {/* QR Code */}
+                            <div className="p-4 bg-white border-2 border-dashed border-gray-200 rounded-xl">
+                                <QRCode
+                                    value={`https://tagdeer.app/verify-user/${user.id}`}
+                                    size={180}
+                                    bgColor="#ffffff"
+                                    fgColor="#0f172a"
+                                    level="H"
+                                />
+                            </div>
+
+                            {/* Monospace ID */}
+                            <div className="font-mono text-sm text-gray-500 mt-4 tracking-wider bg-gray-50 px-3 py-1 rounded-md">
+                                ID: {(user.id || '').substring(0, 8)}
+                            </div>
+
+                            {/* Footer Text */}
+                            <p className="text-xs text-gray-400 mt-6 text-center">
+                                {lang === 'ar'
+                                    ? 'اعرض هذا الرمز لأصحاب الأعمال للحصول على مكافآتك.'
+                                    : 'Show this to business owners to claim your rewards.'}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />
         </div>

@@ -52,7 +52,7 @@ export function LoginModal() {
         }
     }, [step]);
 
-    // ── Send OTP via WhatsApp Edge Function ──
+    // ── Send OTP via Native Supabase Auth ──
     const handleSendOtp = async (e) => {
         e.preventDefault();
         setError('');
@@ -71,22 +71,11 @@ export function LoginModal() {
         setIsLoading(true);
         try {
             const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`;
-            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-            const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-            const res = await fetch(`${supabaseUrl}/functions/v1/whatsapp-otp-send`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${supabaseKey}`,
-                },
-                body: JSON.stringify({ phone: formattedPhone }),
-            });
+            const { error: otpError } = await supabase.auth.signInWithOtp({ phone: formattedPhone });
 
-            const data = await res.json();
-
-            if (!res.ok) {
-                setError(data.error || (lang === 'ar' ? 'فشل إرسال الرمز' : 'Failed to send code'));
+            if (otpError) {
+                setError(otpError.message || (lang === 'ar' ? 'فشل إرسال الرمز' : 'Failed to send code'));
             } else {
                 setPhone(formattedPhone);
                 setOtpChannel('whatsapp');
@@ -244,15 +233,15 @@ export function LoginModal() {
             <DialogContent className="sm:max-w-md overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
                 {/* Decorative top gradient */}
                 <div className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${step === 'email' ? 'from-blue-400 via-indigo-500 to-purple-500'
-                        : step === 'otp' ? 'from-blue-400 via-blue-500 to-indigo-500'
-                            : 'from-green-400 via-emerald-500 to-teal-500'
+                    : step === 'otp' ? 'from-blue-400 via-blue-500 to-indigo-500'
+                        : 'from-green-400 via-emerald-500 to-teal-500'
                     }`} />
 
                 <DialogHeader className="pt-2">
                     <div className="mx-auto mb-3">
                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg ${step === 'email' ? 'bg-gradient-to-br from-blue-500 to-purple-600'
-                                : step === 'otp' ? 'bg-gradient-to-br from-blue-500 to-indigo-600'
-                                    : 'bg-gradient-to-br from-green-500 to-emerald-600'
+                            : step === 'otp' ? 'bg-gradient-to-br from-blue-500 to-indigo-600'
+                                : 'bg-gradient-to-br from-green-500 to-emerald-600'
                             }`}>
                             {step === 'phone' ? <Phone className="w-7 h-7 text-white" />
                                 : step === 'email' ? <Mail className="w-7 h-7 text-white" />

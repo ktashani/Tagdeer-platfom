@@ -38,9 +38,32 @@ export function TagdeerProvider({ children }) {
     const [showVerifySoonModal, setShowVerifySoonModal] = useState(false);
     const [showPreRegModal, setShowPreRegModal] = useState(false);
 
-    // Mock Authentication State
-    const [user, setUser] = useState(null);
+    // Authentication State — starts as undefined (loading/SSR-safe)
+    const [user, setUser] = useState(undefined);
     const [showLoginModal, setShowLoginModal] = useState(false);
+
+    // Restore user from localStorage on client mount
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem('tagdeer-user');
+            if (stored) {
+                setUser(JSON.parse(stored));
+            } else {
+                setUser(null); // Explicitly no user found
+            }
+        } catch {
+            setUser(null);
+        }
+    }, []);
+
+    // Persist user state to localStorage whenever it changes
+    useEffect(() => {
+        if (user) {
+            localStorage.setItem('tagdeer-user', JSON.stringify(user));
+        } else {
+            localStorage.removeItem('tagdeer-user');
+        }
+    }, [user]);
 
     const login = async (phone) => {
         // Temporary mock OTP bypass - we assume phone is verified here for MVP
@@ -89,6 +112,8 @@ export function TagdeerProvider({ children }) {
                 setUser({
                     id: profile.id, // Actual UUID
                     phone: profile.phone,
+                    email: profile.email, // Auth session email (may differ from profile)
+                    profile_email: profile.email, // DB-persisted email
                     userId: profile.user_id, // The VIP-XXXXX ID
                     gader: profile.gader_points,
                     vipTier: profile.vip_tier,
@@ -124,54 +149,26 @@ export function TagdeerProvider({ children }) {
             return;
         }
 
-        // Call the verify Edge Function
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-        const res = await fetch(`${supabaseUrl}/functions/v1/whatsapp-otp-verify`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${supabaseKey}`,
-            },
-            body: JSON.stringify({ phone, code: token }),
+        // Verify OTP via native Supabase Auth
+        const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+            phone,
+            token,
+            type: 'sms',
         });
 
-        const data = await res.json();
-
-        if (!res.ok) {
-            throw new Error(data.error || (lang === 'ar' ? 'رمز غير صحيح' : 'Invalid verification code'));
+        if (verifyErr) {
+            throw new Error(verifyErr.message || (lang === 'ar' ? 'رمز غير صحيح' : 'Invalid verification code'));
         }
 
-        // Set user state from Edge Function response
-        const profile = data.profile;
-        setUser({
-            id: profile.id,
-            phone: profile.phone,
-            userId: profile.user_id,
-            gader: profile.gader_points,
-            vipTier: profile.vip_tier,
-            full_name: profile.full_name,
-            city: profile.city,
-            gender: profile.gender,
-            birth_date: profile.birth_date
-        });
-        setShowLoginModal(false);
-
-        if (data.isNewUser) {
-            showToast(lang === 'ar'
-                ? 'مرحباً بك في تقدير! حصلت على +500 نقطة لتوثيق حسابك 🎉'
-                : 'Welcome to Tagdeer! You earned +500 points for verifying your account! 🎉');
-        } else {
-            showToast(lang === 'ar' ? 'تم تسجيل الدخول بنجاح' : 'Successfully logged in');
-        }
+        // Delegate to the login() function for profile lookup/creation
+        await login(phone);
     };
 
     const logout = async () => {
         if (supabase) {
             await supabase.auth.signOut().catch(() => { });
         }
-        setUser(null);
+        setUser(null); // useEffect will clear localStorage
         showToast(t('logout_success') || 'Successfully logged out');
     };
 
