@@ -13,6 +13,7 @@ import { LoginModal } from '../components/Auth/LoginModal';
 import { Toast } from '../components/Toast';
 import { Facebook, Twitter, BadgeCheck } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
+import Link from 'next/link';
 
 function Footer({ t }) {
     return (
@@ -26,7 +27,12 @@ function Footer({ t }) {
                     <a href="#" className="hover:text-white"><Facebook className="h-5 w-5" /></a>
                     <a href="#" className="hover:text-white"><Twitter className="h-5 w-5" /></a>
                 </div>
-                <p className="text-sm">© 2026 Tagdeer Libya.</p>
+                <div className="flex flex-col items-center md:items-end gap-2">
+                    <Link href="/privacy" className="text-sm hover:text-white transition-colors">
+                        Privacy Policy | سياسة الخصوصية
+                    </Link>
+                    <p className="text-sm">© 2026 Tagdeer Libya.</p>
+                </div>
             </div>
         </footer>
     );
