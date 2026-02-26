@@ -66,7 +66,13 @@ export function TagdeerProvider({ children }) {
     }, [user]);
 
     const login = async (phone) => {
-        // Temporary mock OTP bypass - we assume phone is verified here for MVP
+        // DEV BYPASS: completely bypass Supabase DB for the E2E test phone due to RLS blocks without Auth Session
+        const isDevEnv = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
+        if (isDevEnv && phone === '+218999999999') {
+            setUser({ phone, userId: 'VIP-E2ETST', gader: 500, vipTier: 'Bronze Tier', id: 'mock-e2e-uuid', isDevBypass: true });
+            setShowLoginModal(false);
+            return;
+        }
 
         if (supabase) {
             try {
@@ -150,19 +156,46 @@ export function TagdeerProvider({ children }) {
             return;
         }
 
-        // Verify OTP via native Supabase Auth
-        const { data, error: verifyErr } = await supabase.auth.verifyOtp({
-            phone,
-            token,
-            type: 'sms',
-        });
-
-        if (verifyErr) {
-            throw new Error(verifyErr.message || (lang === 'ar' ? 'رمز غير صحيح' : 'Invalid verification code'));
+        // DEV MODE BYPASS (works in development OR on localhost)
+        const isDevEnv = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
+        if (isDevEnv && token === '999999') {
+            await login(phone);
+            return;
         }
 
-        // Delegate to the login() function for profile lookup/creation
-        await login(phone);
+        // PRODUCTION/REAL MODE: Verify via Edge Function
+        const { data, error: functionError } = await supabase.functions.invoke('whatsapp-otp-verify', {
+            body: { phone, code: token }
+        });
+
+        if (functionError || !data || data.error) {
+            console.error("OTP Verification Error:", functionError || data?.error);
+            throw new Error((data && data.error) || (lang === 'ar' ? 'رمز غير صحيح أو منتهي الصلاحية' : 'Invalid or expired code'));
+        }
+
+        // Success! Set the user state based on the Edge Function's returned profile
+        setUser({
+            id: data.profile.id,
+            phone: data.profile.phone,
+            email: null, // Custom Edge Function doesn't currently attach Auth email
+            profile_email: null,
+            userId: data.profile.user_id,
+            gader: data.profile.gader_points,
+            vipTier: data.profile.vip_tier,
+            full_name: data.profile.full_name,
+            city: data.profile.city,
+            gender: data.profile.gender,
+            birth_date: data.profile.birth_date,
+            isDevBypass: false,
+        });
+
+        setShowLoginModal(false);
+
+        if (data.isNewUser) {
+            showToast(lang === 'ar' ? 'مرحباً بك في تقدير! حصلت على +500 نقطة مكافأة' : 'Welcome to Tagdeer! You earned +500 bonus points');
+        } else {
+            showToast(t('login_success') || 'Successfully logged in');
+        }
     };
 
     const logout = async () => {

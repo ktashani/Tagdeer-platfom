@@ -14,6 +14,18 @@ serve(async (req) => {
     }
 
     try {
+        const requiredVars = {
+            url: Deno.env.get("SUPABASE_URL"),
+            key: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+            metaToken: Deno.env.get("META_ACCESS_TOKEN"),
+            metaId: Deno.env.get("META_PHONE_NUMBER_ID")
+        };
+
+        const missingVars = Object.entries(requiredVars).filter(([k, v]) => !v).map(([k]) => k);
+        if (missingVars.length > 0) {
+            throw new Error(`Missing environment variables: ${missingVars.join(', ')}`);
+        }
+
         const { phone } = await req.json();
 
         if (!phone || phone.length < 9) {
@@ -32,8 +44,8 @@ serve(async (req) => {
 
         // Store OTP in database (upsert — replace any existing code for this phone)
         const supabaseAdmin = createClient(
-            Deno.env.get("SUPABASE_URL")!,
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+            requiredVars.url!,
+            requiredVars.key!
         );
 
         const { error: dbError } = await supabaseAdmin
@@ -45,26 +57,21 @@ serve(async (req) => {
 
         if (dbError) {
             console.error("DB upsert error:", dbError);
-            return new Response(
-                JSON.stringify({ error: "Failed to store OTP" }),
-                { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
+            throw new Error(`DB Error: ${JSON.stringify(dbError)}`);
         }
 
         // Send WhatsApp message via Meta Graph API
-        const metaAccessToken = Deno.env.get("META_ACCESS_TOKEN");
-        const phoneNumberId = Deno.env.get("META_PHONE_NUMBER_ID");
-        const templateName = Deno.env.get("META_TEMPLATE_NAME") || "authentication_otp";
+        const templateName = Deno.env.get("META_TEMPLATE_NAME") || "tagdeer_otp";
 
         // Strip the + for Meta API (they expect country code without +)
         const recipientPhone = normalizedPhone.replace("+", "");
 
         const metaResponse = await fetch(
-            `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
+            `https://graph.facebook.com/v21.0/${requiredVars.metaId}/messages`,
             {
                 method: "POST",
                 headers: {
-                    "Authorization": `Bearer ${metaAccessToken}`,
+                    "Authorization": `Bearer ${requiredVars.metaToken}`,
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
@@ -73,7 +80,7 @@ serve(async (req) => {
                     type: "template",
                     template: {
                         name: templateName,
-                        language: { code: "en_US" },
+                        language: { code: Deno.env.get("META_TEMPLATE_LANG") || "ar" },
                         components: [
                             {
                                 type: "body",
@@ -98,11 +105,7 @@ serve(async (req) => {
         const metaResult = await metaResponse.json();
 
         if (!metaResponse.ok) {
-            console.error("Meta API error:", JSON.stringify(metaResult));
-            return new Response(
-                JSON.stringify({ error: "Failed to send WhatsApp message", details: metaResult }),
-                { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
+            throw new Error(`Meta API Error: ${JSON.stringify(metaResult)}`);
         }
 
         return new Response(
@@ -113,7 +116,7 @@ serve(async (req) => {
     } catch (err) {
         console.error("Function error:", err);
         return new Response(
-            JSON.stringify({ error: err.message }),
+            JSON.stringify({ error: String(err), stack: err.stack }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
     }

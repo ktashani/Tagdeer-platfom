@@ -25,6 +25,14 @@ export function LoginModal() {
     const [otpChannel, setOtpChannel] = useState('whatsapp'); // 'whatsapp' or 'email'
     const inputRefs = useRef([]);
 
+    // Safely detect localhost on client to avoid Next.js hydration mismatch
+    const [isLocalhost, setIsLocalhost] = useState(false);
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            setIsLocalhost(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+        }
+    }, []);
+
     // Rate-limit cooldown
     const [cooldownSeconds, setCooldownSeconds] = useState(0);
     const cooldownRef = useRef(null);
@@ -52,9 +60,9 @@ export function LoginModal() {
         }
     }, [step]);
 
-    // ── Send OTP via Native Supabase Auth ──
-    const handleSendOtp = async (e) => {
-        e.preventDefault();
+    // ── Send OTP via WhatsApp (Edge Function) or Dev Bypass ──
+    const handleSendOtp = async (e, forceDevBypass = false) => {
+        if (e) e.preventDefault();
         setError('');
 
         if (cooldownSeconds > 0) {
@@ -72,10 +80,26 @@ export function LoginModal() {
         try {
             const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : `+${cleanPhone}`;
 
-            const { error: otpError } = await supabase.auth.signInWithOtp({ phone: formattedPhone });
+            // DEV MODE: Mock Bypass (works in development OR on localhost)
+            const isDevEnv = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
+            if (isDevEnv && (forceDevBypass || phone === '999999999')) {
+                // Mock success
+                setPhone(formattedPhone);
+                setOtpChannel('whatsapp');
+                setStep('otp');
+                startCooldown();
+                setIsLoading(false);
+                return;
+            }
 
-            if (otpError) {
-                setError(otpError.message || (lang === 'ar' ? 'فشل إرسال الرمز' : 'Failed to send code'));
+            // PRODUCTION/REAL MODE: Call Edge Function
+            const { data, error: functionError } = await supabase.functions.invoke('whatsapp-otp-send', {
+                body: { phone: formattedPhone }
+            });
+
+            if (functionError || (data && data.error)) {
+                console.error("Edge function error:", functionError || data.error);
+                setError((data && data.error) || (lang === 'ar' ? 'فشل إرسال رسالة واتساب' : 'Failed to send WhatsApp message'));
             } else {
                 setPhone(formattedPhone);
                 setOtpChannel('whatsapp');
@@ -151,18 +175,18 @@ export function LoginModal() {
     };
 
     // ── Verify OTP ──
-    const handleVerifyOtp = async (e) => {
+    const handleVerifyOtp = async (e, devTokenBypass = null) => {
         e.preventDefault();
         setError('');
 
-        const token = otpDigits.join('');
+        const token = devTokenBypass || otpDigits.join('');
         if (token.length < 6) {
             setError(lang === 'ar' ? 'يرجى إدخال الرمز المكون من 6 أرقام' : 'Please enter the full 6-digit code');
             return;
         }
 
         // Dev-only master code bypass
-        if (process.env.NODE_ENV === 'development' && token === '999999') {
+        if ((process.env.NODE_ENV === 'development' || isLocalhost) && token === '999999') {
             setIsLoading(true);
             try {
                 const identifier = otpChannel === 'email' ? email : phone;
@@ -317,6 +341,21 @@ export function LoginModal() {
                                 <Mail className="w-3.5 h-3.5" />
                                 {lang === 'ar' ? 'لم يصلك الرمز؟ أرسل عبر البريد الإلكتروني' : "Didn't get the code? Send via Email instead"}
                             </button>
+
+                            {/* DEV BYPASS button on phone screen */}
+                            {(process.env.NODE_ENV === 'development' || isLocalhost) && (
+                                <div className="mt-3 pt-3 border-t border-slate-100">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => handleSendOtp(e, true)}
+                                        className="w-full flex items-center justify-center gap-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors rounded-xl px-3 py-2.5"
+                                    >
+                                        <span className="text-[11px] text-purple-600 font-mono font-bold tracking-wide">
+                                            🔧 DEV BYPASS: SKIP WHATSAPP API
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
                         </form>
                     )}
 
@@ -404,10 +443,19 @@ export function LoginModal() {
                                 </span>
                             </div>
 
-                            {/* Dev master code hint */}
-                            {process.env.NODE_ENV === 'development' && (
-                                <div className="flex items-center justify-center gap-2 bg-purple-50 border border-purple-100 rounded-xl px-3 py-2">
-                                    <span className="text-[10px] text-purple-500 font-mono">🔧 DEV: type 999999 to bypass</span>
+                            {/* Dev skip validation interactive bypass */}
+                            {(process.env.NODE_ENV === 'development' || isLocalhost) && (
+                                <div className="mt-2 text-center">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setOtpDigits(['9', '9', '9', '9', '9', '9']);
+                                            setTimeout(() => handleVerifyOtp({ preventDefault: () => { } }, '999999'), 50);
+                                        }}
+                                        className="text-[11px] text-purple-600 font-mono font-bold hover:underline"
+                                    >
+                                        🔧 DEV BYPASS: AUTO-FILL & SKIP
+                                    </button>
                                 </div>
                             )}
 

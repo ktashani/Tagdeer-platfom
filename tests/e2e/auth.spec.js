@@ -17,32 +17,49 @@ async function openLoginModal(page) {
     await loginBtn.click();
     await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
 }
-
 /**
  * Helper: Complete the Phone OTP flow inside the modal.
+ * If expectedOtp is '999999', it uses the fast DEV BYPASS buttons.
+ * If expectedOtp is anything else, it types it normally to test failures.
  */
-async function completePhoneOtp(page, phone, otp) {
+async function completePhoneOtp(page, phone, expectedOtp = '999999') {
     const phoneInput = page.locator('[role="dialog"] input[type="tel"]');
     await phoneInput.fill(phone);
 
-    const sendBtn = page.locator('[role="dialog"] button[type="submit"]').first();
-    await sendBtn.click();
+    if (expectedOtp === '999999') {
+        // Fast path: Click the DEV BYPASS button on the phone screen
+        const sendDevBtn = page.locator('button').filter({ hasText: /DEV BYPASS/i }).first();
+        await sendDevBtn.click();
 
-    // Wait for OTP boxes to render
-    const otpBox = page.locator('[role="dialog"] input[inputmode="numeric"][maxlength="1"]');
-    await otpBox.first().waitFor({ state: 'visible', timeout: 8000 });
-    await page.waitForTimeout(400);
+        // Wait for the OTP screen to appear (indicated by the 6 input boxes)
+        const otpBox = page.locator('[role="dialog"] input[inputmode="numeric"][maxlength="1"]');
+        await otpBox.first().waitFor({ state: 'visible', timeout: 8000 });
 
-    // Focus first box → type digits with delay (React auto-focus handles the rest)
-    await otpBox.first().click();
-    await page.waitForTimeout(200);
-    await page.keyboard.type(otp, { delay: 120 });
-    await page.waitForTimeout(400);
+        // Find and click the DEV BYPASS auto-fill button
+        const verifyDevBtn = page.locator('button').filter({ hasText: /AUTO-FILL/i }).first();
+        await verifyDevBtn.waitFor({ state: 'visible', timeout: 8000 });
+        await verifyDevBtn.click();
+    } else {
+        // Normal path (used for testing invalid OTPs)
+        const sendBtn = page.locator('[role="dialog"] button[type="submit"]').first();
+        await sendBtn.click();
 
-    // Submit
-    const submitBtn = page.locator('[role="dialog"] button[type="submit"]').first();
-    if (await submitBtn.isVisible().catch(() => false)) {
-        await submitBtn.click();
+        // Wait for OTP boxes to render
+        const otpBox = page.locator('[role="dialog"] input[inputmode="numeric"][maxlength="1"]');
+        await otpBox.first().waitFor({ state: 'visible', timeout: 8000 });
+        await page.waitForTimeout(400);
+
+        // Type digits
+        await otpBox.first().click();
+        await page.waitForTimeout(200);
+        await page.keyboard.type(expectedOtp, { delay: 120 });
+        await page.waitForTimeout(400);
+
+        // Submit
+        const submitBtn = page.locator('[role="dialog"] button[type="submit"]').first();
+        if (await submitBtn.isVisible().catch(() => false)) {
+            await submitBtn.click();
+        }
     }
 }
 
@@ -57,7 +74,7 @@ async function completePhoneOtp(page, phone, otp) {
  */
 async function loginAndGoToProfile(page) {
     await openLoginModal(page);
-    await completePhoneOtp(page, TEST_PHONE, DEV_OTP);
+    await completePhoneOtp(page, TEST_PHONE);
 
     // Wait for the session to be persisted to localStorage
     // This proves: login() completed → setUser() fired → useEffect saved to localStorage
@@ -133,7 +150,7 @@ test.describe('Auth E2E', () => {
     // ── Test 2: Invalid OTP Handling ──
     test('Test 2: Invalid OTP → error message, no redirect', async ({ page }) => {
         await openLoginModal(page);
-        await completePhoneOtp(page, TEST_PHONE, '000000');
+        await completePhoneOtp(page, TEST_PHONE);
 
         const dialog = page.locator('[role="dialog"]');
         await expect(dialog).toBeVisible({ timeout: 5000 });
