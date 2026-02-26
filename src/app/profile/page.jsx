@@ -3,15 +3,17 @@
 import React, { useEffect, useState } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useRouter } from 'next/navigation';
-import QRCode from 'react-qr-code';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
-import { BadgeCheck, LogOut, History, Ticket, AlertCircle, Mail, User, ShieldCheck, Target, Zap, Trash2, X, Phone, AlertTriangle } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Mail, User, ShieldCheck, Phone, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { Toast } from '@/components/Toast';
+
+// Extracted components
+import { ProfileHeader } from '@/components/profile/ProfileHeader';
+import { LogHistory } from '@/components/profile/LogHistory';
+import { GaderPassModal } from '@/components/profile/GaderPassModal';
 
 export default function ProfilePage() {
     const { user, logout, t, isRTL, setShowLoginModal, lang } = useTagdeer();
@@ -48,6 +50,12 @@ export default function ProfilePage() {
                 setIsLoadingLogs(false);
                 return;
             }
+
+            // Skip Supabase queries for dev bypass users (no native auth session)
+            if (user.isDevBypass) {
+                setIsLoadingLogs(false);
+                return;
+            }
             try {
                 const { data, error } = await supabase
                     .from('logs')
@@ -76,7 +84,7 @@ export default function ProfilePage() {
 
     // Handle Profile Update
     const handleSaveProfile = async () => {
-        if (!user || !user.id || user.id === 'mock-uuid') return;
+        if (!user || !user.id || user.id === 'mock-uuid' || user.isDevBypass) return;
 
         setIsSaving(true);
         try {
@@ -201,22 +209,27 @@ export default function ProfilePage() {
         }
         if (!user || !user.id || user.id === 'mock-uuid') return;
 
+        // Dev bypass: skip supabase.auth.updateUser (no native session)
+        const skipAuthVault = user.isDevBypass;
+
         setEmailError('');
         setEmailStep('saving');
         try {
-            // ── Step 1: Register email in Supabase Auth vault ──
-            const { data: authData, error: authError } = await supabase.auth.updateUser({ email: email });
+            if (!skipAuthVault) {
+                // ── Step 1: Register email in Supabase Auth vault ──
+                const { data: authData, error: authError } = await supabase.auth.updateUser({ email: email });
 
-            if (authError) {
-                console.error('Auth Update Error:', authError);
-                const isUnique = authError.message?.toLowerCase().includes('already') ||
-                    authError.message?.toLowerCase().includes('unique') ||
-                    authError.message?.toLowerCase().includes('duplicate');
-                setEmailError(isUnique
-                    ? (lang === 'ar' ? 'هذا البريد الإلكتروني مستخدم بالفعل' : 'This email is already in use')
-                    : (lang === 'ar' ? 'حدث خطأ أثناء تحديث البريد' : 'Error updating email'));
-                setEmailStep('otp');
-                return; // HALT — do not update profiles table
+                if (authError) {
+                    console.error('Auth Update Error:', authError);
+                    const isUnique = authError.message?.toLowerCase().includes('already') ||
+                        authError.message?.toLowerCase().includes('unique') ||
+                        authError.message?.toLowerCase().includes('duplicate');
+                    setEmailError(isUnique
+                        ? (lang === 'ar' ? 'هذا البريد الإلكتروني مستخدم بالفعل' : 'This email is already in use')
+                        : (lang === 'ar' ? 'حدث خطأ أثناء تحديث البريد' : 'Error updating email'));
+                    setEmailStep('otp');
+                    return;
+                }
             }
 
             // ── Step 2: Update profiles table (only if Step 1 succeeded) ──
@@ -229,7 +242,7 @@ export default function ProfilePage() {
                 console.error('DB Update Error:', profileError);
                 setEmailError(lang === 'ar' ? 'فشل حفظ البريد الإلكتروني' : 'Failed to save email');
                 setEmailStep('otp');
-                return; // HALT — do not show verified badge
+                return;
             }
 
             // ── Step 3: Both succeeded → show verified state ──
@@ -261,73 +274,17 @@ export default function ProfilePage() {
                 </div>
             )}
 
-            {/* Header Profile Card */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
-                <div className="bg-blue-800 p-6 sm:p-10 text-white flex flex-col relative overflow-hidden">
-                    {/* Decorative background element */}
-                    <div className="absolute top-0 right-0 -mt-10 -mr-10 opacity-10 pointer-events-none">
-                        <BadgeCheck className="w-64 h-64" />
-                    </div>
-
-                    <div className="absolute top-4 end-4 sm:top-6 sm:end-6 z-20">
-                        <Button
-                            variant="ghost"
-                            className="text-white hover:bg-white/20 hover:text-white border-white/20"
-                            onClick={() => {
-                                logout();
-                                router.push('/');
-                            }}
-                        >
-                            <LogOut className={`w-4 h-4 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                            {t('logout') || 'Sign Out'}
-                        </Button>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 z-10 w-full pt-12 sm:pt-0 sm:pe-32">
-                        <div className="bg-white/20 backdrop-blur-sm w-20 h-20 rounded-2xl flex items-center justify-center text-4xl shrink-0 border-2 border-white/30">
-                            {(user.gader || 0) >= 500 ? '🥇' : (user.gader || 0) >= 100 ? '🥈' : '🥉'}
-                        </div>
-
-                        <div className="flex flex-col items-center sm:items-start flex-grow text-center sm:text-start">
-                            <div className="flex items-center gap-2 bg-blue-900/50 px-3 py-1 rounded-full text-sm font-medium mb-3 backdrop-blur-sm">
-                                <BadgeCheck className="w-4 h-4 text-emerald-400" />
-                                <span>{user.vipTier}</span>
-                            </div>
-                            <h1 className="text-3xl font-bold mb-1 font-mono tracking-wider">{user.full_name || (lang === 'ar' ? 'عضو قَدِّر' : 'Gader Member')}</h1>
-                            <p className="text-blue-200 text-lg mb-4">{t('member_since') || 'Member since 2026'}</p>
-
-                            <div className="flex gap-6 mt-auto">
-                                <div className="flex flex-col">
-                                    <span className="text-sm text-blue-200 uppercase tracking-wider font-semibold">{t('gader_points') || 'Gader Points'}</span>
-                                    <span className="text-3xl font-bold text-amber-300">{user.gader}</span>
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-sm text-blue-200 uppercase tracking-wider font-semibold">{t('logs') || 'Logs'}</span>
-                                    <span className="text-3xl font-bold">{displayLogs.length}</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Gamification Progress Bar */}
-                <div className="bg-slate-50 border-t border-slate-100 p-6 px-6 sm:px-10">
-                    <div className="flex justify-between items-end mb-2">
-                        <div className="flex items-center gap-2">
-                            <Target className="w-5 h-5 text-indigo-600" />
-                            <div className="flex flex-col">
-                                <span className="font-semibold text-slate-700">{progressInfo.nextTier} {t('tier') || 'Tier'}</span>
-                                <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">{t('migdar')}</span>
-                            </div>
-                        </div>
-                        <span className="text-sm font-bold text-indigo-600">{user.gader} / {(user.gader || 0) + progressInfo.pointsNeeded} {t('gader_points') || 'Gader Points'}</span>
-                    </div>
-                    <Progress value={progressInfo.percentage} className="h-3 bg-slate-200" indicatorcolor="bg-indigo-600" />
-                    <p className="text-sm text-slate-500 mt-2 font-medium">
-                        {t('points_to_next_tier')?.replace('{points}', progressInfo.pointsNeeded).replace('{tier}', progressInfo.nextTier) || `Only ${progressInfo.pointsNeeded} more Gader Points to reach ${progressInfo.nextTier} Tier!`}
-                    </p>
-                </div>
-            </div>
+            {/* ═══ Profile Header Card ═══ */}
+            <ProfileHeader
+                user={user}
+                displayLogs={displayLogs}
+                progressInfo={progressInfo}
+                isRTL={isRTL}
+                t={t}
+                lang={lang}
+                logout={logout}
+                router={router}
+            />
 
             {/* 🛡️ Show My Gader Pass Button */}
             {safePhone ? (
@@ -346,7 +303,7 @@ export default function ProfilePage() {
                 </button>
             )}
 
-            {/* Personal Details & Email Section */}
+            {/* ═══ Personal Details & Email Section ═══ */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8 p-6 sm:p-10">
                 <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4">
                     <User className="w-6 h-6 text-blue-800" />
@@ -411,7 +368,7 @@ export default function ProfilePage() {
                                 type="tel"
                                 placeholder="+218..."
                                 value={safePhone || ''}
-                                readOnly={!!safePhone}
+                                readOnly={true}
                                 disabled={!!safePhone}
                                 className={safePhone ? 'border-emerald-200 bg-emerald-50' : ''}
                             />
@@ -510,151 +467,27 @@ export default function ProfilePage() {
                 </div>
             </div>
 
-            {/* Main Content Tabs */}
-            <Tabs defaultValue="history" onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-8 h-14 bg-slate-100 p-1 rounded-xl">
-                    <TabsTrigger value="history" className="text-base rounded-lg font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        <History className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                        {t('my_history') || 'Activity History'}
-                    </TabsTrigger>
-                    <TabsTrigger value="coupons" className="text-base rounded-lg font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        <Ticket className={`w-5 h-5 ${isRTL ? 'ml-2' : 'mr-2'}`} />
-                        {t('my_rewards') || 'Coupons & Rewards'}
-                    </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="history" className="mt-0 outline-none">
-                    {/* Dev-only: Reset Cooldowns Button */}
-                    {process.env.NODE_ENV === 'development' && user?.id && user.id !== 'mock-uuid' && (
-                        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between">
-                            <span className="text-sm text-amber-700 font-medium flex items-center gap-2">
-                                <Trash2 className="w-4 h-4" /> Dev Tool: Reset your cooldowns for testing
-                            </span>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-amber-700 border-amber-300 hover:bg-amber-100"
-                                onClick={async () => {
-                                    if (!supabase) return;
-                                    const { error } = await supabase
-                                        .from('logs')
-                                        .delete()
-                                        .eq('profile_id', user.id);
-                                    if (!error) {
-                                        setHistoryLogs([]);
-                                        setToastMessage('Cooldowns reset! All your logs deleted.');
-                                        setTimeout(() => setToastMessage(''), 3000);
-                                    }
-                                }}
-                            >
-                                Reset Logs
-                            </Button>
-                        </div>
-                    )}
-
-                    {isLoadingLogs ? (
-                        <div className="flex justify-center py-12">
-                            <div className="animate-pulse flex flex-col items-center gap-3">
-                                <div className="h-8 w-8 bg-slate-200 rounded-full"></div>
-                                <div className="h-4 w-32 bg-slate-200 rounded"></div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="space-y-4">
-                            {displayLogs.map((log) => (
-                                <div key={log.id} className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-slate-300 transition-colors">
-                                    <div className="flex gap-4 items-start w-full">
-                                        <div className={`p-3 rounded-full mt-1 shrink-0 ${log.type === 'recommend' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-                                            {log.type === 'recommend' ? <BadgeCheck className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
-                                        </div>
-                                        <div className="flex-grow">
-                                            <h3 className="font-bold text-lg text-slate-800">{log.business}</h3>
-                                            <p className="text-slate-500 text-sm mt-1 mb-2">{log.text}</p>
-                                            <div className="flex items-center gap-3 flex-wrap">
-                                                <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded inline-block">
-                                                    {new Date(log.date).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
-                                                </span>
-                                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-flex items-center gap-1">
-                                                    <Zap className="w-3 h-3" /> {log.weight}x Impact
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className={`font-medium whitespace-nowrap px-3 py-1 rounded-full text-sm ${log.type === 'recommend' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                                        {log.type === 'recommend' ? (t('recommended') || 'Recommended') : (t('complained') || 'Complained')}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </TabsContent>
-
-                <TabsContent value="coupons" className="mt-0 outline-none">
-                    <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 rounded-2xl p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
-                        <div className="bg-white p-5 rounded-full shadow-sm mb-6 inline-flex">
-                            <Ticket className="w-12 h-12 text-indigo-500 animate-pulse" />
-                        </div>
-                        <h2 className="text-3xl font-bold text-indigo-900 mb-3">{t('coupons_rewards_title') || 'Coupons & Rewards'}</h2>
-                        <p className="text-indigo-600/80 text-lg max-w-md">
-                            {t('coupons_rewards_desc') || 'We are building an incredible rewards engine. Soon you will be able to spend your Gader Points for exclusive discounts!'}
-                        </p>
-                        <div className="mt-8 inline-flex items-center gap-2 bg-indigo-900 text-white px-6 py-2 rounded-full font-medium text-sm tracking-wide uppercase">
-                            {t('coming_soon') || 'Coming Soon'}
-                        </div>
-                    </div>
-                </TabsContent>
-            </Tabs>
+            {/* ═══ Activity History & Coupons Tabs ═══ */}
+            <LogHistory
+                user={user}
+                displayLogs={displayLogs}
+                historyLogs={historyLogs}
+                setHistoryLogs={setHistoryLogs}
+                isLoadingLogs={isLoadingLogs}
+                isRTL={isRTL}
+                t={t}
+                lang={lang}
+                setActiveTab={setActiveTab}
+                setToastMessage={setToastMessage}
+            />
 
             {/* ═══ Gader Pass QR Modal ═══ */}
             {isQrModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setIsQrModalOpen(false)}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden relative border border-gray-100" onClick={e => e.stopPropagation()}>
-                        {/* Top Bar */}
-                        <div className="bg-gray-50 border-b border-gray-100 px-5 py-3 flex items-center justify-between">
-                            <span className="text-sm font-semibold text-gray-600">{lang === 'ar' ? 'بطاقة قَدِّر الرقمية' : 'Digital Gader Pass'}</span>
-                            <button onClick={() => setIsQrModalOpen(false)} className="text-gray-500 hover:text-gray-800 transition-colors">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex flex-col items-center p-8">
-                            {/* Tier Badge */}
-                            <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-bold mb-6 ${(user.gader || 0) >= 500
-                                ? 'bg-yellow-50 text-yellow-700 border border-yellow-200'
-                                : (user.gader || 0) >= 100
-                                    ? 'bg-slate-50 text-slate-600 border border-slate-300'
-                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                }`}>
-                                <span className="text-lg">{(user.gader || 0) >= 500 ? '🥇' : (user.gader || 0) >= 100 ? '🥈' : '🥉'}</span>
-                                {(user.gader || 0) >= 500 ? 'Gold' : (user.gader || 0) >= 100 ? 'Silver' : 'Bronze'}
-                            </div>
-
-                            {/* QR Code */}
-                            <div className="p-4 bg-white border-2 border-dashed border-gray-200 rounded-xl">
-                                <QRCode
-                                    value={`https://tagdeer.app/verify-user/${user.id}`}
-                                    size={180}
-                                    bgColor="#ffffff"
-                                    fgColor="#0f172a"
-                                    level="H"
-                                />
-                            </div>
-
-                            {/* Monospace ID */}
-                            <div className="font-mono text-sm text-gray-500 mt-4 tracking-wider bg-gray-50 px-3 py-1 rounded-md">
-                                ID: {(user.id || '').substring(0, 8)}
-                            </div>
-
-                            {/* Footer Text */}
-                            <p className="text-xs text-gray-400 mt-6 text-center">
-                                {lang === 'ar'
-                                    ? 'اعرض هذا الرمز لأصحاب الأعمال للحصول على مكافآتك.'
-                                    : 'Show this to business owners to claim your rewards.'}
-                            </p>
-                        </div>
-                    </div>
-                </div>
+                <GaderPassModal
+                    user={user}
+                    lang={lang}
+                    onClose={() => setIsQrModalOpen(false)}
+                />
             )}
 
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />

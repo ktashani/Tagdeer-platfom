@@ -112,15 +112,16 @@ export function TagdeerProvider({ children }) {
                 setUser({
                     id: profile.id, // Actual UUID
                     phone: profile.phone,
-                    email: profile.email, // Auth session email (may differ from profile)
-                    profile_email: profile.email, // DB-persisted email
-                    userId: profile.user_id, // The VIP-XXXXX ID
+                    email: profile.email,
+                    profile_email: profile.email,
+                    userId: profile.user_id,
                     gader: profile.gader_points,
                     vipTier: profile.vip_tier,
                     full_name: profile.full_name,
                     city: profile.city,
                     gender: profile.gender,
-                    birth_date: profile.birth_date
+                    birth_date: profile.birth_date,
+                    isDevBypass: process.env.NODE_ENV === 'development',
                 });
                 setShowLoginModal(false);
                 showToast(t('login_success') || 'Successfully logged in');
@@ -133,7 +134,7 @@ export function TagdeerProvider({ children }) {
             // Fallback if supabase isn't connected
             const randomAlphanumeric = Math.random().toString(36).substring(2, 7).toUpperCase();
             const mockUserId = `VIP-${randomAlphanumeric}`;
-            setUser({ phone, userId: mockUserId, gader: 50, vipTier: 'Bronze Tier', id: 'mock-uuid' });
+            setUser({ phone, userId: mockUserId, gader: 50, vipTier: 'Bronze Tier', id: 'mock-uuid', isDevBypass: true });
             setShowLoginModal(false);
             showToast(t('login_success') || 'Successfully logged in (Offline)');
         }
