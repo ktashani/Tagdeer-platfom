@@ -33,8 +33,12 @@ export function ProfileHeader({ user, displayLogs, progressInfo, isRTL, t, lang,
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 z-10 w-full pt-12 sm:pt-0 sm:pe-32">
-                    <div className="bg-white/20 backdrop-blur-sm w-20 h-20 rounded-2xl flex items-center justify-center text-4xl shrink-0 border-2 border-white/30">
-                        {(user.gader || 0) >= 500 ? '🥇' : (user.gader || 0) >= 100 ? '🥈' : '🥉'}
+                    <div className="bg-white/20 backdrop-blur-sm w-24 h-24 rounded-full flex items-center justify-center text-5xl shrink-0 overflow-hidden border-2 border-white/30 shadow-lg relative">
+                        {user.avatarUrl ? (
+                            <img src={user.avatarUrl} alt="User Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                            <span>{(user.gader || 0) >= 20000 ? '💎' : (user.gader || 0) >= 5000 ? '🥇' : (user.gader || 0) >= 1000 ? '🥈' : (user.gader || 0) >= 20 ? '🥉' : '👤'}</span>
+                        )}
                     </div>
 
                     <div className="flex flex-col items-center sm:items-start flex-grow text-center sm:text-start">
@@ -42,7 +46,7 @@ export function ProfileHeader({ user, displayLogs, progressInfo, isRTL, t, lang,
                             <BadgeCheck className="w-4 h-4 text-emerald-400" />
                             <span>{user.vipTier}</span>
                         </div>
-                        <h1 className="text-3xl font-bold mb-1 font-mono tracking-wider">{user.full_name || (lang === 'ar' ? 'عضو قَدِّر' : 'Gader Member')}</h1>
+                        <h1 className="text-3xl font-bold mb-1 font-mono tracking-wider">{user.full_name}</h1>
                         <p className="text-blue-200 text-lg mb-4">{t('member_since') || 'Member since 2026'}</p>
 
                         <div className="flex gap-6 mt-auto">

@@ -60,7 +60,7 @@ export function LogHistory({ user, displayLogs, historyLogs, setHistoryLogs, isL
                             <div className="h-4 w-32 bg-slate-200 rounded"></div>
                         </div>
                     </div>
-                ) : (
+                ) : displayLogs.length > 0 ? (
                     <div className="space-y-4">
                         {displayLogs.map((log) => (
                             <div key={log.id} className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-slate-300 transition-colors">
@@ -87,20 +87,111 @@ export function LogHistory({ user, displayLogs, historyLogs, setHistoryLogs, isL
                             </div>
                         ))}
                     </div>
+                ) : (
+                    /* Ghosted Empty State for Log History */
+                    <div className="relative">
+                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/60 backdrop-blur-[2px] rounded-xl border border-slate-200 shadow-sm">
+                            <div className="bg-white p-4 rounded-full shadow-md mb-4">
+                                <AlertCircle className="w-10 h-10 text-slate-400" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">
+                                {lang === 'ar' ? 'لا توجد نشاطات بعد' : 'No Activity Yet'}
+                            </h3>
+                            <p className="text-slate-600 text-center max-w-sm px-4 font-medium leading-relaxed">
+                                {lang === 'ar'
+                                    ? 'قم بمسح أي رمز استجابة سريعة لتبدأ في بناء تاريخ تقييماتك!'
+                                    : 'Scan any QR code and start evaluating places to build your history!'}
+                            </p>
+                            <Button className="mt-6 bg-blue-600 hover:bg-blue-700 rounded-full text-white cursor-default">
+                                {lang === 'ar' ? 'أمثلة توضيحية أدناه' : 'Examples below'}
+                            </Button>
+                        </div>
+
+                        <div className="space-y-4 opacity-40 grayscale pointer-events-none select-none blur-[1px]">
+                            {/* Fake Log 1 */}
+                            <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                <div className="flex gap-4 items-start w-full">
+                                    <div className="p-3 rounded-full mt-1 shrink-0 bg-emerald-100 text-emerald-600">
+                                        <BadgeCheck className="w-6 h-6" />
+                                    </div>
+                                    <div className="flex-grow">
+                                        <h3 className="font-bold text-lg text-slate-800">Caffeine Espresso Bar</h3>
+                                        <div className="flex items-center gap-3 flex-wrap mt-2">
+                                            <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded">2 days ago</span>
+                                            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-flex items-center gap-1">
+                                                <Zap className="w-3 h-3" /> 1.5x Impact
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="font-medium whitespace-nowrap px-3 py-1 rounded-full text-sm bg-emerald-50 text-emerald-700">Recommended</div>
+                            </div>
+                            {/* Fake Log 2 */}
+                            <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                <div className="flex gap-4 items-start w-full">
+                                    <div className="p-3 rounded-full mt-1 shrink-0 bg-rose-100 text-rose-600">
+                                        <AlertCircle className="w-6 h-6" />
+                                    </div>
+                                    <div className="flex-grow">
+                                        <h3 className="font-bold text-lg text-slate-800">Local Supermarket</h3>
+                                        <div className="flex items-center gap-3 flex-wrap mt-2">
+                                            <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-1 rounded">1 week ago</span>
+                                            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-flex items-center gap-1">
+                                                <Zap className="w-3 h-3" /> 2.0x Impact
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="font-medium whitespace-nowrap px-3 py-1 rounded-full text-sm bg-rose-50 text-rose-700">Complained</div>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </TabsContent>
 
             <TabsContent value="coupons" className="mt-0 outline-none">
-                <div className="bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 rounded-2xl p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
-                    <div className="bg-white p-5 rounded-full shadow-sm mb-6 inline-flex">
-                        <Ticket className="w-12 h-12 text-indigo-500 animate-pulse" />
+                <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                    {/* Overlay Message */}
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/70 backdrop-blur-[3px]">
+                        <div className="bg-indigo-100 p-4 rounded-full shadow-sm mb-4">
+                            <Ticket className="w-8 h-8 text-indigo-600 animate-pulse" />
+                        </div>
+                        <h2 className="text-2xl font-extrabold text-indigo-900 mb-2">
+                            {t('coupons_rewards_title') || 'Coupons & Rewards'}
+                        </h2>
+                        <p className="text-slate-700 text-center max-w-sm px-6 font-medium mb-6">
+                            {lang === 'ar'
+                                ? 'نحن نبني محرك مكافآت مذهل. قريباً ستتمكن من استبدال نقاط تقدير بخصومات حصرية!'
+                                : 'We are building an incredible rewards engine. Soon you will be able to spend your Gader Points for exclusive discounts!'}
+                        </p>
+                        <span className="inline-flex items-center gap-2 bg-indigo-600 text-white px-6 py-2 rounded-full font-bold text-sm tracking-widest uppercase shadow-md">
+                            {t('coming_soon') || 'Coming Soon'}
+                        </span>
                     </div>
-                    <h2 className="text-3xl font-bold text-indigo-900 mb-3">{t('coupons_rewards_title') || 'Coupons & Rewards'}</h2>
-                    <p className="text-indigo-600/80 text-lg max-w-md">
-                        {t('coupons_rewards_desc') || 'We are building an incredible rewards engine. Soon you will be able to spend your Gader Points for exclusive discounts!'}
-                    </p>
-                    <div className="mt-8 inline-flex items-center gap-2 bg-indigo-900 text-white px-6 py-2 rounded-full font-medium text-sm tracking-wide uppercase">
-                        {t('coming_soon') || 'Coming Soon'}
+
+                    {/* Ghosted Coupons Background */}
+                    <div className="p-8 grid gap-4 opacity-30 grayscale blur-[2px] pointer-events-none select-none">
+                        <div className="flex items-center justify-between border-2 border-dashed border-slate-300 rounded-xl p-6 bg-slate-50">
+                            <div>
+                                <h3 className="font-bold text-xl text-slate-800">15% Off Your Next Meal</h3>
+                                <p className="text-sm text-slate-500 mt-1">Valid at participating cafes</p>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-2xl font-extrabold text-indigo-600">1,500</div>
+                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Gader</div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between border-2 border-dashed border-slate-300 rounded-xl p-6 bg-slate-50">
+                            <div>
+                                <h3 className="font-bold text-xl text-slate-800">Free Coffee Upgrade</h3>
+                                <p className="text-sm text-slate-500 mt-1">Any size coffee, anywhere</p>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-2xl font-extrabold text-indigo-600">800</div>
+                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Gader</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </TabsContent>

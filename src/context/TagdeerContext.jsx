@@ -3,6 +3,34 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useSupabase } from '../hooks/useSupabase';
 import { translations } from '../i18n/translations';
+import { createClient } from '@supabase/supabase-js';
+
+// --- Gamification Helpers ---
+export const calculateTier = (points, lang) => {
+    if (!points || points < 20) return { name: lang === 'ar' ? 'ضيف' : 'Guest', emoji: '👤', color: 'text-slate-600', max: 20 };
+    if (points < 1000) return { name: lang === 'ar' ? 'برونزي' : 'Bronze', emoji: '🥉', color: 'text-amber-700', max: 1000 };
+    if (points < 5000) return { name: lang === 'ar' ? 'فضي' : 'Silver', emoji: '🥈', color: 'text-slate-600', max: 5000 };
+    if (points < 20000) return { name: lang === 'ar' ? 'ذهبي' : 'Gold', emoji: '🥇', color: 'text-yellow-700', max: 20000 };
+    return { name: 'VIP', emoji: '💎', color: 'text-indigo-700', max: Infinity };
+};
+
+export const getRandomCommunityTitle = (lang) => {
+    const titles = lang === 'ar' ? [
+        'كريم التقدير', 'ولد البلاد', 'بنت البلاد', 'البوصلة', 'الميزان',
+        'مدمر البرجر', 'راعي المزاج', 'قناص الشاورما', 'الذوّاق',
+        'وحش السوق', 'صياد اللقطات', 'مفتش الجودة',
+        'من الأخير', 'كاشف المستور', 'فزّاع المجتمع'
+    ] : [
+        'The Generous', 'Local Expert', 'The Compass', 'The Fair Judge',
+        'Burger Smasher', 'The Vibe Checker', 'Shawarma Sniper', 'Fine Diner',
+        'Shopping Monster', 'Deal Hunter', 'Quality Inspector',
+        'The Bottom Liner', 'The Myth Buster', 'The Volunteer'
+    ];
+    return titles[Math.floor(Math.random() * titles.length)];
+};
+// ----------------------------
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 const INITIAL_BUSINESSES = [
     { id: 1, name: "Al-Madina Tech", region: "Tripoli", category: "Electronics", recommends: 145, complains: 12, isShielded: true, source: "Google", logs: [] },
@@ -69,7 +97,16 @@ export function TagdeerProvider({ children }) {
         // DEV BYPASS: completely bypass Supabase DB for the E2E test phone due to RLS blocks without Auth Session
         const isDevEnv = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
         if (isDevEnv && phone === '+218999999999') {
-            setUser({ phone, userId: 'VIP-E2ETST', gader: 500, vipTier: 'Bronze Tier', id: 'mock-e2e-uuid', isDevBypass: true });
+            setUser({
+                phone,
+                userId: 'VIP-E2ETST',
+                gader: 20,
+                vipTier: calculateTier(20, lang).name,
+                full_name: getRandomCommunityTitle(lang),
+                avatarUrl: '/avatars/default.png',
+                id: 'mock-e2e-uuid',
+                isDevBypass: true
+            });
             setShowLoginModal(false);
             return;
         }
@@ -150,9 +187,17 @@ export function TagdeerProvider({ children }) {
         if (!supabase) {
             // Offline fallback — mock login
             const randomAlphanumeric = Math.random().toString(36).substring(2, 7).toUpperCase();
-            setUser({ phone, userId: `VIP-${randomAlphanumeric}`, gader: 500, vipTier: 'Bronze Tier', id: 'mock-uuid' });
+            setUser({
+                phone,
+                userId: `VIP-${randomAlphanumeric}`,
+                gader: 20,
+                vipTier: calculateTier(20, lang).name,
+                full_name: getRandomCommunityTitle(lang),
+                avatarUrl: '/avatars/default.png',
+                id: 'mock-uuid'
+            });
             setShowLoginModal(false);
-            showToast(lang === 'ar' ? 'مرحباً بك في تقدير! حصلت على +500 نقطة' : 'Welcome to Tagdeer! You earned +500 points!');
+            showToast(lang === 'ar' ? 'مرحباً بك في تقدير! حصلت على +20 نقطة' : 'Welcome to Tagdeer! You earned +20 points!');
             return;
         }
 
@@ -174,15 +219,20 @@ export function TagdeerProvider({ children }) {
         }
 
         // Success! Set the user state based on the Edge Function's returned profile
+        const fetchedPoints = data.profile.gader_points || 20; // Default to 20 if 0 or null
+        const assignedTier = data.profile.vip_tier || calculateTier(fetchedPoints, lang).name;
+        const assignedName = data.profile.full_name || getRandomCommunityTitle(lang);
+
         setUser({
             id: data.profile.id,
             phone: data.profile.phone,
             email: null, // Custom Edge Function doesn't currently attach Auth email
             profile_email: null,
             userId: data.profile.user_id,
-            gader: data.profile.gader_points,
-            vipTier: data.profile.vip_tier,
-            full_name: data.profile.full_name,
+            gader: fetchedPoints,
+            vipTier: assignedTier,
+            full_name: assignedName,
+            avatarUrl: data.profile.avatar_url || '/avatars/default.png',
             city: data.profile.city,
             gender: data.profile.gender,
             birth_date: data.profile.birth_date,
@@ -192,7 +242,7 @@ export function TagdeerProvider({ children }) {
         setShowLoginModal(false);
 
         if (data.isNewUser) {
-            showToast(lang === 'ar' ? 'مرحباً بك في تقدير! حصلت على +500 نقطة مكافأة' : 'Welcome to Tagdeer! You earned +500 bonus points');
+            showToast(lang === 'ar' ? 'مرحباً بك في تقدير! حصلت على +20 نقطة مكافأة' : 'Welcome to Tagdeer! You earned +20 bonus points');
         } else {
             showToast(t('login_success') || 'Successfully logged in');
         }
