@@ -71,8 +71,8 @@ serve(async (req) => {
                 .insert([{
                     phone: normalizedPhone,
                     user_id: `VIP-${randomAlphanumeric}`,
-                    gader_points: 500,
-                    vip_tier: "Bronze Tier"
+                    gader_points: 20,
+                    vip_tier: "Bronze"
                 }])
                 .select()
                 .single();

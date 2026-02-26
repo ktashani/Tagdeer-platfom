@@ -137,8 +137,8 @@ export function TagdeerProvider({ children }) {
                         .insert([{
                             phone,
                             user_id: mockUserId,
-                            gader_points: 50,
-                            vip_tier: 'Bronze Tier'
+                            gader_points: 20,
+                            vip_tier: 'Bronze'
                         }])
                         .select()
                         .single();
@@ -177,7 +177,7 @@ export function TagdeerProvider({ children }) {
             // Fallback if supabase isn't connected
             const randomAlphanumeric = Math.random().toString(36).substring(2, 7).toUpperCase();
             const mockUserId = `VIP-${randomAlphanumeric}`;
-            setUser({ phone, userId: mockUserId, gader: 50, vipTier: 'Bronze Tier', id: 'mock-uuid', isDevBypass: true });
+            setUser({ phone, userId: mockUserId, gader: 20, vipTier: 'Bronze', id: 'mock-uuid', isDevBypass: true });
             setShowLoginModal(false);
             showToast(t('login_success') || 'Successfully logged in (Offline)');
         }

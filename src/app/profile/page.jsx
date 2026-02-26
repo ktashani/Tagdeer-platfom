@@ -147,12 +147,8 @@ export default function ProfilePage() {
         );
     }
 
-    // Fallback mock data if no real logs fetched
-    const displayLogs = historyLogs.length > 0 ? historyLogs : [
-        { id: 1, business: "Al-Madina Tech", date: "2026-02-23", type: "recommend", text: "Excellent customer service and repair.", weight: 1.0 },
-        { id: 2, business: "Omar's Auto Repair", date: "2026-02-20", type: "complain", text: "Long waiting times to get an appointment.", weight: 0.5 },
-        { id: 3, business: "Tripoli Central Clinic", date: "2026-02-15", type: "recommend", text: "Very clean facilities and professional doctors.", weight: 1.5 }
-    ];
+    // Use real logs, or an empty array to trigger the ghosted UI state
+    const displayLogs = historyLogs || [];
 
     // Helper: Calculate Age from DOB
     const calculateAge = (dobString) => {
@@ -163,29 +159,35 @@ export default function ProfilePage() {
         return Math.abs(ageDate.getUTCFullYear() - 1970);
     };
 
-    // Helper: Gamification Progress
+    // Helper: Gamification Progress matching /about thresholds
     const getProgressInfo = (points) => {
-        let currentTier = "Bronze";
-        let nextTier = "Silver";
-        let maxPoints = 100;
+        let currentTier = "Guest";
+        let nextTier = "Bronze";
+        let maxPoints = 20;
         let p = points || 0;
 
-        if (p > 100 && p <= 500) {
+        if (p >= 20 && p < 1000) {
+            currentTier = "Bronze";
+            nextTier = "Silver";
+            maxPoints = 1000;
+        } else if (p >= 1000 && p < 5000) {
             currentTier = "Silver";
             nextTier = "Gold";
-            maxPoints = 500;
-            p = p - 100;
-        } else if (p > 500) {
+            maxPoints = 5000;
+        } else if (p >= 5000 && p < 20000) {
             currentTier = "Gold";
-            nextTier = "Diamond"; // Future tier
-            maxPoints = 1000;
-            p = p - 500;
+            nextTier = "VIP";
+            maxPoints = 20000;
+        } else if (p >= 20000) {
+            currentTier = "VIP";
+            nextTier = "Max";
+            maxPoints = p; // already at max
         }
 
-        const percentage = Math.min((p / (currentTier === "Bronze" ? 100 : 400)) * 100, 100);
-        const pointsNeeded = maxPoints - (points || 0);
+        const percentage = currentTier === "VIP" ? 100 : Math.min(((p) / maxPoints) * 100, 100);
+        const pointsNeeded = maxPoints - p;
 
-        return { percentage, pointsNeeded, nextTier };
+        return { percentage, pointsNeeded: pointsNeeded > 0 ? pointsNeeded : 0, nextTier };
     };
 
     const progressInfo = getProgressInfo(user.gader);
