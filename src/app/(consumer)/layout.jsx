@@ -1,16 +1,16 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useTagdeer } from '../context/TagdeerContext';
-import { getDeviceFingerprint } from '../lib/fingerprint';
-import { calculateVoteWeight } from '../lib/trustEngine';
-import { Navigation } from '../components/Navigation/Navigation';
-import { VoteModal } from '../components/Modals/VoteModal';
-import { PreRegModal } from '../components/Modals/PreRegModal';
-import { LimitModal } from '../components/Modals/LimitModal';
-import { VerifySoonModal } from '../components/Modals/VerifySoonModal';
-import { LoginModal } from '../components/Auth/LoginModal';
-import { Toast } from '../components/Toast';
+import { useTagdeer } from '@/context/TagdeerContext';
+import { getDeviceFingerprint } from '@/lib/fingerprint';
+import { calculateVoteWeight } from '@/lib/trustEngine';
+import { Navigation } from '@/components/Navigation/Navigation';
+import { VoteModal } from '@/components/Modals/VoteModal';
+import { PreRegModal } from '@/components/Modals/PreRegModal';
+import { LimitModal } from '@/components/Modals/LimitModal';
+import { VerifySoonModal } from '@/components/Modals/VerifySoonModal';
+import { LoginModal } from '@/components/Auth/LoginModal';
+import { Toast } from '@/components/Toast';
 import { Facebook, Twitter, BadgeCheck } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -38,7 +38,7 @@ function Footer({ t }) {
     );
 }
 
-export function ClientLayout({ children }) {
+export default function ClientLayout({ children }) {
     const {
         lang, setLang, t, isRTL,
         businesses, setBusinesses, supabase,

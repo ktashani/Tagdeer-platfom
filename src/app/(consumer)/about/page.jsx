@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { useTagdeer } from '../../context/TagdeerContext';
+import { useTagdeer } from '@/context/TagdeerContext';
 import { BadgeCheck, HeartHandshake, TrendingUp, BookOpen, Users, ShieldCheck, Clock, Sparkles, Zap } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 

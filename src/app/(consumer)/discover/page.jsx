@@ -1,8 +1,8 @@
 'use client';
 import React, { useState } from 'react';
-import { useTagdeer } from '../../context/TagdeerContext';
+import { useTagdeer } from '@/context/TagdeerContext';
 import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap } from 'lucide-react';
-import { calculateBusinessScore } from '../../lib/mathEngine';
+import { calculateBusinessScore } from '@/lib/mathEngine';
 
 const CATEGORIES = [
     "All", "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery",
@@ -115,8 +115,40 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
     };
 
     return (
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow flex flex-col">
-            <div className="flex items-start gap-4 mb-4">
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow flex flex-col relative overflow-hidden">
+
+            {/* Dynamic Ribbon for Active Discounts */}
+            {business.hasActiveDiscount && (
+                <div className="absolute top-4 -right-8 bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-bold py-1 px-10 transform rotate-45 shadow-md z-10">
+                    {t('discount_active', 'Discount Active!')}
+                </div>
+            )}
+
+            {/* SEO: JSON-LD Review Schema Injection for Google Stars */}
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{
+                    __html: JSON.stringify({
+                        "@context": "https://schema.org",
+                        "@type": "LocalBusiness",
+                        "name": business.name,
+                        "address": {
+                            "@type": "PostalAddress",
+                            "addressLocality": business.region,
+                            "addressCountry": "LY"
+                        },
+                        "aggregateRating": {
+                            "@type": "AggregateRating",
+                            "ratingValue": (safeIndex / 20).toFixed(1), // Convert 0-100 to 0.0-5.0
+                            "bestRating": "5",
+                            "worstRating": "1",
+                            "ratingCount": totalVotes > 0 ? totalVotes : 1
+                        }
+                    })
+                }}
+            />
+
+            <div className="flex items-start gap-4 mb-4 relative z-0">
                 <div
                     className="w-16 h-16 rounded-2xl shrink-0 flex items-center justify-center text-2xl font-bold text-white shadow-inner"
                     style={{ background: getGradient(business.category) }}
@@ -136,6 +168,14 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                     <div className="flex flex-wrap items-center text-sm text-slate-500 gap-2 mt-2">
                         <span className="flex items-center gap-1"><MapPin className="h-4 w-4 text-slate-400 shrink-0" /> {t(business.region)}</span>
                         <span className="bg-slate-100 px-2 py-0.5 rounded-md truncate">{t(business.category)}</span>
+
+                        {/* Tagdeer Verified Badge logic */}
+                        {business.isClaimed && (
+                            <span className="flex items-center gap-1 text-blue-600 text-xs font-semibold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                                <BadgeCheck className="w-3.5 h-3.5" />
+                                Verified
+                            </span>
+                        )}
                     </div>
                 </div>
 
@@ -143,9 +183,10 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                     <button onClick={() => shareToFacebook(business.name, `Tagdeer Gader Index: ${safeIndex}%`)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-500 transition-colors">
                         <Share2 className="h-5 w-5" />
                     </button>
-                    {business.isShielded && (
-                        <div className="bg-blue-50 p-2 rounded-full border border-blue-100">
-                            <BadgeCheck className="h-5 w-5 text-blue-600" />
+                    {/* The Shield rendering logic: Level 1 (Trust) and Level 2 (Fatora) */}
+                    {business.shield_level > 0 && (
+                        <div className={`p-2 rounded-full border ${business.shield_level === 2 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`} title={business.shield_level === 2 ? "Fatora Shield (Receipts Required)" : "Trust Shield (SMS Verified)"}>
+                            <BadgeCheck className={`h-5 w-5 ${business.shield_level === 2 ? 'text-amber-500' : 'text-slate-500'}`} />
                         </div>
                     )}
                 </div>
