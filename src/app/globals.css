@@ -70,6 +70,28 @@
   animation: fade-in-up 0.3s ease-out forwards;
 }
 
+/* Impact Bubble Float-Up Animation (GPU-accelerated) */
+@keyframes impact-float-up {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-30px) scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-60px) scale(0.9);
+  }
+}
+
+.animate-impact-bubble {
+  animation: impact-float-up 1.8s ease-out forwards;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
 @keyframes slide-in-right {
   from {
     opacity: 0;

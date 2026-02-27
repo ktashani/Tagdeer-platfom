@@ -1,11 +1,12 @@
+'use client';
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, 
-  ThumbsUp, 
-  ThumbsDown, 
-  MapPin, 
-  Facebook, 
-  Globe, 
+import {
+  Search,
+  ThumbsUp,
+  ThumbsDown,
+  MapPin,
+  Facebook,
+  Globe,
   Menu,
   X,
   Twitter,
@@ -34,22 +35,29 @@ import { PreRegModal } from './components/Modals/PreRegModal';
 import { LimitModal } from './components/Modals/LimitModal';
 import { VerifySoonModal } from './components/Modals/VerifySoonModal';
 import { Toast } from './components/Toast';
+import { getDeviceFingerprint } from './lib/fingerprint';
+import { containsBadWords } from './lib/contentFilter';
+import { calculateVoteWeight } from './lib/trustEngine';
 import './App.css';
 
 const INITIAL_BUSINESSES = [
   { id: 1, name: "Al-Madina Tech", region: "Tripoli", category: "Electronics", recommends: 145, complains: 12, isShielded: true, source: "Google", logs: [] },
-  { id: 2, name: "Benghazi Builders Co.", region: "Benghazi", category: "Construction", recommends: 89, complains: 45, isShielded: false, source: "Facebook", 
-    logs: [{ id: 101, type: 'recommend', text: 'Fast and reliable building materials. Great service.', date: '2026-02-18' }] },
+  {
+    id: 2, name: "Benghazi Builders Co.", region: "Benghazi", category: "Construction", recommends: 89, complains: 45, isShielded: false, source: "Facebook",
+    logs: [{ id: 101, type: 'recommend', text: 'Fast and reliable building materials. Great service.', date: '2026-02-18' }]
+  },
   { id: 3, name: "Tripoli Central Clinic", region: "Tripoli", category: "Healthcare", recommends: 320, complains: 5, isShielded: true, source: "Google", logs: [] },
-  { id: 4, name: "Omar's Auto Repair", region: "Benghazi", category: "Automotive", recommends: 34, complains: 8, isShielded: false, source: "Manual", 
-    logs: [{ id: 102, type: 'complain', text: 'Overcharged me for a simple oil change. Needs improvement.', date: '2026-02-20' }] },
+  {
+    id: 4, name: "Omar's Auto Repair", region: "Benghazi", category: "Automotive", recommends: 34, complains: 8, isShielded: false, source: "Manual",
+    logs: [{ id: 102, type: 'complain', text: 'Overcharged me for a simple oil change. Needs improvement.', date: '2026-02-20' }]
+  },
   { id: 5, name: "Sahara Logistics", region: "Tripoli", category: "Services", recommends: 210, complains: 55, isShielded: true, source: "Google", logs: [] },
 ];
 
 export const CATEGORIES = [
-  "All", "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery", 
-  "Healthcare", "Electronics", "Tech & Telecommunication", "Construction", 
-  "Home Maintenance", "Automotive", "Beauty & Salon", "Real Estate", 
+  "All", "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery",
+  "Healthcare", "Electronics", "Tech & Telecommunication", "Construction",
+  "Home Maintenance", "Automotive", "Beauty & Salon", "Real Estate",
   "Education", "Travel", "Fashion & Retail", "Services", "Food & Beverage", "Delivery & Shipping"
 ];
 
@@ -63,7 +71,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState('home');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [businesses, setBusinesses] = useState(INITIAL_BUSINESSES);
-  
+
   const { supabase } = useSupabase();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('All');
@@ -100,7 +108,7 @@ export default function App() {
       try {
         const { data, error } = await supabase
           .from('businesses')
-          .select('*, interactions(*)'); 
+          .select('*, logs(*)');
 
         if (error) {
           console.warn('Supabase fetch failed, falling back to mock data.', error);
@@ -108,9 +116,9 @@ export default function App() {
         }
         if (data) {
           const formattedData = data.map(b => {
-            const rawInteractions = b.interactions || [];
-            const derivedRecommends = rawInteractions.filter(i => i.interaction_type === 'recommend').length;
-            const derivedComplains = rawInteractions.filter(i => i.interaction_type === 'complain').length;
+            const rawLogs = b.logs || [];
+            const derivedRecommends = rawLogs.filter(i => i.interaction_type === 'recommend').length;
+            const derivedComplains = rawLogs.filter(i => i.interaction_type === 'complain').length;
 
             return {
               id: b.id,
@@ -121,9 +129,9 @@ export default function App() {
               complains: derivedComplains,
               isShielded: b.is_shielded,
               source: b.source,
-              external_url: b.external_url, 
-              logs: rawInteractions
-                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)) 
+              external_url: b.external_url,
+              logs: rawLogs
+                .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                 .map(log => ({
                   id: log.id,
                   type: log.interaction_type,
@@ -139,41 +147,107 @@ export default function App() {
       }
     };
     fetchBusinesses();
-  }, [supabase, lang]); 
+  }, [supabase, lang]);
 
   useEffect(() => {
     const storedInteractions = localStorage.getItem('trust_ledger_interactions');
     if (storedInteractions) setAnonInteractions(parseInt(storedInteractions));
   }, []);
 
-  const openVoteModal = (businessId, type, isShielded) => {
+  const openVoteModal = async (businessId, type, isShielded) => {
     if (type === 'complain' && isShielded) {
       showToast(t('shielded_warning'));
       return;
     }
-    if (anonInteractions >= 3) {
+
+    // Check Fingerprint Limit Database-side
+    const fingerprint = getDeviceFingerprint();
+    if (supabase && fingerprint.startsWith('anon-')) {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      try {
+        const { count, error } = await supabase
+          .from('logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('fingerprint', fingerprint)
+          .gte('created_at', twentyFourHoursAgo);
+
+        if (!error && count >= 3) {
+          setShowLimitModal(true);
+          return;
+        }
+      } catch (e) {
+        console.error("Error checking limits:", e);
+      }
+    } else if (!user && anonInteractions >= 3) {
+      // Fallback to local storage count if offline (anonymous only)
       setShowLimitModal(true);
       return;
     }
+
     setVoteModal({ isOpen: true, businessId, type });
     setVoteReason('');
   };
 
   const submitVote = async () => {
     const { businessId, type } = voteModal;
-    
+    const fingerprint = getDeviceFingerprint();
+    let logStatus = 'approved';
+
+    if (containsBadWords(voteReason)) {
+      logStatus = 'flagged';
+      showToast(lang === 'ar' ? "تم استلام ملاحظتك وهي قيد المراجعة لمخالفتها الشروط." : "Log received. It is pending review due to community guidelines.");
+    }
+
     if (supabase) {
       try {
-        const { error } = await supabase.from('interactions').insert([{
+        // ── Step 1: 24-Hour Same-Business Cooldown ──────────────
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { count: recentCount, error: cooldownErr } = await supabase
+          .from('logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('business_id', businessId)
+          .eq('fingerprint', fingerprint)
+          .gte('created_at', twentyFourHoursAgo);
+
+        if (!cooldownErr && recentCount > 0) {
+          showToast(lang === 'ar'
+            ? 'لقد قيّمت هذا النشاط مؤخرًا. يرجى الانتظار 24 ساعة قبل تسجيل تجربة أخرى هنا.'
+            : 'You recently evaluated this business. Please wait 24 hours before logging another experience here.'
+          );
+          setVoteModal({ isOpen: false, businessId: null, type: null });
+          return;
+        }
+
+        // ── Step 2: Diminishing Returns (30-day count) ──────────
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const { count: pastVoteCount, error: dimErr } = await supabase
+          .from('logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('business_id', businessId)
+          .eq('fingerprint', fingerprint)
+          .gte('created_at', thirtyDaysAgo);
+
+        const safeCount = (!dimErr && pastVoteCount) ? pastVoteCount : 0;
+
+        // ── Step 3: Calculate Dynamic Weight ────────────────────
+        // App.jsx has no user context, so always anonymous (null)
+        const weight = calculateVoteWeight(null, safeCount);
+
+        // ── Step 4: Insert with weight ─────────────────────────
+        const { error } = await supabase.from('logs').insert([{
           business_id: businessId,
           interaction_type: type,
-          reason_text: voteReason 
+          reason_text: voteReason,
+          fingerprint: fingerprint,
+          status: logStatus,
+          weight: weight
         }]);
 
         if (error) {
           console.error("Supabase insert error:", error);
           showToast(lang === 'ar' ? "حدث خطأ: " + error.message : "Error: " + error.message);
-          return; 
+          return;
         }
       } catch (err) {
         console.error("Supabase insert exception:", err);
@@ -186,23 +260,26 @@ export default function App() {
     setAnonInteractions(newCount);
     localStorage.setItem('trust_ledger_interactions', newCount.toString());
 
-    setBusinesses(businesses.map(b => {
-      if (b.id === businessId) {
-        const newLog = {
-          id: Date.now(),
-          type: type,
-          text: voteReason || (type === 'recommend' ? 'User recommended' : 'User complained'),
-          date: new Date().toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US')
-        };
-        return {
-          ...b,
-          recommends: type === 'recommend' ? b.recommends + 1 : b.recommends,
-          complains: type === 'complain' ? b.complains + 1 : b.complains,
-          logs: [newLog, ...b.logs]
-        };
-      }
-      return b;
-    }));
+    // Only update local UI if not flagged
+    if (logStatus === 'approved') {
+      setBusinesses(businesses.map(b => {
+        if (b.id === businessId) {
+          const newLog = {
+            id: Date.now(),
+            type: type,
+            text: voteReason || (type === 'recommend' ? 'User recommended' : 'User complained'),
+            date: new Date().toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US')
+          };
+          return {
+            ...b,
+            recommends: type === 'recommend' ? b.recommends + 1 : b.recommends,
+            complains: type === 'complain' ? b.complains + 1 : b.complains,
+            logs: [newLog, ...b.logs]
+          };
+        }
+        return b;
+      }));
+    }
 
     setVoteModal({ isOpen: false, businessId: null, type: null });
     showToast(`Successfully logged. (${3 - newCount} anonymous logs remaining)`);
@@ -278,11 +355,11 @@ export default function App() {
 
   return (
     <div className={`min-h-screen flex flex-col font-sans bg-slate-50 text-slate-800 ${isRTL ? 'text-right' : 'text-left'}`} dir={isRTL ? 'rtl' : 'ltr'}>
-      
-      <Navigation 
-        lang={lang} 
-        setLang={setLang} 
-        t={t} 
+
+      <Navigation
+        lang={lang}
+        setLang={setLang}
+        t={t}
         isRTL={isRTL}
         currentPage={currentPage}
         navigateTo={navigateTo}
@@ -292,9 +369,9 @@ export default function App() {
       />
 
       <main className="flex-grow">
-        
+
         {currentPage === 'home' && (
-          <Hero 
+          <Hero
             t={t}
             lang={lang}
             isRTL={isRTL}
@@ -310,7 +387,7 @@ export default function App() {
         )}
 
         {currentPage === 'discover' && (
-          <DiscoverPage 
+          <DiscoverPage
             t={t}
             lang={lang}
             isRTL={isRTL}
@@ -329,7 +406,7 @@ export default function App() {
         )}
 
         {currentPage === 'add' && (
-          <AddBusinessPage 
+          <AddBusinessPage
             t={t}
             lang={lang}
             newBizInput={newBizInput}
@@ -347,7 +424,7 @@ export default function App() {
         )}
 
         {currentPage === 'about' && (
-          <AboutPage 
+          <AboutPage
             t={t}
             lang={lang}
             navigateTo={navigateTo}
@@ -358,9 +435,9 @@ export default function App() {
 
       <Footer t={t} />
 
-      <VoteModal 
+      <VoteModal
         isOpen={voteModal.isOpen}
-        onClose={() => setVoteModal({isOpen: false, businessId: null, type: null})}
+        onClose={() => setVoteModal({ isOpen: false, businessId: null, type: null })}
         voteReason={voteReason}
         setVoteReason={setVoteReason}
         onSubmit={submitVote}
@@ -368,7 +445,7 @@ export default function App() {
         type={voteModal.type}
       />
 
-      <PreRegModal 
+      <PreRegModal
         isOpen={showPreRegModal}
         onClose={() => setShowPreRegModal(false)}
         preRegData={preRegData}
@@ -377,13 +454,13 @@ export default function App() {
         t={t}
       />
 
-      <LimitModal 
+      <LimitModal
         isOpen={showLimitModal}
         onClose={() => setShowLimitModal(false)}
         t={t}
       />
 
-      <VerifySoonModal 
+      <VerifySoonModal
         isOpen={showVerifySoonModal}
         onClose={() => setShowVerifySoonModal(false)}
         t={t}
@@ -398,13 +475,13 @@ function DiscoverPage({ t, lang, isRTL, searchQuery, setSearchQuery, selectedReg
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       <h1 className="text-3xl font-bold text-blue-900 mb-8">{t('discover_title')}</h1>
-      
+
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8 flex flex-col md:flex-row gap-4">
         <div className="flex-1 relative">
           <Search className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 transform -translate-y-1/2 text-slate-400 h-5 w-5`} />
-          <input 
-            type="text" 
-            placeholder={t('search_placeholder')} 
+          <input
+            type="text"
+            placeholder={t('search_placeholder')}
             className={`w-full ${isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'} py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -422,7 +499,7 @@ function DiscoverPage({ t, lang, isRTL, searchQuery, setSearchQuery, selectedReg
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {filteredBusinesses.map(business => (
-          <BusinessCard 
+          <BusinessCard
             key={business.id}
             business={business}
             t={t}
@@ -441,9 +518,9 @@ function DiscoverPage({ t, lang, isRTL, searchQuery, setSearchQuery, selectedReg
 
 function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook, expandedLogs, toggleLogs }) {
   const totalLogs = business.recommends + business.complains;
-  const healthScore = totalLogs === 0 ? 0 : Math.round((business.recommends / totalLogs) * 100);
+  const gaderIndex = totalLogs === 0 ? 0 : Math.round((business.recommends / totalLogs) * 100);
   const avatarLetter = business.name ? business.name.charAt(0).toUpperCase() : '?';
-  
+
   const getGradient = (category) => {
     const gradients = {
       'Electronics': 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
@@ -456,11 +533,11 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
     };
     return gradients[category] || 'linear-gradient(135deg, #64748b, #334155)';
   };
-  
+
   return (
     <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow flex flex-col">
       <div className="flex items-start gap-4 mb-4">
-        <div 
+        <div
           className="w-16 h-16 rounded-2xl shrink-0 flex items-center justify-center text-2xl font-bold text-white shadow-inner"
           style={{ background: getGradient(business.category) }}
         >
@@ -483,7 +560,7 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
         </div>
 
         <div className="flex gap-2 shrink-0">
-          <button onClick={() => shareToFacebook(business.name, `Tagdeer Gader Score: ${healthScore}%`)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-500 transition-colors">
+          <button onClick={() => shareToFacebook(business.name, `Tagdeer Gader Index: ${gaderIndex}%`)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-500 transition-colors">
             <Share2 className="h-5 w-5" />
           </button>
           {business.isShielded && (
@@ -494,18 +571,36 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
         </div>
       </div>
 
-      <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100 mt-2">
-        <div className="flex justify-between text-sm mb-2 font-medium">
-          <span className="text-slate-600">{t('health_score')}</span>
-          <span className={healthScore > 50 ? 'text-green-600' : 'text-red-500'}>{healthScore}%</span>
+      <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100 mt-2 hover:border-blue-200 transition-colors cursor-help">
+        <div className="flex justify-between items-end mb-2">
+          <div className="flex items-center gap-2">
+            <div className={`p-1.5 rounded-md ${gaderIndex >= 50 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+              <Zap className="w-4 h-4" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-slate-700 font-bold text-lg leading-tight">{t('gader_index')}</span>
+              <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">{t('migdar')}</span>
+            </div>
+          </div>
+          <span className={`text-2xl font-black tracking-tight ${gaderIndex > 50 ? 'text-green-600' : 'text-red-500'}`}>
+            {gaderIndex}%
+          </span>
         </div>
-        <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden flex mb-2">
-          <div className="bg-green-500 h-3" style={{ width: `${healthScore}%` }}></div>
-          <div className="bg-red-400 h-3" style={{ width: `${100 - healthScore}%` }}></div>
+
+        <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden flex mb-3 shadow-inner">
+          <div className="bg-gradient-to-r from-green-400 to-green-500 h-3 transition-all duration-1000 ease-out" style={{ width: `${gaderIndex}%` }}></div>
+          <div className="bg-gradient-to-r from-red-400 to-red-500 h-3 transition-all duration-1000 ease-out" style={{ width: `${100 - gaderIndex}%` }}></div>
         </div>
-        <div className="flex justify-between text-xs font-semibold">
-          <span className="text-green-600">{business.recommends} {t('recommend')}</span>
-          <span className="text-red-500">{business.complains} {t('complain')}</span>
+
+        <div className="flex justify-between text-xs font-bold px-1">
+          <div className="flex items-center gap-1.5 text-green-700 bg-green-50 px-2 py-0.5 rounded">
+            <ThumbsUp className="w-3 h-3" />
+            {business.recommends} {t('recommend')}
+          </div>
+          <div className="flex items-center gap-1.5 text-red-700 bg-red-50 px-2 py-0.5 rounded">
+            {business.complains} {t('complain')}
+            <ThumbsDown className="w-3 h-3" />
+          </div>
         </div>
       </div>
 
@@ -521,13 +616,13 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
       <div className="mt-auto border-t border-slate-100 pt-4">
         <button onClick={() => toggleLogs(business.id)} className="w-full flex justify-between items-center font-semibold text-slate-700 mb-3 hover:text-blue-600">
           <div className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" /> 
+            <MessageSquare className="h-4 w-4" />
             {t('logs')}
             <span className="bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-full">{business.logs.length}</span>
           </div>
           {expandedLogs[business.id] ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
         </button>
-        
+
         {expandedLogs[business.id] && (
           <div className="space-y-3 max-h-60 overflow-y-auto">
             {business.logs.map(log => (
@@ -569,13 +664,13 @@ function AddBusinessPage({ t, lang, newBizInput, setNewBizInput, newBizRegion, s
         </div>
         <h1 className="text-3xl font-bold text-blue-900 mb-4">{t('add_page_title')}</h1>
         <p className="text-slate-600 mb-10">{t('add_page_desc')}</p>
-        
+
         <div className="space-y-6">
-          <input 
-            type="text" 
+          <input
+            type="text"
             value={newBizInput}
             onChange={(e) => setNewBizInput(e.target.value)}
-            placeholder={t('add_page_input_placeholder')} 
+            placeholder={t('add_page_input_placeholder')}
             className="w-full px-6 py-4 rounded-xl border border-slate-300 outline-none bg-slate-50"
           />
           <div className="grid grid-cols-2 gap-4">

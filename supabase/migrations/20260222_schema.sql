@@ -2,8 +2,7 @@
 -- Created: 2026-02-22
 
 -- Enable RLS
-ALTER DATABASE postgres SET "app.jwt_secret" TO 'your-jwt-secret';
-
+-- (JWT secret is managed by Supabase cloud, do not set manually)
 -- Businesses Table
 CREATE TABLE IF NOT EXISTS businesses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
