@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useTagdeer } from '../../context/TagdeerContext';
+import { useTagdeer } from '@/context/TagdeerContext';
 import { Globe } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 

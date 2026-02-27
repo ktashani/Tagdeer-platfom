@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useTagdeer } from '../context/TagdeerContext';
-import { Hero } from '../components/Hero/Hero';
+import { useTagdeer } from '@/context/TagdeerContext';
+import { Hero } from '@/components/Hero/Hero';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ShieldCheck, ArrowRight } from 'lucide-react';

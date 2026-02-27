@@ -2,9 +2,9 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import DiscoverRoute from './page';
-import { useTagdeer } from '../../context/TagdeerContext';
+import { useTagdeer } from '@/context/TagdeerContext';
 
-vi.mock('../../context/TagdeerContext', () => ({
+vi.mock('@/context/TagdeerContext', () => ({
     useTagdeer: vi.fn(),
 }));
 

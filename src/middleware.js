@@ -40,16 +40,16 @@ export async function middleware(request) {
     const res = NextResponse.next()
 
     // Routing Logic
-    // 1. Admin Subdomain -> rewrite to /(portals)/admin
+    // 1. Admin Subdomain
     if (currentHost === 'admin') {
-        url.pathname = `/admin${url.pathname}`
-        return NextResponse.rewrite(url, res)
+        const newUrl = new URL(`/admin${url.pathname}`, request.url)
+        return NextResponse.rewrite(newUrl)
     }
 
-    // 2. Merchant Subdomain -> rewrite to /(portals)/merchant
+    // 2. Merchant Subdomain
     if (currentHost === 'merchant' || currentHost === 'business') {
-        url.pathname = `/merchant${url.pathname}`
-        return NextResponse.rewrite(url, res)
+        const newUrl = new URL(`/merchant${url.pathname}`, request.url)
+        return NextResponse.rewrite(newUrl)
     }
 
     // 3. Main App (www or root) -> proceeds normally

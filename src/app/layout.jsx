@@ -1,6 +1,5 @@
 import '../app/globals.css';
 import { TagdeerProvider } from '../context/TagdeerContext';
-import { ClientLayout } from './ClientLayout';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export const metadata = {
@@ -14,9 +13,7 @@ export default function RootLayout({ children }) {
             <body suppressHydrationWarning>
                 <TagdeerProvider>
                     <ErrorBoundary>
-                        <ClientLayout>
-                            {children}
-                        </ClientLayout>
+                        {children}
                     </ErrorBoundary>
                 </TagdeerProvider>
             </body>
