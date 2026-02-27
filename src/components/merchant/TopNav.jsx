@@ -45,16 +45,18 @@ export default function TopNav() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    const basePath = pathname.startsWith('/merchant') ? '/merchant' : '';
+
     const navItems = [
-        { href: '/dashboard', icon: LayoutDashboard, label: 'Home' },
+        { href: `${basePath}/dashboard`, icon: LayoutDashboard, label: 'Home' },
         {
-            href: '/inbox',
+            href: `${basePath}/inbox`,
             icon: MessageSquare,
             label: 'Inbox',
             badge: '2' // Mock notification
         },
-        { href: '/coupons', icon: Ticket, label: 'Coupons' },
-        { href: '/settings', icon: Settings, label: 'Settings' },
+        { href: `${basePath}/coupons`, icon: Ticket, label: 'Coupons' },
+        { href: `${basePath}/settings`, icon: Settings, label: 'Settings' },
     ];
 
     return (
@@ -104,8 +106,8 @@ export default function TopNav() {
                     <button
                         onClick={() => setIsStoreMenuOpen(!isStoreMenuOpen)}
                         className={`flex items-center gap-3 transition-colors rounded-full pl-3 pr-4 py-2 border hover:bg-slate-800 ${isStoreMenuOpen
-                                ? 'bg-slate-800 border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
-                                : 'bg-transparent border-slate-700/50'
+                            ? 'bg-slate-800 border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
+                            : 'bg-transparent border-slate-700/50'
                             }`}
                     >
                         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isStoreMenuOpen ? 'rotate-180' : ''}`} />
@@ -133,8 +135,8 @@ export default function TopNav() {
                                             key={store.id}
                                             onClick={() => handleStoreSelect(store.id)}
                                             className={`w-full px-5 py-4 text-left flex justify-between items-center transition-all rounded-xl group ${store.active
-                                                    ? 'bg-[#1E222B] border border-[#2A2D35]'
-                                                    : 'hover:bg-[#1A1C23] border border-transparent'
+                                                ? 'bg-[#1E222B] border border-[#2A2D35]'
+                                                : 'hover:bg-[#1A1C23] border border-transparent'
                                                 }`}
                                         >
                                             <div className="flex flex-col items-start w-full">
@@ -156,7 +158,7 @@ export default function TopNav() {
                                     <Button
                                         onClick={() => {
                                             setIsStoreMenuOpen(false);
-                                            router.push('/onboarding');
+                                            router.push(`${basePath}/onboarding`);
                                         }}
                                         className="w-full bg-transparent hover:bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 h-12 rounded-xl font-medium text-[15px] transition-all"
                                     >
