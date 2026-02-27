@@ -27,7 +27,7 @@
 - **Backend**: Supabase (PostgreSQL + Auth + Realtime)
 - **Icons**: Lucide React
 - **State Management**: React Hooks
-- **i18n**: Custom translation system
+- **i18n**: Custom translation system 
 
 ## Project Structure
 
