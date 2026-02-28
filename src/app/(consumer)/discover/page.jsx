@@ -31,11 +31,23 @@ export default function DiscoverRoute() {
         return matchesSearch && matchesRegion && matchesCategory;
     });
 
-    const openVoteModal = (businessId, type, isShielded) => {
-        if (type === 'complain' && isShielded) {
-            showToast(t('shielded_warning'));
-            return;
+    const openVoteModal = (businessId, type, business) => {
+        // Shield Level Checks for Complaints
+        if (type === 'complain') {
+            if (business.shield_level === 2) {
+                // Fatora Level: Requires verified receipt upload (We'll show a toast for MVP)
+                showToast(lang === 'ar' ? 'يتطلب هذا النشاط رفع فاتورة لإضافة شكوى.' : 'This business requires a receipt to complain.');
+                return;
+            } else if (business.shield_level === 1 || business.isShielded) {
+                // Trust Level: Requires logged-in verified user
+                if (!user) {
+                    showToast(t('shielded_warning'));
+                    setShowLoginModal(true);
+                    return;
+                }
+            }
         }
+
         // Only apply the 3-vote global limit to anonymous users
         if (!user && anonInteractions >= 3) {
             setShowLimitModal(true);
@@ -258,10 +270,10 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
             </div>
 
             <div className="flex gap-3 mb-6">
-                <button onClick={() => openVoteModal(business.id, 'recommend', false)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 py-3 rounded-xl font-semibold flex justify-center items-center gap-2">
+                <button onClick={() => openVoteModal(business.id, 'recommend', business)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 py-3 rounded-xl font-semibold flex justify-center items-center gap-2">
                     <ThumbsUp className="h-5 w-5" /> {t('recommend')}
                 </button>
-                <button onClick={() => openVoteModal(business.id, 'complain', business.isShielded)} className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 py-3 rounded-xl font-semibold flex justify-center items-center gap-2">
+                <button onClick={() => openVoteModal(business.id, 'complain', business)} className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 py-3 rounded-xl font-semibold flex justify-center items-center gap-2">
                     <ThumbsDown className="h-5 w-5" /> {t('complain')}
                 </button>
             </div>

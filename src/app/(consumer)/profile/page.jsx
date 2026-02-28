@@ -17,6 +17,10 @@ import { GaderPassModal } from '@/components/profile/GaderPassModal';
 
 export default function ProfilePage() {
     const { user, logout, t, isRTL, setShowLoginModal, lang } = useTagdeer();
+
+    // Check if we are in a dev/localhost environment for safe bypasses
+    const isDevEnv = process.env.NODE_ENV === 'development' ||
+        (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
     const router = useRouter();
     const [activeTab, setActiveTab] = useState('history');
     const [toastMessage, setToastMessage] = useState('');
@@ -46,13 +50,13 @@ export default function ProfilePage() {
     // Fetch real log history from Supabase
     useEffect(() => {
         const fetchLogs = async () => {
-            if (!user?.id || user.id === 'mock-uuid' || !supabase) {
+            if (!supabase || !user?.id) {
                 setIsLoadingLogs(false);
                 return;
             }
 
             // Skip Supabase queries for dev bypass users (no native auth session)
-            if (user.isDevBypass) {
+            if (isDevEnv && (user.id === 'mock-uuid' || user.isDevBypass)) {
                 setIsLoadingLogs(false);
                 return;
             }
@@ -82,9 +86,8 @@ export default function ProfilePage() {
         fetchLogs();
     }, [user]);
 
-    // Handle Profile Update
     const handleSaveProfile = async () => {
-        if (!user || !user.id || user.id === 'mock-uuid' || user.isDevBypass) return;
+        if (!user || !user.id || (isDevEnv && (user.id === 'mock-uuid' || user.isDevBypass))) return;
 
         setIsSaving(true);
         try {
@@ -209,10 +212,10 @@ export default function ProfilePage() {
             setEmailError(lang === 'ar' ? 'يرجى إدخال الرمز المكون من 6 أرقام' : 'Please enter the full 6-digit code');
             return;
         }
-        if (!user || !user.id || user.id === 'mock-uuid') return;
+        if (!user || !user.id || (isDevEnv && user.id === 'mock-uuid')) return;
 
         // Dev bypass: skip supabase.auth.updateUser (no native session)
-        const skipAuthVault = user.isDevBypass;
+        const skipAuthVault = isDevEnv && user.isDevBypass;
 
         setEmailError('');
         setEmailStep('saving');

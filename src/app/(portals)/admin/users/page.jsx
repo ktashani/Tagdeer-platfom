@@ -1,23 +1,66 @@
 'use client'
 
-import { useState } from 'react'
-import { Search, UserX, UserMinus, ShieldAlert, Award, AlertTriangle, AlertCircle, TrendingUp, TrendingDown, History } from 'lucide-react'
-
-const dummyUsers = [
-    { id: 1, name: 'Tarek Mansour', email: 'tarek@example.com', phone: '+218 91 123 4567', trustPoints: 850, tier: 'Gold', flags: 0, status: 'Active', isFlagged: false },
-    { id: 2, name: 'Omar Al-Mukhtar', email: 'omar@example.com', phone: '+218 92 987 6543', trustPoints: 120, tier: 'Bronze', flags: 3, status: 'Suspended', isFlagged: true, flagReason: "User Phone Number matches Business Owner Phone Number (Ali Cafe)" },
-    { id: 3, name: 'Sara Kamel', email: 'sara@example.com', phone: '+218 91 555 1234', trustPoints: 450, tier: 'Silver', flags: 1, status: 'Active', isFlagged: false },
-    { id: 4, name: 'Khaled Fathi', email: 'khaled@example.com', phone: '+218 94 222 3333', trustPoints: 45, tier: 'Bronze', flags: 5, status: 'Active', isFlagged: true, flagReason: "High rate of disputed and rejected logs (4 in 24 hours)." },
-]
+import { useState, useEffect } from 'react'
+import { Search, UserX, UserMinus, ShieldAlert, Award, AlertTriangle, AlertCircle, TrendingUp, TrendingDown, History, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabaseClient'
+import { formatDistanceToNow } from 'date-fns'
 
 export default function UsersPage() {
+    const [users, setUsers] = useState([])
+    const [isLoading, setIsLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('all') // 'all' or 'anti-cheat'
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedUser, setSelectedUser] = useState(null)
+    const [userLogs, setUserLogs] = useState([])
+    const [isLoadingLogs, setIsLoadingLogs] = useState(false)
     const [adjustmentAmount, setAdjustmentAmount] = useState('')
     const [adjustmentReason, setAdjustmentReason] = useState('')
 
-    const filteredUsers = dummyUsers.filter(u =>
+    useEffect(() => {
+        const fetchUsers = async () => {
+            setIsLoading(true)
+            const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+            if (!error && data) {
+                const mapped = data.map(dbUser => ({
+                    id: dbUser.id,
+                    name: dbUser.full_name || 'Anonymous User',
+                    email: dbUser.profile_email || dbUser.email || '-',
+                    phone: dbUser.phone || '-',
+                    trustPoints: dbUser.gader || 0,
+                    tier: (dbUser.gader || 0) > 5000 ? 'Gold' : (dbUser.gader || 0) > 1000 ? 'Silver' : 'Bronze',
+                    flags: 0,
+                    status: 'Active',
+                    isFlagged: false,
+                    flagReason: ''
+                }))
+                setUsers(mapped)
+            }
+            setIsLoading(false)
+        }
+        fetchUsers()
+    }, [])
+
+    useEffect(() => {
+        const fetchUserLogs = async () => {
+            if (!selectedUser?.id) return
+            setUserLogs([])
+            setIsLoadingLogs(true)
+            const { data, error } = await supabase
+                .from('logs')
+                .select('*, businesses(name)')
+                .eq('profile_id', selectedUser.id)
+                .order('created_at', { ascending: false })
+                .limit(10)
+
+            if (!error && data) {
+                setUserLogs(data)
+            }
+            setIsLoadingLogs(false)
+        }
+        fetchUserLogs()
+    }, [selectedUser])
+
+    const filteredUsers = users.filter(u =>
         (activeTab === 'anti-cheat' ? u.isFlagged : true) &&
         (u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             u.phone.includes(searchTerm) ||
@@ -63,9 +106,9 @@ export default function UsersPage() {
                             className={`px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${activeTab === 'anti-cheat' ? 'bg-red-500/10 text-red-400 shadow-sm border border-red-500/20' : 'text-slate-400 hover:text-red-300'}`}
                         >
                             <ShieldAlert className="w-4 h-4" /> Anti-Cheat Flags
-                            {dummyUsers.filter(u => u.isFlagged).length > 0 && (
+                            {users.filter(u => u.isFlagged).length > 0 && (
                                 <span className="bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center ml-1">
-                                    {dummyUsers.filter(u => u.isFlagged).length}
+                                    {users.filter(u => u.isFlagged).length}
                                 </span>
                             )}
                         </button>
@@ -105,8 +148,8 @@ export default function UsersPage() {
                                         <tr
                                             key={user.id}
                                             className={`border-b border-slate-700/50 transition-colors cursor-pointer ${selectedUser?.id === user.id
-                                                    ? 'bg-emerald-500/10 border-emerald-500/30'
-                                                    : activeTab === 'anti-cheat' ? 'hover:bg-red-900/10' : 'hover:bg-slate-800/50'
+                                                ? 'bg-emerald-500/10 border-emerald-500/30'
+                                                : activeTab === 'anti-cheat' ? 'hover:bg-red-900/10' : 'hover:bg-slate-800/50'
                                                 }`}
                                             onClick={() => setSelectedUser(user)}
                                         >
@@ -117,8 +160,8 @@ export default function UsersPage() {
                                             <td className="px-6 py-4 text-center">
                                                 <div className="font-bold text-white mb-1">{user.trustPoints} PTS</div>
                                                 <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${user.tier === 'Gold' ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20' :
-                                                        user.tier === 'Silver' ? 'bg-slate-300/10 text-slate-300 border border-slate-300/20' :
-                                                            'bg-amber-700/10 text-amber-600 border border-amber-700/20'
+                                                    user.tier === 'Silver' ? 'bg-slate-300/10 text-slate-300 border border-slate-300/20' :
+                                                        'bg-amber-700/10 text-amber-600 border border-amber-700/20'
                                                     }`}>
                                                     {user.tier}
                                                 </span>
@@ -145,7 +188,12 @@ export default function UsersPage() {
                                     {filteredUsers.length === 0 && (
                                         <tr>
                                             <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
-                                                No users found matching your criteria.
+                                                {isLoading ? (
+                                                    <div className="flex flex-col items-center justify-center text-slate-400">
+                                                        <Loader2 className="h-6 w-6 animate-spin mb-2" />
+                                                        Loading users...
+                                                    </div>
+                                                ) : "No users found matching your criteria."}
                                             </td>
                                         </tr>
                                     )}
@@ -257,21 +305,32 @@ export default function UsersPage() {
                                     <History className="w-4 h-4" /> Recent Interactions
                                 </h3>
                                 <div className="space-y-3">
-                                    {/* Mock Logs */}
-                                    <div className="p-3 bg-slate-900 border border-slate-800 rounded-lg text-sm">
-                                        <div className="flex justify-between items-start mb-1">
-                                            <span className="font-medium text-emerald-400">Verified Receipt Upload</span>
-                                            <span className="text-xs text-slate-500">2h ago</span>
+                                    {isLoadingLogs ? (
+                                        <div className="py-6 flex justify-center text-slate-400">
+                                            <Loader2 className="w-5 h-5 animate-spin" />
                                         </div>
-                                        <div className="text-slate-400 text-xs">At Ali's Cafe (+10 PTS)</div>
-                                    </div>
-                                    <div className="p-3 bg-slate-900 border border-slate-800 rounded-lg text-sm">
-                                        <div className="flex justify-between items-start mb-1">
-                                            <span className="font-medium text-red-400">Complaint Logged</span>
-                                            <span className="text-xs text-slate-500">1d ago</span>
-                                        </div>
-                                        <div className="text-slate-400 text-xs">At Tripoli Supermarket (Currently in dispute)</div>
-                                    </div>
+                                    ) : userLogs.length > 0 ? (
+                                        userLogs.map(log => (
+                                            <div key={log.id} className="p-3 bg-slate-900 border border-slate-800 rounded-lg text-sm">
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <span className={`font-medium ${log.interaction_type === 'verified_receipt' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                                                        {log.interaction_type === 'verified_receipt' ? 'Receipt Upload' :
+                                                            log.interaction_type === 'recommend' ? 'Recommendation' :
+                                                                log.interaction_type === 'complain' ? 'Complaint' : log.interaction_type}
+                                                    </span>
+                                                    <span className="text-xs text-slate-500">
+                                                        {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                                                    </span>
+                                                </div>
+                                                <div className="text-slate-400 text-xs">
+                                                    At {log.businesses?.name || 'Unknown Business'} ({log.weight > 0 ? '+' : ''}{log.weight || 0} PTS)
+                                                    {log.reason_text && ` • "${log.reason_text}"`}
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-slate-500 text-sm italic">No interactions logged yet.</div>
+                                    )}
                                 </div>
                             </div>
 

@@ -165,7 +165,13 @@ export default function TopNav() {
                                         Claim Another Business <Plus className="w-5 h-5 ml-2" />
                                     </Button>
                                 ) : (
-                                    <div className="w-full bg-transparent text-slate-400 border border-slate-700/50 h-12 rounded-xl font-medium text-[15px] flex items-center justify-center opacity-70 cursor-not-allowed">
+                                    <div
+                                        onClick={() => {
+                                            setIsStoreMenuOpen(false);
+                                            router.push(`${basePath}/settings?tab=subscription`);
+                                        }}
+                                        className="w-full bg-transparent hover:bg-slate-700 text-slate-400 border border-slate-700/50 h-12 rounded-xl font-medium text-[15px] flex items-center justify-center cursor-pointer transition-colors"
+                                    >
                                         Upgrade to Pro for more
                                     </div>
                                 )}

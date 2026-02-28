@@ -279,9 +279,11 @@ export function TagdeerProvider({ children }) {
                             name: b.name,
                             region: b.region,
                             category: b.category,
-                            recommends: derivedRecommends,
-                            complains: derivedComplains,
+                            recommends: b.recommends ?? derivedRecommends,
+                            complains: b.complains ?? derivedComplains,
                             isShielded: b.is_shielded,
+                            isClaimed: !!b.claimed_by,
+                            shield_level: b.shield_level || 0,
                             source: b.source,
                             external_url: b.external_url,
                             logs: rawLogs
@@ -303,6 +305,32 @@ export function TagdeerProvider({ children }) {
             }
         };
         fetchBusinesses();
+
+        if (supabase) {
+            const channel = supabase
+                .channel('public:businesses')
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'businesses' }, (payload) => {
+                    const updatedBusiness = payload.new;
+                    setBusinesses(prev => prev.map(b =>
+                        b.id === updatedBusiness.id
+                            ? {
+                                ...b,
+                                name: updatedBusiness.name,
+                                isClaimed: !!updatedBusiness.claimed_by,
+                                isShielded: updatedBusiness.is_shielded,
+                                shield_level: updatedBusiness.shield_level || 0,
+                                recommends: updatedBusiness.recommends ?? b.recommends,
+                                complains: updatedBusiness.complains ?? b.complains
+                            }
+                            : b
+                    ));
+                })
+                .subscribe();
+
+            return () => {
+                supabase.removeChannel(channel);
+            };
+        }
     }, [supabase, lang]);
 
     useEffect(() => {

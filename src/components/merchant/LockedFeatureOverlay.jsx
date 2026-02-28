@@ -4,12 +4,14 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Lock, Search, AlertCircle, ShieldAlert, Zap, Megaphone, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 
 export default function LockedFeatureOverlay({
     title = "Unlock Tagdeer Pro",
     description = "This feature is only available for Pro and Enterprise merchants.",
     icon: Icon = Lock
 }) {
+    const router = useRouter();
     return (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center bg-slate-100/60 dark:bg-slate-900/60 backdrop-blur-[2px] rounded-xl border border-slate-200 dark:border-slate-800">
             <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-full flex items-center justify-center mb-4 shadow-sm border border-amber-200 dark:border-amber-800">
@@ -19,7 +21,10 @@ export default function LockedFeatureOverlay({
             <p className="text-sm text-slate-600 dark:text-slate-400 max-w-[250px] mb-6">
                 {description}
             </p>
-            <Button className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border-0 shadow-lg shadow-amber-500/20">
+            <Button
+                onClick={() => router.push('/merchant/settings?tab=subscription')}
+                className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border-0 shadow-lg shadow-amber-500/20"
+            >
                 Upgrade to Pro
             </Button>
         </div>
