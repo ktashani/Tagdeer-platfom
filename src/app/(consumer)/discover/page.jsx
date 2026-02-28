@@ -328,8 +328,15 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
 }
 
 function LogItem({ log }) {
-    const { t, showToast } = useTagdeer();
+    const { t, showToast, lang, supabase, user } = useTagdeer();
     const [isExpanded, setIsExpanded] = useState(false);
+
+    // Add local state for optimistic UI updates
+    const [localVotes, setLocalVotes] = useState({
+        up: log.helpful_votes || 0,
+        down: log.unhelpful_votes || 0
+    });
+    const [votedType, setVotedType] = useState(null);
 
     // Fallbacks since our mock logs might not have these yet
     const isVerifiedAuthor = log.is_verified_author ?? false;
@@ -338,8 +345,41 @@ function LogItem({ log }) {
     const isLong = log.text.length > textLimit;
     const displayText = isExpanded ? log.text : log.text.substring(0, textLimit) + (isLong ? '...' : '');
 
-    const handleVote = (voteType) => {
-        showToast(t('vote_mock_toast', `Thanks! You voted ${voteType}. This will affect the author's Gader points.`));
+    const handleVote = async (voteType) => {
+        if (votedType) return; // Prevent double voting locally
+
+        const translatedType = voteType === 'up' ? (lang === 'ar' ? 'أعجبني' : 'Up') : (lang === 'ar' ? 'لم يعجبني' : 'Down');
+
+        // Optimistic UI Update
+        setLocalVotes(prev => ({
+            ...prev,
+            [voteType]: prev[voteType] + 1
+        }));
+        setVotedType(voteType);
+        showToast(t('vote_mock_toast', { voteType: translatedType }));
+
+        // Database Update
+        if (supabase) {
+            try {
+                let fingerprint = null;
+                if (!user) {
+                    fingerprint = localStorage.getItem('tagdeer_fingerprint');
+                    if (!fingerprint) {
+                        fingerprint = Math.random().toString(36).substring(2, 15);
+                        localStorage.setItem('tagdeer_fingerprint', fingerprint);
+                    }
+                }
+
+                await supabase.from('log_votes').insert([{
+                    log_id: log.id,
+                    vote_type: voteType,
+                    profile_id: user?.id || null,
+                    fingerprint: user ? null : fingerprint
+                }]);
+            } catch (err) {
+                console.error("Failed to submit vote:", err);
+            }
+        }
     };
 
     return (
@@ -376,14 +416,14 @@ function LogItem({ log }) {
 
             <div className="flex items-center gap-2 mt-2 pt-3 border-t border-slate-200">
                 <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-2">Community</span>
-                <button onClick={() => handleVote('up')} className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-green-600 hover:bg-green-50 px-2 py-1.5 rounded transition-colors group">
-                    <ThumbsUp className="w-3.5 h-3.5 group-hover:fill-green-100" />
-                    <span className={log.helpful_votes > 0 ? "text-green-600" : ""}>{log.helpful_votes || 0}</span>
+                <button onClick={() => handleVote('up')} disabled={!!votedType} className={`flex items-center gap-1.5 text-xs font-bold px-2 py-1.5 rounded transition-colors group ${votedType === 'up' ? 'text-green-700 bg-green-100' : 'text-slate-500 hover:text-green-600 hover:bg-green-50'}`}>
+                    <ThumbsUp className={`w-3.5 h-3.5 ${votedType === 'up' ? 'fill-green-200' : 'group-hover:fill-green-100'}`} />
+                    <span className={localVotes.up > 0 ? "text-green-600" : ""}>{localVotes.up}</span>
                 </button>
                 <div className="w-px h-3 bg-slate-200"></div>
-                <button onClick={() => handleVote('down')} className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-red-600 hover:bg-red-50 px-2 py-1.5 rounded transition-colors group">
-                    <ThumbsDown className="w-3.5 h-3.5 group-hover:fill-red-100" />
-                    <span className={log.unhelpful_votes > 0 ? "text-red-600" : ""}>{log.unhelpful_votes || 0}</span>
+                <button onClick={() => handleVote('down')} disabled={!!votedType} className={`flex items-center gap-1.5 text-xs font-bold px-2 py-1.5 rounded transition-colors group ${votedType === 'down' ? 'text-red-700 bg-red-100' : 'text-slate-500 hover:text-red-600 hover:bg-red-50'}`}>
+                    <ThumbsDown className={`w-3.5 h-3.5 ${votedType === 'down' ? 'fill-red-200' : 'group-hover:fill-red-100'}`} />
+                    <span className={localVotes.down > 0 ? "text-red-600" : ""}>{localVotes.down}</span>
                 </button>
                 <span className="ml-auto text-xs text-slate-400 italic">Does this help?</span>
             </div>

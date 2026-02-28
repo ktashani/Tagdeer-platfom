@@ -147,7 +147,8 @@ export const translations = {
     "email_address": "Email Address",
     "verify": "Verify",
     "verified": "Verified ✅",
-    "points_to_next_tier": "Only {points} more Gader Points to reach {tier} Tier!"
+    "points_to_next_tier": "Only {points} more Gader Points to reach {tier} Tier!",
+    "vote_mock_toast": "Thanks! You voted '{voteType}'. This will affect the author's Gader points."
   },
   ar: {
     home: "الرئيسية",
@@ -296,6 +297,7 @@ export const translations = {
     "email_address": "البريد الإلكتروني",
     "verify": "تأكيد",
     "verified": "مُوثّق ✅",
-    "points_to_next_tier": "متبقي {points} نقطة قدر للوصول إلى فئة {tier}!"
+    "points_to_next_tier": "متبقي {points} نقطة قدر للوصول إلى فئة {tier}!",
+    "vote_mock_toast": "شكراً! لقد قمت بالتصويت بـ '{voteType}'. هذا سيؤثر على نقاط قَدْر المؤلف."
   }
 };

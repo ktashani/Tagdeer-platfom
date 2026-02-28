@@ -50,7 +50,16 @@ const TagdeerContext = createContext();
 
 export function TagdeerProvider({ children }) {
     const [lang, setLang] = useState('ar');
-    const t = (key) => translations[lang]?.[key] || key;
+    const t = (key, fallbackOrVars) => {
+        let txt = translations[lang]?.[key];
+        if (!txt) return typeof fallbackOrVars === 'string' ? fallbackOrVars : key;
+        if (typeof fallbackOrVars === 'object' && fallbackOrVars !== null) {
+            Object.entries(fallbackOrVars).forEach(([k, v]) => {
+                txt = txt.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+            });
+        }
+        return txt;
+    };
     const isRTL = lang === 'ar';
 
     const [businesses, setBusinesses] = useState(INITIAL_BUSINESSES);

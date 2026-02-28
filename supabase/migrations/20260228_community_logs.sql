@@ -7,6 +7,9 @@
 ALTER TABLE public.logs ADD COLUMN IF NOT EXISTS helpful_votes INT DEFAULT 0;
 ALTER TABLE public.logs ADD COLUMN IF NOT EXISTS unhelpful_votes INT DEFAULT 0;
 
+-- 1b. Ensure `gader_points` can handle decimal math
+ALTER TABLE public.profiles ALTER COLUMN gader_points TYPE NUMERIC(10,2);
+
 -- 2. Create `log_votes` table to prevent double voting
 CREATE TABLE IF NOT EXISTS public.log_votes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -48,14 +51,14 @@ BEGIN
         UPDATE public.logs SET unhelpful_votes = unhelpful_votes + 1 WHERE id = NEW.log_id RETURNING profile_id INTO target_author_id;
     END IF;
 
-    -- Award 0.5 points to the author (if the log was written by a registered user)
+    -- Award 0.25 points to the author (if the log was written by a registered user)
     IF target_author_id IS NOT NULL THEN
         -- Fetch current points
         SELECT gader_points INTO current_gader_points FROM public.profiles WHERE id = target_author_id;
         
-        -- Update profiles. Note: Supabase typically uses INT or numeric. Adding 0.5.
+        -- Update profiles
         UPDATE public.profiles 
-        SET gader_points = COALESCE(current_gader_points, 0) + 0.5
+        SET gader_points = COALESCE(current_gader_points, 0) + 0.25
         WHERE id = target_author_id;
     END IF;
 
