@@ -1,39 +1,162 @@
+"use client";
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Mail, KeyRound, ArrowRight, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+
 export default function MerchantLogin() {
+    const [step, setStep] = useState(1); // 1: Email, 2: OTP
+    const [email, setEmail] = useState('');
+    const [otp, setOtp] = useState(['', '', '', '', '', '']);
+    const [isLoading, setIsLoading] = useState(false);
+    const router = useRouter();
+
+    const handleEmailSubmit = (e) => {
+        e.preventDefault();
+        if (!email.includes('@')) {
+            toast.error("Please enter a valid email address");
+            return;
+        }
+
+        setIsLoading(true);
+        // Simulate API call
+        setTimeout(() => {
+            setIsLoading(false);
+            setStep(2);
+            toast.success("Verification code sent!");
+        }, 1000);
+    };
+
+    const handleOtpChange = (index, value) => {
+        if (value.length > 1) return; // Only allow 1 char
+
+        const newOtp = [...otp];
+        newOtp[index] = value;
+        setOtp(newOtp);
+
+        // Auto-advance
+        if (value !== '' && index < 5) {
+            const nextInput = document.getElementById(`otp-${index + 1}`);
+            if (nextInput) nextInput.focus();
+        }
+    };
+
+    const handleOtpKeyDown = (index, e) => {
+        if (e.key === 'Backspace' && otp[index] === '' && index > 0) {
+            const prevInput = document.getElementById(`otp-${index - 1}`);
+            if (prevInput) prevInput.focus();
+        }
+    };
+
+    const handleOtpSubmit = (e) => {
+        e.preventDefault();
+        const code = otp.join('');
+        if (code.length < 6) {
+            toast.error("Please enter the full 6-digit code");
+            return;
+        }
+
+        setIsLoading(true);
+        // Simulate API verification
+        setTimeout(() => {
+            setIsLoading(false);
+            toast.success("Authentication successful!");
+            // As per requirements: Always redirect to dashboard, dashboard handles the state
+            router.push('/merchant/dashboard');
+        }, 1500);
+    };
+
     return (
-        <div className="flex items-center justify-center min-h-[70vh]">
-            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-neutral-100">
-                <h1 className="text-3xl font-bold mb-2 text-center text-neutral-900">Partner Login</h1>
-                <p className="text-neutral-500 mb-8 text-center text-sm">Access your business dashboard</p>
+        <div className="flex items-center justify-center min-h-[80vh] px-4 animate-in fade-in duration-500">
+            <Card className="w-full max-w-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden relative">
 
-                <form className="space-y-5">
-                    <div>
-                        <label className="block text-sm font-medium text-neutral-700 mb-1">Business Email</label>
-                        <input
-                            type="email"
-                            className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-4 py-2.5 text-neutral-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                            placeholder="merchant@example.com"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-neutral-700 mb-1">Password</label>
-                        <input
-                            type="password"
-                            className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-4 py-2.5 text-neutral-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
-                            placeholder="••••••••"
-                        />
-                    </div>
-                    <button
-                        type="button"
-                        className="w-full bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20 text-white font-medium py-2.5 rounded-lg transition-all mt-4"
-                    >
-                        Sign In to Dashboard
-                    </button>
-                </form>
+                {/* Decorative top bar */}
+                <div className="h-2 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 absolute top-0 left-0"></div>
 
-                <div className="mt-6 text-center text-sm text-neutral-500">
-                    Interested in partnering? <a href="#" className="text-blue-600 font-medium hover:underline">Claim your store</a>
-                </div>
-            </div>
+                <CardHeader className="pt-10 pb-6 text-center">
+                    <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/40 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-100 dark:border-blue-800">
+                        {step === 1 ? <Mail className="w-7 h-7" /> : <KeyRound className="w-7 h-7" />}
+                    </div>
+                    <CardTitle className="text-2xl font-black text-slate-900 dark:text-white">
+                        {step === 1 ? "Welcome Back" : "Check Your Email"}
+                    </CardTitle>
+                    <CardDescription className="text-slate-500 text-base mt-2">
+                        {step === 1
+                            ? "Sign in or create an account to manage your business."
+                            : `We sent a 6-digit code to ${email}`}
+                    </CardDescription>
+                </CardHeader>
+
+                <CardContent className="pb-10 px-8">
+                    {step === 1 ? (
+                        <form onSubmit={handleEmailSubmit} className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Business Email</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                    <Input
+                                        type="email"
+                                        placeholder="merchant@example.com"
+                                        className="pl-10 h-14 rounded-xl bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-lg"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <Button
+                                type="submit"
+                                className="w-full h-14 text-lg rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20"
+                                disabled={isLoading}
+                            >
+                                {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (
+                                    <>Continue with Email <ArrowRight className="w-5 h-5 ml-2" /></>
+                                )}
+                            </Button>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleOtpSubmit} className="space-y-8">
+                            <div className="flex justify-between gap-2 sm:gap-4">
+                                {otp.map((digit, index) => (
+                                    <Input
+                                        key={index}
+                                        id={`otp-${index}`}
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={1}
+                                        value={digit}
+                                        onChange={(e) => handleOtpChange(index, e.target.value.replace(/[^0-9]/g, ''))}
+                                        onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                                        className="w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-black rounded-xl bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 focus:border-blue-500 focus:ring-blue-500"
+                                        autoFocus={index === 0}
+                                    />
+                                ))}
+                            </div>
+                            <div className="space-y-4">
+                                <Button
+                                    type="submit"
+                                    className="w-full h-14 text-lg rounded-xl font-bold bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 shadow-xl"
+                                    disabled={isLoading || otp.join('').length < 6}
+                                >
+                                    {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Verify Code"}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => setStep(1)}
+                                    className="w-full text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                                >
+                                    Use a different email
+                                </Button>
+                            </div>
+                        </form>
+                    )}
+                </CardContent>
+            </Card>
         </div>
-    )
+    );
 }
