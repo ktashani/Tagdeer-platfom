@@ -1,47 +1,82 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { scaleLinear } from 'd3-scale' // Dummy import comment for visual context if doing actual charts later
 import { FileText, MessageSquare, AlertTriangle, ShieldCheck, CheckCircle2, XCircle, Search, Clock, ZoomIn, AlertCircle } from 'lucide-react'
-
-// Dummy Data
-const initialDisputes = [
-    {
-        id: 1,
-        business: "Tripoli Supermarket",
-        user: "Tarek Mansour",
-        date: "Today, 09:12 AM",
-        merchantReason: "Date is incorrect, this receipt is from last month. User is trying to claim points twice.",
-        userNotes: "Purchased groceries totaling 150 LYD.",
-        receiptUrl: "/placeholder-receipt.jpg",
-        status: "open",
-        merchantAbuseScore: 85 // high = abusing disputes
-    },
-    {
-        id: 2,
-        business: "Ali's Cafe",
-        user: "Sara Kamel",
-        date: "Yesterday, 3:45 PM",
-        merchantReason: "Not our receipt. The logo at the top is completely different from ours.",
-        userNotes: "Coffee and cake.",
-        receiptUrl: "/placeholder-receipt.jpg",
-        status: "open",
-        merchantAbuseScore: 12 // low = trustworthy merchant
-    },
-]
+import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function DisputesPage() {
-    const [disputes, setDisputes] = useState(initialDisputes)
-    const [selectedDispute, setSelectedDispute] = useState(initialDisputes[0]) // Select first by default
+    const { businesses, supabase, showToast } = useTagdeer()
+    const [disputes, setDisputes] = useState([])
+    const [selectedDispute, setSelectedDispute] = useState(null)
+    const [isLoading, setIsLoading] = useState(true)
 
-    const handleVerdict = (id, verdict) => {
-        // verdict: 'valid' | 'fake'
-        const actionText = verdict === 'valid' ? 'Receipt Validated. Merchant dispute rejected.' : 'Fake Receipt Confirmed. User penalized.'
-        alert(actionText)
+    useEffect(() => {
+        if (!supabase || businesses.length === 0) {
+            if (!supabase) setIsLoading(false)
+            return
+        }
 
-        const newDisputes = disputes.filter(d => d.id !== id)
-        setDisputes(newDisputes)
-        setSelectedDispute(newDisputes.length > 0 ? newDisputes[0] : null)
+        const loadDisputes = async () => {
+            const { data, error } = await supabase
+                .from('disputes')
+                .select('*')
+                .eq('status', 'pending_admin_review')
+
+            if (data) {
+                const mapped = data.map(d => {
+                    const business = businesses.find(b => b.id === d.business_id)
+                    const log = business?.logs?.find(l => l.id === d.log_id)
+                    return {
+                        id: d.id,
+                        business: business?.name || 'Unknown Business',
+                        businessId: d.business_id,
+                        user: log?.is_verified ? 'Verified VIP' : 'Anonymous VIP',
+                        date: log ? log.date : new Date(d.created_at).toLocaleDateString(),
+                        merchantReason: d.reason,
+                        userNotes: log?.text || 'No comment provided by user.',
+                        receiptUrl: "/placeholder-receipt.jpg",
+                        status: d.status,
+                        merchantAbuseScore: 0 // Mock score placeholder
+                    }
+                })
+                setDisputes(mapped)
+                if (mapped.length > 0) setSelectedDispute(mapped[0])
+            }
+            setIsLoading(false)
+        }
+        loadDisputes()
+    }, [supabase, businesses])
+
+    const handleVerdict = async (id, verdict) => {
+        if (!supabase) return;
+
+        try {
+            const { error } = await supabase.rpc('admin_resolve_dispute', {
+                p_dispute_id: id,
+                p_verdict: verdict
+            })
+
+            if (error) {
+                console.error(error)
+                showToast("Failed to resolve dispute. Ensure RPC is established.")
+                return
+            }
+
+            const actionText = verdict === 'valid' ? 'Receipt Validated. Merchant dispute rejected.' : 'Fake Receipt Confirmed. User penalized.'
+            showToast(actionText)
+
+            const newDisputes = disputes.filter(d => d.id !== id)
+            setDisputes(newDisputes)
+            setSelectedDispute(newDisputes.length > 0 ? newDisputes[0] : null)
+        } catch (err) {
+            console.error(err)
+            showToast("Unexpected error occurred.")
+        }
+    }
+
+    if (isLoading) {
+        return <div className="min-h-screen flex items-center justify-center text-slate-400">Loading Disputes Queue...</div>
     }
 
     return (
@@ -159,7 +194,7 @@ export default function DisputesPage() {
                                         }`}>
                                         <div className="flex justify-between items-center mb-3">
                                             <span className="font-medium text-white">{selectedDispute.business}</span>
-                                            <span className="text-xs text-slate-500">Business ID: #{selectedDispute.id}</span>
+                                            <span className="text-xs text-slate-500">Business ID: #{selectedDispute.businessId?.substring(0, 8) || selectedDispute.id.substring(0, 8)}</span>
                                         </div>
 
                                         <div className="flex justify-between items-end">

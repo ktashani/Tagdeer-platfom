@@ -1,64 +1,205 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EyeOff, Send, Gift, Clock, ShieldAlert, CheckCircle2 } from "lucide-react";
+import { useTagdeer } from '@/context/TagdeerContext';
 
 export default function MerchantInbox() {
+    const { user, businesses, supabase, showToast } = useTagdeer();
     const [selectedChat, setSelectedChat] = useState(null);
-
-    // Mock Data
-    const unresolvedComplaints = [
-        {
-            id: 1,
-            user: 'VIP-A7X9',
-            reason: 'Cleanliness',
-            comment: 'The tables were not wiped down when we arrived.',
-            date: '2 hours ago',
-            status: 'unresolved'
-        },
-        {
-            id: 2,
-            user: 'VIP-M9L1',
-            reason: 'Speed',
-            comment: 'Waited 45 mins for a simple order.',
-            date: '1 day ago',
-            status: 'unresolved'
-        }
-    ];
-
-    const [messages, setMessages] = useState([
-        { id: 1, sender: 'user', text: 'The tables were not wiped down when we arrived. Disappointing experience.', time: '2:30 PM' }
-    ]);
-
+    const [unresolvedComplaints, setUnresolvedComplaints] = useState([]);
+    const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
 
-    const handleSendMessage = (e) => {
+    const myBusiness = user && businesses ? businesses.find(b => b.owner_id === user?.id) : null;
+    // 1. Fetch complaints for the sidebar
+    useEffect(() => {
+        if (!supabase || !myBusiness) {
+            setIsLoading(false);
+            return;
+        }
+
+        const fetchComplaints = () => {
+            // Retrieve complains directly from the business logs mapping in context
+            const complains = (myBusiness.logs || []).filter(l => l.type === 'complain');
+
+            // Map them to the UI structure
+            const mapped = complains.map(c => ({
+                id: c.id,
+                log_id: c.id,
+                user: c.is_verified ? 'VIP' : `Anon`,
+                reason: 'Complaint',
+                comment: c.text,
+                date: c.date,
+                status: 'unresolved', // Default until thread fetching validates
+                thread_id: null
+            }));
+            setUnresolvedComplaints(mapped);
+            setIsLoading(false);
+        };
+        fetchComplaints();
+    }, [supabase, myBusiness]);
+
+    // 2. Load messages whenever a chat is selected
+    useEffect(() => {
+        if (!selectedChat || !supabase || !myBusiness || !user) return;
+
+        const loadMessages = async () => {
+            try {
+                // Optimistically clear old messages
+                setMessages([]);
+
+                // 2a. Fetch or Create Thread
+                let { data: thread, error: threadErr } = await supabase
+                    .from('resolution_threads')
+                    .select('id, status')
+                    .eq('log_id', selectedChat.log_id)
+                    .single();
+
+                if (threadErr && threadErr.code === 'PGRST116') {
+                    // Thread doesn't exist, create it privately for this complaint
+                    const { data: newThread, error: insertErr } = await supabase
+                        .from('resolution_threads')
+                        .insert([{
+                            log_id: selectedChat.log_id,
+                            business_id: myBusiness.id,
+                            merchant_id: myBusiness.owner_id
+                        }])
+                        .select('id, status')
+                        .single();
+
+                    if (insertErr) throw insertErr;
+                    thread = newThread;
+                }
+
+                if (thread) {
+                    // Update the selected chat with the valid thread ID so sending messages works
+                    setSelectedChat(prev => ({ ...prev, thread_id: thread.id, status: thread.status }));
+
+                    // 2b. Fetch Messages
+                    const { data: msgs, error: msgsErr } = await supabase
+                        .from('resolution_messages')
+                        .select('*')
+                        .eq('thread_id', thread.id)
+                        .order('created_at', { ascending: true });
+
+                    if (msgsErr) throw msgsErr;
+
+                    if (msgs) {
+                        setMessages(msgs.map(m => ({
+                            id: m.id,
+                            sender: m.sender_role,
+                            text: m.message,
+                            time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                            isCoupon: !!m.coupon_id
+                        })));
+                    }
+                }
+            } catch (err) {
+                console.error("Resolution Thread Error:", err);
+                showToast("Failed to load chat history. Ensure DB migration is pushed.");
+            }
+        };
+
+        loadMessages();
+    }, [selectedChat?.log_id, supabase, myBusiness, user]);
+
+    const handleSendMessage = async (e) => {
         e.preventDefault();
-        if (!newMessage.trim()) return;
+        if (!newMessage.trim() || !selectedChat?.thread_id || !supabase || !user) return;
 
-        setMessages([...messages, {
-            id: Date.now(),
-            sender: 'merchant',
-            text: newMessage,
-            time: 'Just now'
-        }]);
+        const msgText = newMessage;
         setNewMessage('');
+
+        // Optimistic UI insert
+        const tempId = Date.now();
+        setMessages(prev => [...prev, {
+            id: tempId,
+            sender: 'merchant',
+            text: msgText,
+            time: 'Sending...'
+        }]);
+
+        try {
+            const { data, error } = await supabase.from('resolution_messages').insert([{
+                thread_id: selectedChat.thread_id,
+                sender_id: user.id,
+                sender_role: 'merchant',
+                message: msgText
+            }]).select().single();
+
+            if (error) throw error;
+
+            // Update optimistic with real data
+            if (data) {
+                setMessages(prev => prev.map(m => m.id === tempId ? {
+                    id: data.id,
+                    sender: data.sender_role,
+                    text: data.message,
+                    time: new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                } : m));
+            }
+        } catch (err) {
+            console.error("Message send error:", err);
+            showToast("Failed to send message");
+            setMessages(prev => prev.filter(m => m.id !== tempId)); // Remove failed optimistic
+        }
     };
 
-    const handleAttachCoupon = () => {
-        setMessages([...messages, {
-            id: Date.now(),
+    const handleAttachCoupon = async () => {
+        if (!selectedChat?.thread_id || !supabase || !user) return;
+
+        // Optimistic
+        const tempId = Date.now();
+        setMessages(prev => [...prev, {
+            id: tempId,
             sender: 'merchant',
             isCoupon: true,
             text: 'Apology Accepted: Free Dessert on next visit',
-            time: 'Just now'
+            time: 'Sending...'
         }]);
+
+        try {
+            // Note: Currently hardcoding the apology text and lack of real coupon ID 
+            // until Coupon Selection Modal is built. 
+            const { data, error } = await supabase.from('resolution_messages').insert([{
+                thread_id: selectedChat.thread_id,
+                sender_id: user.id,
+                sender_role: 'merchant',
+                message: 'Apology Accepted: Free Dessert on next visit',
+                // coupon_id: ...
+            }]).select().single();
+
+            if (error) throw error;
+
+            if (data) {
+                setMessages(prev => prev.map(m => m.id === tempId ? {
+                    id: data.id,
+                    sender: data.sender_role,
+                    isCoupon: true,
+                    text: data.message,
+                    time: new Date(data.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                } : m));
+            }
+        } catch (err) {
+            showToast("Failed to attach apology coupon");
+            setMessages(prev => prev.filter(m => m.id !== tempId));
+        }
     };
+
+    if (isLoading || user === undefined) {
+        return <div className="min-h-screen flex items-center justify-center">Loading Inbox...</div>;
+    }
+
+    if (!myBusiness) {
+        return <div className="min-h-screen flex items-center justify-center text-slate-500">You must claim a business to access the inbox.</div>;
+    }
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8">
@@ -144,6 +285,11 @@ export default function MerchantInbox() {
                                 {/* Chat History */}
                                 <ScrollArea className="flex-1 p-6">
                                     <div className="space-y-6">
+                                        {messages.length === 0 && (
+                                            <div className="text-center text-slate-400 py-10">
+                                                No messages yet. Send a reply to start the resolution.
+                                            </div>
+                                        )}
                                         {messages.map((msg) => (
                                             <div
                                                 key={msg.id}
@@ -163,12 +309,10 @@ export default function MerchantInbox() {
                                                     </div>
                                                 ) : (
                                                     // Normal Text Message
-                                                    <div
-                                                        className={`max-w-[75%] rounded-2xl p-4 ${msg.sender === 'merchant'
-                                                            ? 'bg-slate-800 text-white rounded-tr-sm dark:bg-slate-700'
-                                                            : 'bg-white border border-slate-200 dark:bg-slate-900 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-sm shadow-sm'
-                                                            }`}
-                                                    >
+                                                    <div className={`max-w-[75%] rounded-2xl p-4 ${msg.sender === 'merchant'
+                                                        ? 'bg-slate-800 text-white rounded-tr-sm dark:bg-slate-700'
+                                                        : 'bg-white border border-slate-200 dark:bg-slate-900 dark:border-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-sm shadow-sm'
+                                                        }`}>
                                                         <p>{msg.text}</p>
                                                     </div>
                                                 )}

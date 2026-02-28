@@ -1,52 +1,48 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CheckCircle2, XCircle, FileImage, Search, Filter } from 'lucide-react'
-
-// Dummy data for the Kanban board
-const initialRequests = [
-    {
-        id: 1,
-        businessName: 'Starbucks - Riyadh Front',
-        requester: 'ahmed@example.com',
-        phone: '+218 91 123 4567',
-        status: 'pending',
-        date: 'Today, 10:42 AM',
-        licenseUrl: '/placeholder-license.jpg'
-    },
-    {
-        id: 2,
-        businessName: 'Ali Cafe',
-        requester: 'ali@alicafe.ly',
-        phone: '+218 92 987 6543',
-        status: 'pending',
-        date: 'Yesterday, 2:15 PM',
-        licenseUrl: '/placeholder-license.jpg'
-    },
-    {
-        id: 3,
-        businessName: 'Zubaida Medical Clinic',
-        requester: 'admin@zubaida.com',
-        phone: '+218 91 555 1234',
-        status: 'missing_docs',
-        date: 'Oct 24, 09:30 AM',
-        notes: 'License image is blurry.'
-    },
-    {
-        id: 4,
-        businessName: 'Zara Menswear',
-        requester: 'sara@zara.com',
-        phone: '+218 92 111 2222',
-        status: 'approved',
-        date: 'Oct 23, 4:15 PM',
-        licenseUrl: '/placeholder-license.jpg'
-    }
-]
+import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function RequestsPage() {
-    const [requests, setRequests] = useState(initialRequests)
+    const { businesses, supabase, showToast } = useTagdeer()
+    const [requests, setRequests] = useState([])
     const [selectedRequest, setSelectedRequest] = useState(null)
     const [searchQuery, setSearchQuery] = useState('')
+    const [isLoading, setIsLoading] = useState(true)
+
+    useEffect(() => {
+        if (!supabase || businesses.length === 0) {
+            if (!supabase) setIsLoading(false)
+            return
+        }
+
+        const loadClaims = async () => {
+            const { data, error } = await supabase
+                .from('business_claims')
+                .select('*, profiles(phone, email, full_name)')
+
+            if (data) {
+                const mapped = data.map(c => {
+                    const business = businesses.find(b => b.id === c.business_id)
+                    return {
+                        id: c.id,
+                        businessName: business?.name || 'Unknown Business',
+                        requester: c.profiles?.full_name || 'Anonymous',
+                        phone: c.profiles?.phone || 'No Phone',
+                        email: c.profiles?.email || 'No Email',
+                        status: c.status || c.claim_status || 'pending',
+                        date: new Date(c.created_at).toLocaleDateString(),
+                        licenseUrl: '/placeholder-license.jpg',
+                        notes: (c.status === 'missing_docs' || c.claim_status === 'missing_docs') ? 'License is unreadable' : ''
+                    }
+                })
+                setRequests(mapped)
+            }
+            setIsLoading(false)
+        }
+        loadClaims()
+    }, [supabase, businesses])
 
     const filteredRequests = requests.filter(r =>
         r.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -57,9 +53,41 @@ export default function RequestsPage() {
     const missingDocs = filteredRequests.filter(r => r.status === 'missing_docs')
     const approved = filteredRequests.filter(r => r.status === 'approved')
 
-    const updateStatus = (id, newStatus) => {
-        setRequests(requests.map(r => r.id === id ? { ...r, status: newStatus } : r))
-        if (selectedRequest?.id === id) setSelectedRequest(null)
+    const updateStatus = async (id, newStatus) => {
+        if (!supabase) return;
+
+        try {
+            const { error } = await supabase.rpc('admin_resolve_claim', {
+                p_claim_id: id,
+                p_status: newStatus
+            })
+
+            if (error) {
+                // If RPC fails because it's missing on remote, fallback to direct update
+                const { error: directErr } = await supabase
+                    .from('business_claims')
+                    .update({ status: newStatus })
+                    .eq('id', id)
+
+                if (directErr) {
+                    console.error("Direct update failed:", directErr)
+                    showToast("Failed to update status. Migrations needed.")
+                    return
+                }
+            }
+
+            setRequests(requests.map(r => r.id === id ? { ...r, status: newStatus } : r))
+            if (selectedRequest?.id === id) setSelectedRequest(null)
+            showToast(`Claim marked as ${newStatus}`)
+
+        } catch (err) {
+            console.error(err)
+            showToast("An unexpected error occurred.")
+        }
+    }
+
+    if (isLoading) {
+        return <div className="min-h-screen flex items-center justify-center text-slate-400">Loading Business Claims...</div>
     }
 
     return (
@@ -216,8 +244,8 @@ function RequestCard({ req, onClick, isSelected }) {
         <div
             onClick={onClick}
             className={`p-4 rounded-xl border cursor-pointer transition-all duration-200 ${isSelected
-                    ? 'bg-slate-700 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]'
-                    : 'bg-slate-900/50 border-slate-700/50 hover:border-slate-600 hover:bg-slate-800/50'
+                ? 'bg-slate-700 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]'
+                : 'bg-slate-900/50 border-slate-700/50 hover:border-slate-600 hover:bg-slate-800/50'
                 }`}
         >
             <h3 className="font-medium text-slate-200 mb-1 line-clamp-1">{req.businessName}</h3>

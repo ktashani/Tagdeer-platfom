@@ -10,6 +10,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } 
 import { DisputeButtonLocked, MessageUserButtonLocked } from '@/components/merchant/LockedFeatureOverlay';
 import ScannerModal from '@/components/merchant/ScannerModal';
 import Link from 'next/link';
+import { useTagdeer } from '@/context/TagdeerContext';
 import {
     Dialog,
     DialogContent,
@@ -27,25 +28,57 @@ const MOCK_STATES = {
 };
 
 export default function MerchantDashboard() {
+    const { user, businesses } = useTagdeer();
     const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-    // ==========================================
-    // TOGGLE THIS VARIABLE TO TEST DIFFERENT UX STATES
-    // ==========================================
-    const currentMockState = MOCK_STATES.ACTIVE;
-    // ==========================================
+    // Only render once user loading finishes
+    if (user === undefined) return <div className="min-h-screen flex items-center justify-center">Loading Dashboard...</div>;
 
-    // Mock Data for Free Tier Dashboard
-    const metrics = {
-        totalInteractions: 1245,
-        recommendations: 982,
-        complaints: 263,
-        profileViews: 10300,
-        couponsRedeemed: 145
+    // Find the currently authenticated merchant's business
+    const myBusiness = businesses.find(b => b.owner_id === user?.id);
+
+    // ==========================================
+    // DYNAMIC STATES
+    // ==========================================
+    const currentMockState = !myBusiness ? MOCK_STATES.NO_BUSINESS : MOCK_STATES.ACTIVE;
+
+    // Derived Metrics
+    let metrics = {
+        totalInteractions: 0,
+        recommendations: 0,
+        complaints: 0,
+        profileViews: 10300, // Still mock for now
+        couponsRedeemed: 145  // Still mock for now
     };
 
+    let recentExperiences = [];
+    let topCategories = [];
+
+    if (myBusiness) {
+        metrics.recommendations = myBusiness.recommends || 0;
+        metrics.complaints = myBusiness.complains || 0;
+        metrics.totalInteractions = metrics.recommendations + metrics.complaints;
+
+        // Map live logs to dashboard format
+        recentExperiences = [...(myBusiness.logs || [])].map((log, index) => ({
+            id: `LOG-${log.id.substring(0, 6).toUpperCase()}`,
+            user: log.is_verified ? 'VIP User' : `Anon-${Math.floor(Math.random() * 1000)}`,
+            type: log.type === 'recommend' ? 'Recommend' : 'Complain',
+            date: log.date,
+            reason: log.text || 'N/A',
+            hasReceipt: false, // Wait for future receipt integration
+            rawText: log.text
+        }));
+
+        // Dynamically compute Top Categories from positive logs
+        const positiveLogs = myBusiness.logs.filter(l => l.type === 'recommend');
+        topCategories = [
+            { category: 'General Service', score: `${positiveLogs.length > 0 ? '95%' : 'N/A'}`, positive: true },
+        ];
+    }
+
     // Derived Metric: Interaction Rate
-    const interactionRate = ((metrics.totalInteractions / metrics.profileViews) * 100).toFixed(1);
+    const interactionRate = metrics.profileViews > 0 ? ((metrics.totalInteractions / metrics.profileViews) * 100).toFixed(1) : 0;
 
     const votingReasons = [
         { name: 'Speed', value: 40, color: '#10b981' },
@@ -54,22 +87,9 @@ export default function MerchantDashboard() {
         { name: 'Price', value: 10, color: '#eab308' },
     ];
 
-    const recentExperiences = [
-        { id: 'EXP-1049', user: 'VIP-A7X9', type: 'Complain', date: 'Oct 04, 2024', reason: 'Cleanliness', hasReceipt: true },
-        { id: 'EXP-1048', user: 'VIP-B2K4', type: 'Recommend', date: 'Oct 04, 2024', reason: 'Quality', hasReceipt: false },
-        { id: 'EXP-1047', user: 'VIP-M9L1', type: 'Complain', date: 'Oct 03, 2024', reason: 'Speed', hasReceipt: true },
-        { id: 'EXP-1046', user: 'VIP-K3T8', type: 'Recommend', date: 'Oct 03, 2024', reason: 'Price', hasReceipt: false },
-    ];
-
     const pendingDisputes = [
         { id: 'DSP-099', reason: 'Fake review claim', status: 'Pending Admin', time: '2h ago' },
         { id: 'DSP-098', reason: 'Malicious spam', status: 'In Review', time: '1d ago' },
-    ];
-
-    const topCategories = [
-        { category: 'Speed of Service', score: '98%', positive: true },
-        { category: 'Food Quality', score: '92%', positive: true },
-        { category: 'Staff Friendliness', score: '88%', positive: true },
     ];
 
     const activeCampaigns = [
@@ -210,7 +230,7 @@ export default function MerchantDashboard() {
             <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <div className="w-full md:w-1/3">
                     <h1 className="text-2xl font-bold text-slate-800">
-                        Good Morning, <span className="text-blue-600">Al-Saha Clinic</span>
+                        Good Morning, <span className="text-blue-600">{myBusiness ? myBusiness.name : 'Merchant'}</span>
                     </h1>
                     <p className="text-slate-500 text-sm mt-1">Here's what's happening with your store today.</p>
                 </div>

@@ -2,17 +2,10 @@
 
 import { useState } from 'react'
 import { Search, Filter, Shield, ShieldAlert, Combine, SearchCheck, Check, Info, Trash2 } from 'lucide-react'
-
-// Dummy Data
-const dummyBusinesses = [
-    { id: 1, name: "Ali's Cafe", category: "Dining", city: "Tripoli", healthScore: 92, shieldStatus: "Active", claimed: true },
-    { id: 2, name: "Ali Cafe (Duplicate)", category: "Dining", city: "Tripoli", healthScore: 45, shieldStatus: "Inactive", claimed: false },
-    { id: 3, name: "Zubaida Medical Clinic", category: "Medical", city: "Benghazi", healthScore: 88, shieldStatus: "Active", claimed: true },
-    { id: 4, name: "Tripoli Supermarket", category: "Retail", city: "Tripoli", healthScore: 76, shieldStatus: "Warning", claimed: true },
-    { id: 5, name: "Omar Auto Spare Parts", category: "Automotive", city: "Misrata", healthScore: 65, shieldStatus: "Inactive", claimed: false },
-]
+import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function BusinessRegistry() {
+    const { businesses, supabase, showToast } = useTagdeer()
     const [searchTerm, setSearchTerm] = useState('')
     const [isMergeMode, setIsMergeMode] = useState(false)
     const [selectedForMerge, setSelectedForMerge] = useState([])
@@ -44,13 +37,43 @@ export default function BusinessRegistry() {
         setMasterId(null)
     }
 
-    const completeMerge = () => {
-        // Logic to merge into masterId and delete the other
-        alert('Merge successful! Logs transferred and duplicate deleted.')
-        cancelMergeProcess()
+    const completeMerge = async () => {
+        if (selectedForMerge.length !== 2 || !masterId || !supabase) return;
+
+        const duplicateId = selectedForMerge.find(id => id !== masterId);
+
+        try {
+            // Optimistic deletion from context handles automatically when DB syncs via WebSockets
+            const { error } = await supabase.rpc('admin_merge_businesses', {
+                master_uuid: masterId,
+                duplicate_uuid: duplicateId
+            });
+
+            if (error) {
+                console.error("Merge error:", error);
+                showToast("Merge failed: Ensure you have admin privileges and migrations are applied.");
+                return;
+            }
+
+            showToast('Merge successful! Logs transferred and duplicate deleted.');
+            cancelMergeProcess();
+        } catch (err) {
+            console.error(err);
+            showToast("An unexpected error occurred during merge.");
+        }
     }
 
-    const filteredBusinesses = dummyBusinesses.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    const dynamicBusinesses = businesses.map(b => ({
+        id: b.id,
+        name: b.name,
+        category: b.category || 'Unknown',
+        city: b.region || 'Unknown',
+        healthScore: b.display_score || b.shadow_score || 0,
+        shieldStatus: b.shield_level === 2 ? 'Active' : (b.shield_level === 1 ? 'Warning' : 'Inactive'),
+        claimed: b.isClaimed
+    }));
+
+    const filteredBusinesses = dynamicBusinesses.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase()))
 
     return (
         <div className="animate-in fade-in duration-500">
@@ -130,8 +153,8 @@ export default function BusinessRegistry() {
                                                         onClick={() => toggleMergeSelection(business.id)}
                                                         disabled={mergeStep > 1 && !isSelected}
                                                         className={`w-6 h-6 rounded border flex items-center justify-center transition-colors ${isSelected
-                                                                ? 'bg-amber-500 border-amber-500 text-white'
-                                                                : 'bg-slate-900 border-slate-600 hover:border-amber-500 disabled:opacity-50 disabled:hover:border-slate-600'
+                                                            ? 'bg-amber-500 border-amber-500 text-white'
+                                                            : 'bg-slate-900 border-slate-600 hover:border-amber-500 disabled:opacity-50 disabled:hover:border-slate-600'
                                                             }`}
                                                     >
                                                         {isSelected && <Check className="w-4 h-4" />}
@@ -145,7 +168,7 @@ export default function BusinessRegistry() {
                                                         <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">Claimed</span>
                                                     )}
                                                 </div>
-                                                <div className="text-xs text-slate-500 mt-1">ID: #{business.id}1002</div>
+                                                <div className="text-xs text-slate-500 mt-1">ID: #{business.id.substring(0, 8)}</div>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="text-slate-300">{business.category}</div>
@@ -153,8 +176,8 @@ export default function BusinessRegistry() {
                                             </td>
                                             <td className="px-6 py-4 text-center">
                                                 <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full font-bold ${business.healthScore >= 80 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                                                        business.healthScore >= 50 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                                                            'bg-red-500/10 text-red-400 border border-red-500/20'
+                                                    business.healthScore >= 50 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                                                        'bg-red-500/10 text-red-400 border border-red-500/20'
                                                     }`}>
                                                     {business.healthScore}
                                                 </div>
@@ -233,7 +256,7 @@ export default function BusinessRegistry() {
 
                                 <div className="space-y-3">
                                     {selectedForMerge.map(id => {
-                                        const b = dummyBusinesses.find(x => x.id === id)
+                                        const b = dynamicBusinesses.find(x => x.id === id)
                                         const isMaster = masterId === id
                                         return (
                                             <div
@@ -245,8 +268,8 @@ export default function BusinessRegistry() {
                                                     }
                                                 }}
                                                 className={`p-3 rounded-lg border cursor-pointer transition-all ${isMaster
-                                                        ? 'border-amber-500 bg-amber-500/10'
-                                                        : 'border-slate-700 bg-slate-900/50 hover:border-slate-500'
+                                                    ? 'border-amber-500 bg-amber-500/10'
+                                                    : 'border-slate-700 bg-slate-900/50 hover:border-slate-500'
                                                     }`}
                                             >
                                                 <div className="font-medium text-white text-sm">{b.name}</div>

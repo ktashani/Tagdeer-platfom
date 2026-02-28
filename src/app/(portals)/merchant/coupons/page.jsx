@@ -8,9 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Gift, QrCode, Sparkles, MessageCircle, MoreVertical, Play, Pause, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
+import { useTagdeer } from '@/context/TagdeerContext';
+import { useEffect } from 'react';
 
 export default function CouponCommandCenter() {
+    const { user, businesses, supabase, showToast, lang } = useTagdeer();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [newCoupon, setNewCoupon] = useState({
         offerType: 'percentage', // percentage, fixed, free_item
         value: '',
@@ -20,39 +24,42 @@ export default function CouponCommandCenter() {
         expiryDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0] // Default to 1 month from now
     });
 
-    // Mock Active Campaigns (Now State)
-    const [campaigns, setCampaigns] = useState([
-        {
-            id: 1,
-            type: 'percentage',
-            value: '20',
-            rule: 'quota_pool',
-            total: 100,
-            remaining: 42,
-            status: 'active',
-            expiry: '2026-03-15'
-        },
-        {
-            id: 2,
-            type: 'free_item',
-            itemName: 'Free Dessert',
-            rule: 'resolution_only',
-            total: 50,
-            remaining: 48,
-            status: 'active',
-            expiry: '2026-12-31'
-        },
-        {
-            id: 3,
-            type: 'fixed',
-            value: '10',
-            rule: 'physical_scan',
-            total: 200,
-            remaining: 0,
-            status: 'exhausted',
-            expiry: '2026-02-28'
+    const [campaigns, setCampaigns] = useState([]);
+
+    const myBusiness = user && businesses ? businesses.find(b => b.owner_id === user?.id) : null;
+
+    useEffect(() => {
+        if (!user || !supabase || !myBusiness) {
+            setIsLoading(false);
+            return;
         }
-    ]);
+
+        const fetchCampaigns = async () => {
+            setIsLoading(true);
+            const { data, error } = await supabase
+                .from('merchant_coupons')
+                .select('*')
+                .eq('business_id', myBusiness.id)
+                .order('created_at', { ascending: false });
+
+            if (data) {
+                const mapped = data.map(c => ({
+                    id: c.id,
+                    type: c.offer_type,
+                    value: c.discount_value,
+                    itemName: c.item_name,
+                    rule: c.distribution_rule,
+                    total: c.initial_quantity,
+                    remaining: c.remaining_quantity,
+                    status: c.status,
+                    expiry: new Date(c.expiry_date).toISOString().split('T')[0]
+                }));
+                setCampaigns(mapped);
+            }
+            setIsLoading(false);
+        };
+        fetchCampaigns();
+    }, [user, supabase, myBusiness]);
 
     const getStatusBadge = (status) => {
         switch (status) {
@@ -89,26 +96,82 @@ export default function CouponCommandCenter() {
         return 'Offer';
     };
 
-    const handleCreateCoupon = (e) => {
+    const handleCreateCoupon = async (e) => {
         e.preventDefault();
 
-        // Add new campaign to list (Mocking Backend)
-        const newCampaign = {
-            id: Date.now(),
-            type: newCoupon.offerType,
-            value: newCoupon.value,
-            itemName: newCoupon.itemName,
-            rule: newCoupon.distributionRule,
-            total: parseInt(newCoupon.quantity) || 50,
-            remaining: parseInt(newCoupon.quantity) || 50,
-            status: 'active',
-            expiry: newCoupon.expiryDate
-        };
+        if (!supabase || !myBusiness || !user) {
+            showToast("Error: No business claimed or db missing");
+            return;
+        }
 
-        setCampaigns([newCampaign, ...campaigns]);
+        const qty = parseInt(newCoupon.quantity) || 50;
+        const discountVal = parseFloat(newCoupon.value) || null;
+
+        const { data, error } = await supabase.from('merchant_coupons').insert([{
+            business_id: myBusiness.id,
+            created_by: user.id,
+            offer_type: newCoupon.offerType,
+            discount_value: discountVal,
+            item_name: newCoupon.itemName || null,
+            initial_quantity: qty,
+            remaining_quantity: qty,
+            distribution_rule: newCoupon.distributionRule,
+            expiry_date: new Date(newCoupon.expiryDate).toISOString()
+        }]).select().single();
+
+        if (error) {
+            console.error("Failed to create coupon:", error);
+            showToast("Failed to create coupon");
+            return;
+        }
+
+        if (data) {
+            const newCampaign = {
+                id: data.id,
+                type: data.offer_type,
+                value: data.discount_value,
+                itemName: data.item_name,
+                rule: data.distribution_rule,
+                total: data.initial_quantity,
+                remaining: data.remaining_quantity,
+                status: data.status,
+                expiry: new Date(data.expiry_date).toISOString().split('T')[0]
+            };
+            setCampaigns([newCampaign, ...campaigns]);
+            showToast("Campaign launched successfully!");
+        }
 
         setIsCreateOpen(false);
     };
+
+    const toggleStatus = async (id, currentStatus) => {
+        if (!supabase) return;
+        const nextStatus = currentStatus === 'active' ? 'paused' : 'active';
+
+        // Optimistic UI update
+        setCampaigns(prev => prev.map(c => c.id === id ? { ...c, status: nextStatus } : c));
+
+        await supabase.from('merchant_coupons').update({ status: nextStatus }).eq('id', id);
+        showToast(`Campaign ${nextStatus}`);
+    };
+
+    const deleteCampaign = async (id) => {
+        if (!supabase) return;
+
+        // Optimistic UI update
+        setCampaigns(prev => prev.filter(c => c.id !== id));
+
+        await supabase.from('merchant_coupons').delete().eq('id', id);
+        showToast("Campaign deleted");
+    };
+
+    if (isLoading || user === undefined) {
+        return <div className="min-h-screen flex items-center justify-center">Loading Campaigns...</div>;
+    }
+
+    if (!myBusiness) {
+        return <div className="min-h-screen flex items-center justify-center text-slate-500">You must claim a business to create campaigns.</div>;
+    }
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8">
@@ -306,14 +369,14 @@ export default function CouponCommandCenter() {
                                 </div>
 
                                 <div className="grid grid-cols-2 border-t border-slate-100 dark:border-slate-800">
-                                    <button className="flex items-center justify-center py-3 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors border-r border-slate-100 dark:border-slate-800">
-                                        {campaign.status === 'paused' ? (
+                                    <button onClick={() => toggleStatus(campaign.id, campaign.status)} disabled={campaign.status === 'exhausted' || campaign.status === 'expired'} className="flex items-center justify-center py-3 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors border-r border-slate-100 dark:border-slate-800 disabled:opacity-50">
+                                        {campaign.status === 'paused' || campaign.status === 'exhausted' ? (
                                             <><Play className="w-4 h-4 mr-2" /> Resume</>
                                         ) : (
                                             <><Pause className="w-4 h-4 mr-2" /> Pause</>
                                         )}
                                     </button>
-                                    <button className="flex items-center justify-center py-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
+                                    <button onClick={() => deleteCampaign(campaign.id)} className="flex items-center justify-center py-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
                                         <Trash2 className="w-4 h-4 mr-2" /> Delete
                                     </button>
                                 </div>
