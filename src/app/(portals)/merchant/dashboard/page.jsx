@@ -5,13 +5,35 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, ThumbsUp, ThumbsDown, Activity, Ticket, ArrowUpRight, ArrowDownRight, QrCode, MessageSquare, Flag, Play, Pause, AlertCircle } from 'lucide-react';
+import { Search, ThumbsUp, ThumbsDown, Activity, Ticket, ArrowUpRight, ArrowDownRight, QrCode, MessageSquare, Flag, Play, Pause, AlertCircle, Clock, ShieldAlert, Store, AlertTriangle, Crown, Check } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { DisputeButtonLocked, MessageUserButtonLocked } from '@/components/merchant/LockedFeatureOverlay';
 import ScannerModal from '@/components/merchant/ScannerModal';
+import Link from 'next/link';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogTitle,
+} from "@/components/ui/dialog";
+
+// Define the 4 Possible Mock States
+const MOCK_STATES = {
+    ACTIVE: 'ACTIVE',
+    NO_BUSINESS: 'NO_BUSINESS',
+    NO_TIER: 'NO_TIER',
+    SUSPENDED: 'SUSPENDED',
+    PENDING_APPROVAL: 'PENDING_APPROVAL'
+};
 
 export default function MerchantDashboard() {
     const [isScannerOpen, setIsScannerOpen] = useState(false);
+
+    // ==========================================
+    // TOGGLE THIS VARIABLE TO TEST DIFFERENT UX STATES
+    // ==========================================
+    const currentMockState = MOCK_STATES.ACTIVE;
+    // ==========================================
 
     // Mock Data for Free Tier Dashboard
     const metrics = {
@@ -55,8 +77,134 @@ export default function MerchantDashboard() {
         { name: 'Free Dessert', redeemed: '100/100', status: 'Exhausted' },
     ];
 
+    // ==========================================
+    // RENDER: PENDING APPROVAL STATE
+    // ==========================================
+    if (currentMockState === MOCK_STATES.PENDING_APPROVAL) {
+        return (
+            <div className="h-[80vh] flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-500">
+                <div className="w-24 h-24 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-full flex items-center justify-center mb-6">
+                    <Clock className="w-12 h-12" />
+                </div>
+                <h2 className="text-3xl font-black mb-4">Account Pending Approval</h2>
+                <p className="text-slate-500 max-w-lg mx-auto text-lg mb-8">
+                    Your registration request and documents are currently under review by our admin team. You will be notified via email once approved and billing has been initiated.
+                </p>
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl w-full max-w-md shadow-sm text-left">
+                    <h3 className="font-bold mb-4 flex items-center gap-2"><Activity className="w-5 h-5 text-indigo-500" /> Account Status</h3>
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500">Verification Documents</span>
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-0">In Review</Badge>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                            <span className="text-slate-500">Subscription Setup</span>
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-0">Awaiting Invoice</Badge>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ==========================================
+    // RENDER: SUSPENDED STATE
+    // ==========================================
+    if (currentMockState === MOCK_STATES.SUSPENDED) {
+        return (
+            <div className="min-h-[80vh] flex flex-col items-center justify-center p-4">
+                <div className="bg-red-50 dark:bg-red-950/30 border-2 border-red-200 dark:border-red-900 rounded-3xl p-8 md:p-12 text-center max-w-2xl w-full shadow-2xl shadow-red-500/10 animate-in slide-in-from-bottom-4">
+                    <div className="w-20 h-20 bg-red-100 dark:bg-red-900 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <ShieldAlert className="w-10 h-10" />
+                    </div>
+                    <h2 className="text-3xl md:text-4xl font-black text-red-700 dark:text-red-500 mb-4">Account Suspended</h2>
+                    <p className="text-lg text-red-600/80 dark:text-red-400 mb-8 leading-relaxed">
+                        Your merchant account has been temporarily suspended due to a violation of our terms of service or a delay in subscription payment. You are currently locked out of your dashboard.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                        <Button className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-12 px-8 text-base">
+                            Pay Outstanding Balance
+                        </Button>
+                        <Button variant="outline" className="border-red-200 text-red-700 hover:bg-red-50 rounded-xl h-12 px-8 text-base">
+                            Contact Support
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ==========================================
+    // RENDER: NO BUSINESS CLAIMED STATE
+    // ==========================================
+    if (currentMockState === MOCK_STATES.NO_BUSINESS) {
+        return (
+            <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 text-center">
+                <div className="w-24 h-24 bg-blue-50 dark:bg-blue-900/40 text-blue-600 rounded-full flex items-center justify-center mb-8 border-4 border-white dark:border-slate-950 shadow-xl">
+                    <Store className="w-10 h-10" />
+                </div>
+                <h2 className="text-4xl font-black text-slate-900 dark:text-white mb-4">Welcome to Tagdeer!</h2>
+                <p className="text-xl text-slate-500 dark:text-slate-400 max-w-lg mx-auto mb-10">
+                    You have an active subscription, but you haven't brought your business onto the platform yet. Let's fix that.
+                </p>
+                <Link href="/merchant/onboarding">
+                    <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white rounded-full h-14 px-10 text-lg shadow-lg shadow-blue-600/20 font-bold">
+                        Start Your Business Claim Process <ArrowUpRight className="w-5 h-5 ml-2" />
+                    </Button>
+                </Link>
+            </div>
+        );
+    }
+
+    // ==========================================
+    // NORMAL ACTIVE DASHBOARD RENDER
+    // (NO_TIER state renders this but forces a modal over it)
+    // ==========================================
     return (
-        <div className="space-y-8 animate-in fade-in duration-300">
+        <div className="space-y-8 animate-in fade-in duration-300 relative">
+
+            {/* NO_TIER Modal Overlay */}
+            <Dialog open={currentMockState === MOCK_STATES.NO_TIER} onOpenChange={() => { }}>
+                <DialogContent className="max-w-4xl p-0 overflow-hidden bg-slate-50 dark:bg-slate-950 border-0 rounded-[2rem] shadow-2xl [&>button]:hidden">
+                    <div className="p-8 md:p-12 text-center border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                            <AlertTriangle className="w-8 h-8" />
+                        </div>
+                        <DialogTitle className="text-3xl font-black text-slate-900 dark:text-white mb-3">Power Up Your Account</DialogTitle>
+                        <DialogDescription className="text-lg text-slate-500 text-center">
+                            You need an active tier subscription to access the Tagdeer Merchant Platform. Please select a plan below to proceed to checkout and unlock your dashboard.
+                        </DialogDescription>
+                    </div>
+
+                    <div className="p-8 md:p-12 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 dark:bg-slate-950">
+                        {/* Tier 1 Box in Modal */}
+                        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 shadow-sm flex flex-col">
+                            <h3 className="text-2xl font-bold mb-4 text-slate-900 dark:text-white">Tier 1 (Base)</h3>
+                            <div className="text-4xl font-black mb-6 text-slate-900 dark:text-white">49 <span className="text-xl font-bold">LYD</span><span className="text-base font-normal text-slate-500">/mo</span></div>
+                            <ul className="space-y-4 mb-8 flex-1">
+                                <li className="flex items-center gap-3 text-slate-700 dark:text-slate-300"><Check className="w-5 h-5 text-emerald-500" /> <span>Manage 1 Location</span></li>
+                                <li className="flex items-center gap-3 text-slate-700 dark:text-slate-300"><Check className="w-5 h-5 text-emerald-500" /> <span>Accept Reviews</span></li>
+                            </ul>
+                            <Link href="/merchant/onboarding" className="w-full block">
+                                <Button className="w-full h-12 text-lg rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700 border-0">Select Base Plan</Button>
+                            </Link>
+                        </div>
+                        {/* Tier 2 Box in Modal */}
+                        <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-3xl border border-indigo-500 p-8 shadow-xl flex flex-col relative text-white">
+                            <div className="absolute top-0 right-6 -translate-y-1/2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-4 py-1 rounded-full text-xs font-bold flex items-center gap-1"><Crown className="w-3 h-3" /> PRO</div>
+                            <h3 className="text-2xl font-bold mb-4">Tier 2 (Pro)</h3>
+                            <div className="text-4xl font-black mb-6">99 <span className="text-xl font-bold">LYD</span><span className="text-base font-normal text-indigo-300">/mo</span></div>
+                            <ul className="space-y-4 mb-8 flex-1">
+                                <li className="flex items-center gap-3 text-white"><Check className="w-5 h-5 text-emerald-400" /> <span>Unlimited Locations</span></li>
+                                <li className="flex items-center gap-3 text-white"><Check className="w-5 h-5 text-emerald-400" /> <span>Team Management</span></li>
+                            </ul>
+                            <Link href="/merchant/onboarding" className="w-full block">
+                                <Button className="w-full h-12 text-lg rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-bold border-0">Select Pro Plan</Button>
+                            </Link>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* 1. Welcome & Search Bar */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
