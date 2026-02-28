@@ -281,6 +281,8 @@ export function TagdeerProvider({ children }) {
                             category: b.category,
                             recommends: b.recommends ?? derivedRecommends,
                             complains: b.complains ?? derivedComplains,
+                            shadow_score: b.shadow_score,
+                            display_score: b.display_score,
                             isShielded: b.is_shielded,
                             isClaimed: !!b.claimed_by,
                             shield_level: b.shield_level || 0,
@@ -320,7 +322,9 @@ export function TagdeerProvider({ children }) {
                                 isShielded: updatedBusiness.is_shielded,
                                 shield_level: updatedBusiness.shield_level || 0,
                                 recommends: updatedBusiness.recommends ?? b.recommends,
-                                complains: updatedBusiness.complains ?? b.complains
+                                complains: updatedBusiness.complains ?? b.complains,
+                                shadow_score: updatedBusiness.shadow_score,
+                                display_score: updatedBusiness.display_score
                             }
                             : b
                     ));

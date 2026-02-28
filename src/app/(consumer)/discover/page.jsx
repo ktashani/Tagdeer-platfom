@@ -108,9 +108,9 @@ export default function DiscoverRoute() {
 }
 
 function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook, expandedLogs, toggleLogs }) {
-    const { gaderIndex, rawRecommends, rawComplains } = calculateBusinessScore(business.logs || []);
+    const { rawRecommends, rawComplains } = calculateBusinessScore(business.logs || []);
     const totalVotes = rawRecommends + rawComplains;
-    const safeIndex = totalVotes === 0 ? 50 : (isNaN(gaderIndex) ? 50 : gaderIndex);
+    const safeIndex = business.display_score ?? (totalVotes === 0 ? 50 : 50);
     const avatarLetter = business.name ? business.name.charAt(0).toUpperCase() : '?';
 
     const getGradient = (category) => {
@@ -304,6 +304,29 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                     </div>
                 )}
             </div>
+
+            {/* Phase 5: The Veiled Gader FOMO Trigger */}
+            {!business.isClaimed && business.shadow_score > business.display_score && (
+                <div className="mt-4 mt-auto p-4 bg-gradient-to-r from-slate-900 to-blue-950 rounded-xl border border-blue-900 shadow-inner relative overflow-hidden group">
+                    <div className="absolute -right-10 top-1/2 -translate-y-1/2 opacity-10 blur-md pointer-events-none transition-all group-hover:blur-sm group-hover:opacity-20 text-7xl font-black text-white">
+                        {business.shadow_score}%
+                    </div>
+                    <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div>
+                            <h4 className="font-bold text-white flex items-center gap-2">
+                                <Zap className="w-4 h-4 text-yellow-400" />
+                                Unveil Your Gader
+                            </h4>
+                            <p className="text-xs text-blue-200 mt-1 max-w-[200px]">
+                                Your true score is an Excellent <strong className="text-white">{business.shadow_score}%</strong>. Claim this profile to remove the limit.
+                            </p>
+                        </div>
+                        <a href="/merchant/login" className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg whitespace-nowrap transition-colors">
+                            Claim Now
+                        </a>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }

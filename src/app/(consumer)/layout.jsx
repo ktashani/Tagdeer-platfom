@@ -70,6 +70,9 @@ export default function ClientLayout({ children }) {
         const fingerprint = getDeviceFingerprint();
         let weight = calculateVoteWeight(user, 0); // default for offline
 
+        const targetBusiness = businesses.find(b => b.id === businessId);
+        const isClaimed = targetBusiness?.isClaimed;
+
         if (supabase) {
             try {
                 // ── Step 1: 24-Hour Same-Business Cooldown ──────────────
@@ -185,10 +188,20 @@ export default function ClientLayout({ children }) {
         setTimeout(() => setImpactBubble(null), 2000);
 
         if (user) {
-            showToast(lang === 'ar' ? 'تم تسجيل تقييمك بنجاح!' : 'Vote logged successfully!');
+            if (!isClaimed) {
+                showToast(lang === 'ar'
+                    ? 'تم حفظ تقييمك في قبو الثقة. التقييم الحقيقي مقيد حالياً لأن صاحب العمل غائب.'
+                    : 'Your vote is saved in the Trust Vault. The public view is currently limited because the owner is absent.');
+            } else {
+                showToast(lang === 'ar' ? 'تم تسجيل تقييمك بنجاح!' : 'Vote logged successfully!');
+            }
         } else {
             const remaining = 3 - anonInteractions - 1;
-            showToast(`Successfully logged. (${remaining} anonymous logs remaining)`);
+            if (!isClaimed) {
+                showToast(`Saved to Trust Vault. (${remaining} anonymous logs remaining)`);
+            } else {
+                showToast(`Successfully logged. (${remaining} anonymous logs remaining)`);
+            }
         }
     };
 
