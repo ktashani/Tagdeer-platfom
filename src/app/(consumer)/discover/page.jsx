@@ -289,17 +289,13 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                 </button>
 
                 {expandedLogs[business.id] && (
-                    <div className="space-y-3 max-h-60 overflow-y-auto">
-                        {business.logs.map(log => (
-                            <div key={log.id} className="bg-slate-50 p-3 rounded-lg text-sm flex justify-between">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        {log.type === 'recommend' ? <ThumbsUp className="h-4 w-4 text-green-500" /> : <ThumbsDown className="h-4 w-4 text-red-500" />}
-                                        <span className="text-slate-400 text-xs">{log.date}</span>
-                                    </div>
-                                    <p className="text-slate-700">{log.text}</p>
-                                </div>
-                            </div>
+                    <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                        {[...business.logs].sort((a, b) => {
+                            const aScore = (a.helpful_votes || 0) - (a.unhelpful_votes || 0);
+                            const bScore = (b.helpful_votes || 0) - (b.unhelpful_votes || 0);
+                            return bScore - aScore;
+                        }).map(log => (
+                            <LogItem key={log.id} log={log} />
                         ))}
                     </div>
                 )}
@@ -328,5 +324,69 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                 </div>
             )}
         </div >
+    );
+}
+
+function LogItem({ log }) {
+    const { t, showToast } = useTagdeer();
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    // Fallbacks since our mock logs might not have these yet
+    const isVerifiedAuthor = log.is_verified_author ?? false;
+    const authorName = log.author_name || (log.profile_id ? 'VIP User' : 'Anonymous');
+    const textLimit = 150;
+    const isLong = log.text.length > textLimit;
+    const displayText = isExpanded ? log.text : log.text.substring(0, textLimit) + (isLong ? '...' : '');
+
+    const handleVote = (voteType) => {
+        showToast(t('vote_mock_toast', `Thanks! You voted ${voteType}. This will affect the author's Gader points.`));
+    };
+
+    return (
+        <div className="bg-slate-50 border border-slate-100 p-4 rounded-xl text-sm flex flex-col gap-2 relative">
+            <div className="flex justify-between items-start">
+                <div className="flex flex-col">
+                    <div className="flex items-center gap-2 mb-1">
+                        {log.type === 'recommend' ? <ThumbsUp className="h-4 w-4 text-green-500" /> : <ThumbsDown className="h-4 w-4 text-red-500" />}
+                        {isVerifiedAuthor && (
+                            <div className="flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 uppercase" title="Verified Tagdeer Consumer">
+                                <BadgeCheck className="w-3 h-3" /> VIP
+                            </div>
+                        )}
+                        <span className="text-slate-700 font-bold">{authorName}</span>
+                        <span className="text-slate-400 text-[10px] ml-2">{log.date}</span>
+                    </div>
+                </div>
+
+                {log.receipt_url && (
+                    <div className="flex items-center gap-1 bg-amber-50 text-amber-600 border border-amber-200 px-2 py-1 rounded text-[10px] font-bold" title="Verified Purchase">
+                        📎 Receipt Attached
+                    </div>
+                )}
+            </div>
+
+            <p className="text-slate-600 leading-relaxed mt-1">
+                {displayText}
+                {isLong && (
+                    <button onClick={() => setIsExpanded(!isExpanded)} className="text-blue-600 font-bold ml-1 hover:underline">
+                        {isExpanded ? t('show_less', 'Show Less') : t('see_more', 'See More')}
+                    </button>
+                )}
+            </p>
+
+            <div className="flex items-center gap-2 mt-2 pt-3 border-t border-slate-200">
+                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-2">Community</span>
+                <button onClick={() => handleVote('up')} className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-green-600 hover:bg-green-50 px-2 py-1.5 rounded transition-colors group">
+                    <ThumbsUp className="w-3.5 h-3.5 group-hover:fill-green-100" />
+                    <span className={log.helpful_votes > 0 ? "text-green-600" : ""}>{log.helpful_votes || 0}</span>
+                </button>
+                <div className="w-px h-3 bg-slate-200"></div>
+                <button onClick={() => handleVote('down')} className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-red-600 hover:bg-red-50 px-2 py-1.5 rounded transition-colors group">
+                    <ThumbsDown className="w-3.5 h-3.5 group-hover:fill-red-100" />
+                    <span className={log.unhelpful_votes > 0 ? "text-red-600" : ""}>{log.unhelpful_votes || 0}</span>
+                </button>
+                <span className="ml-auto text-xs text-slate-400 italic">Does this help?</span>
+            </div>
+        </div>
     );
 }
