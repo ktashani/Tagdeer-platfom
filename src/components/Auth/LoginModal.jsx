@@ -131,7 +131,12 @@ export function LoginModal() {
 
         setIsLoading(true);
         try {
-            const { error: otpError } = await supabase.auth.signInWithOtp({ email });
+            const { error: otpError } = await supabase.auth.signInWithOtp({
+                email,
+                options: {
+                    emailRedirectTo: `${window.location.origin}/auth/callback`
+                }
+            });
 
             if (otpError) {
                 setError(otpError.message || (lang === 'ar' ? 'فشل إرسال الرمز' : 'Failed to send code'));

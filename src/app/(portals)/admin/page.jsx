@@ -1,3 +1,6 @@
+import Link from 'next/link'
+import { AlertTriangle, AlertCircle, ArrowRight, TrendingUp, Users, DollarSign, Activity, CheckCircle2 } from 'lucide-react'
+
 export default function AdminDashboard() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -5,95 +8,151 @@ export default function AdminDashboard() {
             {/* Header Section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-white tracking-tight">System Overview</h1>
-                    <p className="text-slate-400 mt-1">Monitor Tagdeer platform health and metrics.</p>
+                    <h1 className="text-3xl font-bold text-white tracking-tight">The Pulse</h1>
+                    <p className="text-slate-400 mt-1">High-level view of Tagdeer's platform health.</p>
                 </div>
                 <div className="flex items-center space-x-3 bg-slate-800/50 backdrop-blur-sm px-4 py-2 rounded-full border border-slate-700/50">
                     <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <span className="text-sm font-medium text-slate-300">All Systems Operational</span>
+                    <span className="text-sm font-medium text-slate-300">Operations Normal</span>
                 </div>
             </div>
 
-            {/* Quick Stats Grid */}
+            {/* TOP: High-Level Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-
-                {/* Stat Card 1 */}
                 <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-medium text-slate-400">Total Users</h3>
-                        <svg className="w-5 h-5 text-emerald-400 opacity-80 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                        <h3 className="text-sm font-medium text-slate-400">Monthly Revenue (MRR)</h3>
+                        <DollarSign className="w-5 h-5 text-emerald-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <div className="text-3xl font-bold text-white">12,450</div>
-                    <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">+12% this month</div>
+                    <div className="text-3xl font-bold text-white">24,500 <span className="text-lg text-slate-500">LYD</span></div>
+                    <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">+15% this month</div>
                 </div>
 
-                {/* Stat Card 2 */}
                 <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-medium text-slate-400">Active Merchants</h3>
-                        <svg className="w-5 h-5 text-blue-400 opacity-80 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                        <h3 className="text-sm font-medium text-slate-400">Total VIP Users</h3>
+                        <Users className="w-5 h-5 text-purple-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <div className="text-3xl font-bold text-white">842</div>
-                    <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">+5% this month</div>
+                    <div className="text-3xl font-bold text-white">4,280</div>
+                    <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">+8% new upgrades</div>
                 </div>
 
-                {/* Stat Card 3 */}
                 <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-medium text-slate-400">Live Campaigns</h3>
-                        <svg className="w-5 h-5 text-purple-400 opacity-80 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"></path></svg>
+                        <h3 className="text-sm font-medium text-slate-400">Coupon Burn Rate</h3>
+                        <Activity className="w-5 h-5 text-blue-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <div className="text-3xl font-bold text-white">1,204</div>
-                    <div className="mt-2 text-xs font-medium text-slate-400 bg-slate-700/50 inline-block px-2 py-1 rounded-md">Coupons allocated</div>
+                    <div className="text-3xl font-bold text-white">1,240 <span className="text-lg text-slate-500">/day</span></div>
+                    <div className="mt-2 text-xs font-medium text-amber-400 bg-amber-400/10 inline-block px-2 py-1 rounded-md">High usage rate</div>
                 </div>
 
-                {/* Stat Card 4 */}
                 <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-medium text-slate-400">Pending Actions</h3>
-                        <svg className="w-5 h-5 text-amber-400 opacity-80 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                        <h3 className="text-sm font-medium text-slate-400">System Health Score</h3>
+                        <TrendingUp className="w-5 h-5 text-emerald-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <div className="text-3xl font-bold text-white">28</div>
-                    <div className="mt-2 text-xs font-medium text-amber-400 bg-amber-400/10 inline-block px-2 py-1 rounded-md">Action required</div>
+                    <div className="text-3xl font-bold text-white">98.4<span className="text-lg font-normal text-slate-500">%</span></div>
+                    <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">Optimal Performance</div>
                 </div>
-
             </div>
 
-            {/* Recent Activity Table */}
-            <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden mt-8">
+            {/* MIDDLE: Operational Tasks (Action Required) */}
+            <h2 className="text-xl font-semibold text-white mt-12 mb-4 border-b border-slate-800 pb-2">Operational Tasks</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Pending Claims */}
+                <div className="bg-slate-800/30 border border-amber-500/20 rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                    <div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="p-2 bg-amber-500/10 rounded-lg">
+                                <AlertTriangle className="w-5 h-5 text-amber-400" />
+                            </div>
+                            <h3 className="text-lg font-medium text-white">Pending Business Claims</h3>
+                        </div>
+                        <p className="text-slate-400 text-sm mb-6 pl-12">There are new businesses waiting to be verified before they can access the Merchant Portal.</p>
+                        <div className="pl-12">
+                            <span className="text-4xl font-bold text-white">12</span>
+                            <span className="text-slate-500 ml-2">claims require review</span>
+                        </div>
+                    </div>
+                    <div className="mt-6 pt-6 border-t border-slate-700/50 pl-12">
+                        <Link href="/requests" className="inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium border border-slate-700">
+                            Review Claims
+                            <ArrowRight className="w-4 h-4" />
+                        </Link>
+                    </div>
+                </div>
+
+                {/* Open Disputes */}
+                <div className="bg-slate-800/30 border border-red-500/20 rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                    <div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="p-2 bg-red-500/10 rounded-lg">
+                                <AlertCircle className="w-5 h-5 text-red-400" />
+                            </div>
+                            <h3 className="text-lg font-medium text-white">Open Receipt Disputes</h3>
+                        </div>
+                        <p className="text-slate-400 text-sm mb-6 pl-12">Urgent unhandled disputes from merchants regarding user-uploaded receipts.</p>
+                        <div className="pl-12">
+                            <span className="text-4xl font-bold text-white">5</span>
+                            <span className="text-slate-500 ml-2">disputes are waiting</span>
+                        </div>
+                    </div>
+                    <div className="mt-6 pt-6 border-t border-slate-700/50 pl-12">
+                        <Link href="/disputes" className="inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium border border-slate-700">
+                            Resolve Disputes
+                            <ArrowRight className="w-4 h-4" />
+                        </Link>
+                    </div>
+                </div>
+            </div>
+
+            {/* BOTTOM: Monitoring Lists */}
+            <h2 className="text-xl font-semibold text-white mt-12 mb-4 border-b border-slate-800 pb-2">Real-Time Registry Log</h2>
+            <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden">
                 <div className="p-6 border-b border-slate-700/50 flex justify-between items-center">
-                    <h2 className="text-lg font-semibold text-white">Recent Store Claims</h2>
-                    <button className="text-sm text-emerald-400 hover:text-emerald-300 font-medium transition-colors">View All</button>
+                    <h3 className="text-lg font-medium text-white">Recent Store Approvals</h3>
+                    <Link href="/businesses" className="text-sm text-emerald-400 hover:text-emerald-300 font-medium transition-colors">View All Directory</Link>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm text-slate-400">
                         <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50">
                             <tr>
                                 <th scope="col" className="px-6 py-4 font-medium text-slate-300">Business Name</th>
-                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Requested By</th>
-                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Date</th>
+                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Category</th>
+                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Location</th>
                                 <th scope="col" className="px-6 py-4 font-medium text-slate-300">Status</th>
                                 <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-right">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
-                                <td className="px-6 py-4 font-medium text-white">Starbucks - Riyadh Front</td>
-                                <td className="px-6 py-4">ahmed@example.com</td>
-                                <td className="px-6 py-4">Today, 10:42 AM</td>
-                                <td className="px-6 py-4"><span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">Pending</span></td>
+                                <td className="px-6 py-4 font-medium text-white">Zubaida Medical Clinic</td>
+                                <td className="px-6 py-4">Medical</td>
+                                <td className="px-6 py-4">Benghazi</td>
+                                <td className="px-6 py-4">
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Verified
+                                    </span>
+                                </td>
                                 <td className="px-6 py-4 text-right">
-                                    <button className="text-emerald-400 hover:text-emerald-300 font-medium mr-4">Approve</button>
-                                    <button className="text-slate-500 hover:text-slate-400 font-medium">Reject</button>
+                                    <Link href="/businesses/edit" className="text-slate-500 hover:text-slate-300 font-medium">Manage</Link>
                                 </td>
                             </tr>
                             <tr className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
-                                <td className="px-6 py-4 font-medium text-white">Zara Menswear</td>
-                                <td className="px-6 py-4">sara@zara.com</td>
-                                <td className="px-6 py-4">Yesterday, 4:15 PM</td>
-                                <td className="px-6 py-4"><span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Approved</span></td>
+                                <td className="px-6 py-4 font-medium text-white">Tripoli Supermarket</td>
+                                <td className="px-6 py-4">Retail</td>
+                                <td className="px-6 py-4">Tripoli - Hay Al-Andalus</td>
+                                <td className="px-6 py-4">
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Verified
+                                    </span>
+                                </td>
                                 <td className="px-6 py-4 text-right">
-                                    <button className="text-slate-500 hover:text-slate-400 font-medium">Details</button>
+                                    <Link href="/businesses/edit" className="text-slate-500 hover:text-slate-300 font-medium">Manage</Link>
                                 </td>
                             </tr>
                         </tbody>

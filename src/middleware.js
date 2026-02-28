@@ -16,6 +16,7 @@ export const config = {
 export async function middleware(request) {
     const url = request.nextUrl
     const hostname = request.headers.get('host') || ''
+    const pathname = request.nextUrl.pathname
 
     // Define the main app domain (handle both localhost and production)
     const isLocalhost = hostname.includes('localhost') || hostname.includes('127.0.0.1')
@@ -37,21 +38,42 @@ export async function middleware(request) {
         }
     }
 
-    const res = NextResponse.next()
-
     // Routing Logic
     // 1. Admin Subdomain
     if (currentHost === 'admin') {
-        const newUrl = new URL(`/admin${url.pathname}`, request.url)
+        // Exclude system paths, static files, and api from auth check
+        if (!pathname.startsWith('/_next') && !pathname.includes('api')) {
+            const authCookie = request.cookies.get('admin_auth');
+            const isAuthenticated = authCookie && authCookie.value === 'true';
+
+            // Redirect to login if not authenticated and trying to access protected route
+            if (!isAuthenticated && pathname !== '/login') {
+                const loginUrl = request.nextUrl.clone();
+                loginUrl.pathname = '/login';
+                return NextResponse.redirect(loginUrl);
+            }
+
+            // Redirect to dashboard if authenticated and trying to access login
+            if (isAuthenticated && pathname === '/login') {
+                const dashboardUrl = request.nextUrl.clone();
+                dashboardUrl.pathname = '/';
+                return NextResponse.redirect(dashboardUrl);
+            }
+        }
+
+        // Ensure we don't double prefix if the path already starts with /admin
+        const newPath = pathname.startsWith('/admin') ? pathname : `/admin${pathname}`
+        const newUrl = new URL(newPath, request.url)
         return NextResponse.rewrite(newUrl)
     }
 
     // 2. Merchant Subdomain
     if (currentHost === 'merchant' || currentHost === 'business') {
-        const newUrl = new URL(`/merchant${url.pathname}`, request.url)
+        const newPath = pathname.startsWith('/merchant') ? pathname : `/merchant${pathname}`
+        const newUrl = new URL(newPath, request.url)
         return NextResponse.rewrite(newUrl)
     }
 
     // 3. Main App (www or root) -> proceeds normally
-    return res
+    return NextResponse.next()
 }

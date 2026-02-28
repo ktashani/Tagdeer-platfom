@@ -14,7 +14,8 @@ export default function PortalsLayout({ children }) {
     // If so, we hide the heavy top navigation to keep the user focused.
     const isOnboarding = pathname?.includes('/onboarding');
     const isLogin = pathname?.includes('/login');
-    const hideNav = isOnboarding || isLogin;
+    const isAdmin = pathname?.startsWith('/admin');
+    const hideNav = isOnboarding || isLogin || isAdmin;
 
     return (
         <div className={`min-h-screen flex flex-col font-sans bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 ${isRTL ? 'text-right' : 'text-left'}`} dir={isRTL ? 'rtl' : 'ltr'}>
