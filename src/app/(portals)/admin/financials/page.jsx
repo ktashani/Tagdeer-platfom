@@ -1,52 +1,75 @@
+'use client';
 'use client'
 
-import { useState } from 'react'
-import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, DollarSign, ExternalLink, ShieldCheck } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, DollarSign, ExternalLink, ShieldCheck, Loader2 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-
-// Dummy Data
-const dummyTransfers = [
-    {
-        id: 'TXN-001',
-        business: "Ali's Cafe",
-        ownerEmail: "ali@alicafe.ly",
-        requestedTier: "Tier 1",
-        amount: "50 LYD",
-        duration: "30 Days",
-        paymentMethod: "SadaPay",
-        date: "Today, 10:15 AM",
-        screenshotUrl: "/placeholder-receipt.jpg",
-        status: "pending"
-    },
-    {
-        id: 'TXN-002',
-        business: "Zubaida Medical Clinic",
-        ownerEmail: "admin@zubaida.com",
-        requestedTier: "Tier 2",
-        amount: "150 LYD",
-        duration: "90 Days",
-        paymentMethod: "Bank Transfer",
-        date: "Yesterday, 4:30 PM",
-        screenshotUrl: "/placeholder-receipt.jpg",
-        status: "pending"
-    }
-]
-
-const dummySubscriptions = [
-    { id: 1, business: "Tripoli Supermarket", tier: "Tier 2", expires: "2026-03-15", status: "Active", autoRenew: false },
-    { id: 2, business: "Omar Auto Spare Parts", tier: "Tier 1", expires: "2026-03-01", status: "Expiring Soon", autoRenew: true },
-]
+import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function FinancialsPage() {
-    const [transfers, setTransfers] = useState(dummyTransfers)
+    const { supabase, showToast } = useTagdeer()
+    const [transfers, setTransfers] = useState([])
+    const [subscriptions, setSubscriptions] = useState([])
+    const [isLoading, setIsLoading] = useState(true)
+
     const [selectedTxn, setSelectedTxn] = useState(null)
     const [activeTab, setActiveTab] = useState('queue') // queue, subs, reports
+    const [isConfirming, setIsConfirming] = useState(false)
 
-    const handleConfirmPayment = (id) => {
-        alert("Payment Confirmed. Business upgraded to requested tier.")
-        setTransfers(transfers.filter(t => t.id !== id))
-        setSelectedTxn(null)
+    useEffect(() => {
+        if (!supabase) return;
+
+        const fetchData = async () => {
+            setIsLoading(true)
+            const [txnData, subData] = await Promise.all([
+                supabase.from('transactions').select('*, businesses(name), profiles(email)').eq('status', 'pending').order('created_at', { ascending: false }),
+                supabase.from('subscriptions').select('*, businesses(name)').order('expires_at', { ascending: true })
+            ])
+
+            if (txnData.data) {
+                setTransfers(txnData.data.map(t => ({
+                    id: t.id,
+                    business: t.businesses?.name || 'Unknown',
+                    ownerEmail: t.profiles?.email || 'Unknown',
+                    requestedTier: t.requested_tier,
+                    amount: `${t.amount} LYD`,
+                    duration: t.duration,
+                    paymentMethod: t.payment_method,
+                    date: new Date(t.created_at).toLocaleDateString(),
+                    screenshotUrl: t.screenshot_url || "https://placehold.co/400x600?text=No+Receipt",
+                    status: t.status
+                })))
+            }
+            if (subData.data) {
+                setSubscriptions(subData.data.map(s => ({
+                    id: s.id,
+                    business: s.businesses?.name || 'Unknown',
+                    tier: s.tier,
+                    expires: new Date(s.expires_at).toLocaleDateString(),
+                    status: s.status,
+                    autoRenew: s.auto_renew
+                })))
+            }
+            setIsLoading(false)
+        }
+        fetchData()
+    }, [supabase])
+
+    const handleConfirmPayment = async (id) => {
+        setIsConfirming(true);
+        const { error } = await supabase.rpc('admin_confirm_payment', { p_txn_id: id });
+
+        if (error) {
+            console.error(error);
+            showToast("Failed to confirm payment.", "error");
+        } else {
+            showToast("Payment Confirmed. Business upgraded to requested tier.");
+            setTransfers(transfers.filter(t => t.id !== id));
+            setSelectedTxn(null);
+        }
+        setIsConfirming(false);
     }
+
 
     return (
         <div className="animate-in fade-in duration-500 min-h-[calc(100vh-8rem)] flex flex-col">
@@ -92,13 +115,17 @@ export default function FinancialsPage() {
                                 <h3 className="font-semibold text-white">Pending Upgrade Requests</h3>
                             </div>
                             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                                {transfers.map(txn => (
+                                {isLoading ? (
+                                    <div className="text-center p-8 text-slate-500 flex justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div>
+                                ) : transfers.length === 0 ? (
+                                    <div className="text-center p-8 text-slate-500">No pending transfers.</div>
+                                ) : transfers.map(txn => (
                                     <div
                                         key={txn.id}
                                         onClick={() => setSelectedTxn(txn)}
                                         className={`p-4 rounded-xl border cursor-pointer transition-all duration-200 ${selectedTxn?.id === txn.id
-                                                ? 'bg-slate-700 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.1)]'
-                                                : 'bg-slate-900/50 border-slate-700/50 hover:border-slate-600 hover:bg-slate-800/50'
+                                            ? 'bg-slate-700 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.1)]'
+                                            : 'bg-slate-900/50 border-slate-700/50 hover:border-slate-600 hover:bg-slate-800/50'
                                             }`}
                                     >
                                         <div className="flex justify-between items-start mb-2">
@@ -110,11 +137,9 @@ export default function FinancialsPage() {
                                             <span className="bg-slate-800 px-2 py-1 rounded">{txn.paymentMethod}</span>
                                             <span>{txn.date}</span>
                                         </div>
+                                        <span className="text-xs text-slate-500 mt-2 block">{txn.id}</span>
                                     </div>
                                 ))}
-                                {transfers.length === 0 && (
-                                    <div className="text-center p-8 text-slate-500">No pending transfers.</div>
-                                )}
                             </div>
                         </div>
 
@@ -159,9 +184,10 @@ export default function FinancialsPage() {
                                         </h4>
                                         <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 aspect-[3/4] max-h-80 mx-auto flex flex-col items-center justify-center relative overflow-hidden group">
                                             <div className="absolute inset-0 bg-slate-800 flex flex-col items-center justify-center opacity-70">
-                                                <ImageIcon className="w-12 h-12 text-slate-600 mb-2" />
-                                                <span className="text-sm text-slate-400">Transaction Screenshot</span>
+                                                <ImageIcon className="w-12 h-12 text-slate-600 mb-2 z-10" />
+                                                <span className="text-sm text-slate-400 z-10">Transaction Screenshot</span>
                                             </div>
+                                            <img src={selectedTxn.screenshotUrl} alt="Receipt" className="absolute inset-0 w-full h-full object-cover mix-blend-overlay" />
                                         </div>
                                     </div>
 
@@ -198,7 +224,9 @@ export default function FinancialsPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {dummySubscriptions.map(sub => (
+                                    {isLoading ? (
+                                        <tr><td colSpan="5" className="px-6 py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" /></td></tr>
+                                    ) : subscriptions.map(sub => (
                                         <tr key={sub.id} className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
                                             <td className="px-6 py-4 font-medium text-white">{sub.business}</td>
                                             <td className="px-6 py-4 font-bold text-emerald-400">{sub.tier}</td>
@@ -214,6 +242,9 @@ export default function FinancialsPage() {
                                             </td>
                                         </tr>
                                     ))}
+                                    {!isLoading && subscriptions.length === 0 && (
+                                        <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-500">No active subscriptions.</td></tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>

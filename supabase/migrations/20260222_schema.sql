@@ -59,6 +59,21 @@ CREATE TABLE IF NOT EXISTS business_claims (
     UNIQUE(business_id, user_id)
 );
 
+-- ==========================================
+-- Safe Fallback: Add missing columns if tables already existed from earlier manual MVP phase
+-- ==========================================
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'Manual';
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS external_url TEXT;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS is_shielded BOOLEAN DEFAULT FALSE;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS claimed_by UUID REFERENCES auth.users(id);
+
+ALTER TABLE interactions ADD COLUMN IF NOT EXISTS receipt_url TEXT;
+ALTER TABLE interactions ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
+ALTER TABLE interactions ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES auth.users(id);
+
+ALTER TABLE verified_users ADD COLUMN IF NOT EXISTS is_business_owner BOOLEAN DEFAULT FALSE;
+
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_businesses_region ON businesses(region);
 CREATE INDEX IF NOT EXISTS idx_businesses_category ON businesses(category);

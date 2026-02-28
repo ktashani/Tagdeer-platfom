@@ -1,4 +1,5 @@
 'use client';
+'use client';
 
 import React from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';

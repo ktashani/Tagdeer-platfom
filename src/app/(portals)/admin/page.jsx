@@ -1,7 +1,79 @@
+'use client';
 import Link from 'next/link'
-import { AlertTriangle, AlertCircle, ArrowRight, TrendingUp, Users, DollarSign, Activity, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { AlertTriangle, AlertCircle, ArrowRight, TrendingUp, Users, DollarSign, Activity, CheckCircle2, Loader2 } from 'lucide-react'
+import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function AdminDashboard() {
+    const { supabase, businesses } = useTagdeer()
+    const [stats, setStats] = useState({
+        mrr: 0,
+        vipUsers: 0,
+        pendingClaims: 0,
+        openDisputes: 0
+    })
+    const [recentApprovals, setRecentApprovals] = useState([])
+    const [isLoading, setIsLoading] = useState(true)
+
+    useEffect(() => {
+        if (!supabase) return;
+
+        const loadStats = async () => {
+            try {
+                // Fetch VIP users count
+                const { count: vipCount } = await supabase
+                    .from('profiles')
+                    .select('*', { count: 'exact', head: true })
+                    .gt('gader', 1000)
+
+                // Fetch pending claims count
+                const { count: claimsCount } = await supabase
+                    .from('business_claims')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('status', 'pending')
+
+                // Fetch pending disputes
+                const { count: disputesCount } = await supabase
+                    .from('disputes')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('status', 'pending_admin_review')
+
+                // MRR Approximation based on Shield Levels (1 = 20 LYD, 2 = 50 LYD)
+                let calculatedMrr = 0;
+                let topApprovals = [];
+                if (businesses) {
+                    calculatedMrr = businesses.reduce((acc, curr) => {
+                        if (curr.shield_level === 2) return acc + 50;
+                        if (curr.shield_level === 1) return acc + 20;
+                        return acc;
+                    }, 0);
+
+                    // Grab newest claimed businesses for the table
+                    topApprovals = [...businesses]
+                        .filter(b => b.isClaimed)
+                        .slice(0, 5); // Just top 5
+                }
+
+                setStats({
+                    mrr: calculatedMrr,
+                    vipUsers: vipCount || 0,
+                    pendingClaims: claimsCount || 0,
+                    openDisputes: disputesCount || 0
+                });
+                setRecentApprovals(topApprovals);
+
+            } catch (error) {
+                console.error("Dashboard Aggregation Error", error)
+            } finally {
+                setIsLoading(false)
+            }
+        }
+        loadStats()
+    }, [supabase, businesses])
+
+    if (isLoading) {
+        return <div className="min-h-[60vh] flex items-center justify-center text-slate-400 gap-3"><Loader2 className="w-6 h-6 animate-spin" /> Loading Pulse...</div>
+    }
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
 
@@ -24,7 +96,7 @@ export default function AdminDashboard() {
                         <h3 className="text-sm font-medium text-slate-400">Monthly Revenue (MRR)</h3>
                         <DollarSign className="w-5 h-5 text-emerald-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <div className="text-3xl font-bold text-white">24,500 <span className="text-lg text-slate-500">LYD</span></div>
+                    <div className="text-3xl font-bold text-white">{stats.mrr} <span className="text-lg text-slate-500">LYD</span></div>
                     <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">+15% this month</div>
                 </div>
 
@@ -33,7 +105,7 @@ export default function AdminDashboard() {
                         <h3 className="text-sm font-medium text-slate-400">Total VIP Users</h3>
                         <Users className="w-5 h-5 text-purple-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <div className="text-3xl font-bold text-white">4,280</div>
+                    <div className="text-3xl font-bold text-white">{stats.vipUsers}</div>
                     <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">+8% new upgrades</div>
                 </div>
 
@@ -71,7 +143,7 @@ export default function AdminDashboard() {
                         </div>
                         <p className="text-slate-400 text-sm mb-6 pl-12">There are new businesses waiting to be verified before they can access the Merchant Portal.</p>
                         <div className="pl-12">
-                            <span className="text-4xl font-bold text-white">12</span>
+                            <span className="text-4xl font-bold text-white">{stats.pendingClaims}</span>
                             <span className="text-slate-500 ml-2">claims require review</span>
                         </div>
                     </div>
@@ -95,7 +167,7 @@ export default function AdminDashboard() {
                         </div>
                         <p className="text-slate-400 text-sm mb-6 pl-12">Urgent unhandled disputes from merchants regarding user-uploaded receipts.</p>
                         <div className="pl-12">
-                            <span className="text-4xl font-bold text-white">5</span>
+                            <span className="text-4xl font-bold text-white">{stats.openDisputes}</span>
                             <span className="text-slate-500 ml-2">disputes are waiting</span>
                         </div>
                     </div>
@@ -127,34 +199,27 @@ export default function AdminDashboard() {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
-                                <td className="px-6 py-4 font-medium text-white">Zubaida Medical Clinic</td>
-                                <td className="px-6 py-4">Medical</td>
-                                <td className="px-6 py-4">Benghazi</td>
-                                <td className="px-6 py-4">
-                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                        <CheckCircle2 className="w-3.5 h-3.5" />
-                                        Verified
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <Link href="/businesses/edit" className="text-slate-500 hover:text-slate-300 font-medium">Manage</Link>
-                                </td>
-                            </tr>
-                            <tr className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
-                                <td className="px-6 py-4 font-medium text-white">Tripoli Supermarket</td>
-                                <td className="px-6 py-4">Retail</td>
-                                <td className="px-6 py-4">Tripoli - Hay Al-Andalus</td>
-                                <td className="px-6 py-4">
-                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                        <CheckCircle2 className="w-3.5 h-3.5" />
-                                        Verified
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <Link href="/businesses/edit" className="text-slate-500 hover:text-slate-300 font-medium">Manage</Link>
-                                </td>
-                            </tr>
+                            {recentApprovals.map(business => (
+                                <tr key={business.id} className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
+                                    <td className="px-6 py-4 font-medium text-white">{business.name}</td>
+                                    <td className="px-6 py-4">{business.category || 'Unknown'}</td>
+                                    <td className="px-6 py-4">{business.region || 'Unknown'}</td>
+                                    <td className="px-6 py-4">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                            Verified
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <Link href="/businesses" className="text-slate-500 hover:text-slate-300 font-medium">Manage</Link>
+                                    </td>
+                                </tr>
+                            ))}
+                            {recentApprovals.length === 0 && (
+                                <tr>
+                                    <td colSpan="5" className="px-6 py-8 text-center text-slate-500">No verified businesses yet.</td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>

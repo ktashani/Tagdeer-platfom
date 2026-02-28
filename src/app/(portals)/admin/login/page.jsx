@@ -1,13 +1,16 @@
-'use client'
+'use client';
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { loginAdmin } from '@/actions/adminAuth'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function AdminLogin() {
-    const router = useRouter()
+    const searchParams = useSearchParams()
+    const { setUser } = useTagdeer()
     const [username, setUsername] = useState('')
     const [password, setPassword] = useState('')
     const [isLoading, setIsLoading] = useState(false)
@@ -22,8 +25,21 @@ export default function AdminLogin() {
             const formData = new FormData()
             const result = await loginAdmin(username, password)
             if (result.success) {
-                // Force a hard navigation to refresh middleware state
-                window.location.href = '/'
+                // If using demo bypass, sync user state for guards
+                if (username === 'admin') {
+                    const mockUser = {
+                        username: 'admin',
+                        role: 'admin',
+                        full_name: 'System Admin'
+                    };
+                    setUser(mockUser);
+                    // Manually persist to localStorage immediately
+                    localStorage.setItem('tagdeer-user', JSON.stringify(mockUser));
+                }
+
+                // Redirect to intended page or admin dashboard
+                const redirectPath = searchParams.get('redirect') || '/admin'
+                window.location.href = redirectPath
             } else {
                 setError(result.error || 'Authentication failed')
                 setIsLoading(false)

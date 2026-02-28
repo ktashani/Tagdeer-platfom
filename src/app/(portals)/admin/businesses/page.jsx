@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 import { useState } from 'react'
 import { Search, Filter, Shield, ShieldAlert, Combine, SearchCheck, Check, Info, Trash2 } from 'lucide-react'

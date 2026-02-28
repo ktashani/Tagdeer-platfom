@@ -77,6 +77,7 @@ export function TagdeerProvider({ children }) {
 
     // Authentication State — starts as undefined (loading/SSR-safe)
     const [user, setUser] = useState(undefined);
+    const [loading, setLoading] = useState(true);
     const [showLoginModal, setShowLoginModal] = useState(false);
 
     // Restore user from localStorage on client mount
@@ -90,6 +91,8 @@ export function TagdeerProvider({ children }) {
             }
         } catch {
             setUser(null);
+        } finally {
+            setLoading(false);
         }
     }, []);
 
@@ -173,6 +176,7 @@ export function TagdeerProvider({ children }) {
                     city: profile.city,
                     gender: profile.gender,
                     birth_date: profile.birth_date,
+                    role: profile.role,
                     isDevBypass: process.env.NODE_ENV === 'development',
                 });
                 setShowLoginModal(false);
@@ -245,6 +249,7 @@ export function TagdeerProvider({ children }) {
             city: data.profile.city,
             gender: data.profile.gender,
             birth_date: data.profile.birth_date,
+            role: data.profile.role,
             isDevBypass: false,
         });
 
@@ -306,7 +311,9 @@ export function TagdeerProvider({ children }) {
                                     text: log.reason_text || (log.interaction_type === 'recommend' ? 'User recommended' : 'User complained'),
                                     date: new Date(log.created_at).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US'),
                                     trust_points: log.trust_points || null,
-                                    is_verified: log.is_verified || false
+                                    is_verified: log.is_verified || false,
+                                    helpful_votes: log.helpful_votes || 0,
+                                    unhelpful_votes: log.unhelpful_votes || 0
                                 }))
                         };
                     });
@@ -342,8 +349,49 @@ export function TagdeerProvider({ children }) {
                 })
                 .subscribe();
 
+            const logChannel = supabase
+                .channel('public:logs')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'logs' }, (payload) => {
+                    if (payload.eventType === 'UPDATE') {
+                        const updatedLog = payload.new;
+                        setBusinesses(prev => prev.map(b => ({
+                            ...b,
+                            logs: b.logs.map(log => log.id === updatedLog.id ? {
+                                ...log,
+                                helpful_votes: updatedLog.helpful_votes,
+                                unhelpful_votes: updatedLog.unhelpful_votes
+                            } : log)
+                        })));
+                    } else if (payload.eventType === 'INSERT') {
+                        const newLog = payload.new;
+                        setBusinesses(prev => prev.map(b => {
+                            if (b.id === newLog.business_id) {
+                                return {
+                                    ...b,
+                                    logs: [
+                                        {
+                                            id: newLog.id,
+                                            type: newLog.interaction_type,
+                                            text: newLog.reason_text || (newLog.interaction_type === 'recommend' ? 'User recommended' : 'User complained'),
+                                            date: new Date(newLog.created_at).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US'),
+                                            trust_points: newLog.trust_points || null,
+                                            is_verified: newLog.is_verified || false,
+                                            helpful_votes: newLog.helpful_votes || 0,
+                                            unhelpful_votes: newLog.unhelpful_votes || 0
+                                        },
+                                        ...b.logs
+                                    ]
+                                };
+                            }
+                            return b;
+                        }));
+                    }
+                })
+                .subscribe();
+
             return () => {
                 supabase.removeChannel(channel);
+                supabase.removeChannel(logChannel);
             };
         }
     }, [supabase, lang]);
@@ -370,7 +418,7 @@ export function TagdeerProvider({ children }) {
             voteReason, setVoteReason,
             showVerifySoonModal, setShowVerifySoonModal,
             showPreRegModal, setShowPreRegModal,
-            user, setUser, showLoginModal, setShowLoginModal, login, loginWithOtp, logout
+            user, setUser, loading, showLoginModal, setShowLoginModal, login, loginWithOtp, logout
         }}>
             {children}
         </TagdeerContext.Provider>

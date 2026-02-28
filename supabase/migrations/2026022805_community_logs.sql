@@ -13,7 +13,7 @@ ALTER TABLE public.profiles ALTER COLUMN gader_points TYPE NUMERIC(10,2);
 -- 2. Create `log_votes` table to prevent double voting
 CREATE TABLE IF NOT EXISTS public.log_votes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    log_id UUID NOT NULL REFERENCES public.logs(id) ON DELETE CASCADE,
+    log_id BIGINT NOT NULL REFERENCES public.logs(id) ON DELETE CASCADE,
     profile_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
     fingerprint TEXT, -- for anonymous voters
     vote_type TEXT NOT NULL CHECK (vote_type IN ('up', 'down')),

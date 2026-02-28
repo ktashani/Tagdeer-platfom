@@ -1,4 +1,5 @@
 import AdminTopNav from '@/components/admin/AdminTopNav'
+import AdminGuard from '@/components/admin/AdminGuard'
 
 export const metadata = {
     title: 'Tagdeer Admin Portal',
@@ -8,10 +9,12 @@ export const metadata = {
 export default function AdminLayout({ children }) {
     return (
         <div className="min-h-screen bg-slate-900 text-slate-100 font-sans">
-            <AdminTopNav />
-            <main className="p-8 max-w-7xl mx-auto">
-                {children}
-            </main>
+            <AdminGuard>
+                <AdminTopNav />
+                <main className="p-8 max-w-7xl mx-auto">
+                    {children}
+                </main>
+            </AdminGuard>
         </div>
     )
 }

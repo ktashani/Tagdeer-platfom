@@ -4,8 +4,8 @@
 
 -- 1. Create Resolution Threads Table
 CREATE TABLE IF NOT EXISTS public.resolution_threads (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    log_id UUID NOT NULL, -- Logical reference to logs/interactions
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    log_id BIGINT NOT NULL, -- Logical reference to logs/interactions
     business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
     merchant_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     consumer_id UUID, -- Can be null for anonymous complaints
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS public.resolution_threads (
 
 -- 2. Create Resolution Messages Table
 CREATE TABLE IF NOT EXISTS public.resolution_messages (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     thread_id UUID NOT NULL REFERENCES public.resolution_threads(id) ON DELETE CASCADE,
     sender_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     sender_role TEXT NOT NULL CHECK (sender_role IN ('merchant', 'consumer')),

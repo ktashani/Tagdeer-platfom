@@ -8,7 +8,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-    v_log_id UUID;
+    v_log_id BIGINT;
 BEGIN
     -- Ensure the caller is an admin
     IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin') THEN

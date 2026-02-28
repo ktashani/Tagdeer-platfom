@@ -13,21 +13,25 @@ ALTER TABLE logs ENABLE ROW LEVEL SECURITY;
 -- ═══════════════════════════════════════════════
 
 -- Anon key can read profiles (needed for login phone lookup)
+DROP POLICY IF EXISTS "anon_read_profiles" ON profiles;
 CREATE POLICY "anon_read_profiles"
     ON profiles FOR SELECT TO anon
     USING (true);
 
 -- Anon key can insert new profiles (needed for registration)
+DROP POLICY IF EXISTS "anon_insert_profiles" ON profiles;
 CREATE POLICY "anon_insert_profiles"
     ON profiles FOR INSERT TO anon
     WITH CHECK (true);
 
 -- Authenticated users can read their own profile
+DROP POLICY IF EXISTS "auth_read_own_profile" ON profiles;
 CREATE POLICY "auth_read_own_profile"
     ON profiles FOR SELECT TO authenticated
     USING (true);
 
 -- Authenticated users can update their own profile
+DROP POLICY IF EXISTS "auth_update_own_profile" ON profiles;
 CREATE POLICY "auth_update_own_profile"
     ON profiles FOR UPDATE TO authenticated
     USING (id = auth.uid())
@@ -38,16 +42,19 @@ CREATE POLICY "auth_update_own_profile"
 -- ═══════════════════════════════════════════════
 
 -- Authenticated users can read their own logs
+DROP POLICY IF EXISTS "auth_read_own_logs" ON logs;
 CREATE POLICY "auth_read_own_logs"
     ON logs FOR SELECT TO authenticated
     USING (profile_id = auth.uid());
 
 -- Authenticated users can insert logs
+DROP POLICY IF EXISTS "auth_insert_logs" ON logs;
 CREATE POLICY "auth_insert_logs"
     ON logs FOR INSERT TO authenticated
     WITH CHECK (true);
 
 -- Public can read logs (needed for business detail pages)
+DROP POLICY IF EXISTS "public_read_logs" ON logs;
 CREATE POLICY "public_read_logs"
     ON logs FOR SELECT TO anon
     USING (true);

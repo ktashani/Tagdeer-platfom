@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -8,18 +8,59 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Crown, Building, Trash2, CheckCircle2, ArrowUpRight } from "lucide-react";
+import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Crown, Building, Trash2, CheckCircle2, ArrowUpRight, Loader2 } from "lucide-react";
+import { useTagdeer } from '@/context/TagdeerContext';
 
 export default function MerchantSettings() {
-    // ---- Mock State ----
+    const { user, supabase, showToast, setUser } = useTagdeer();
 
     // Account Level
     const [accountTier, setAccountTier] = useState(1); // 1 = Single Business, 2 = Multi-Business & Team
     const [personalInfo, setPersonalInfo] = useState({
-        name: 'Mohammed Ali',
-        email: 'mohammed@alsaha.ly',
-        phone: '+218 91 123 4567'
+        name: '',
+        email: '',
+        phone: ''
     });
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+    useEffect(() => {
+        if (user) {
+            setPersonalInfo({
+                name: user.full_name || '',
+                email: user.email || user.profile_email || '',
+                phone: user.phone || ''
+            });
+            // Assume tier 2 if they have a certain VIP level or flag (mocking logic here for demonstration)
+            setAccountTier(user.vipTier === 'VIP' ? 2 : 1);
+        }
+    }, [user]);
+
+    const handleSaveProfile = async () => {
+        if (!supabase || !user) return;
+        setIsSavingProfile(true);
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    full_name: personalInfo.name,
+                    email: personalInfo.email,
+                    phone: personalInfo.phone
+                })
+                .eq('id', user.id);
+
+            if (error) throw error;
+
+            // Update local context manually
+            setUser({ ...user, full_name: personalInfo.name, email: personalInfo.email, phone: personalInfo.phone });
+
+            if (showToast) showToast('Profile updated successfully!');
+        } catch (err) {
+            console.error(err);
+            if (showToast) showToast('Failed to update profile.', 'error');
+        } finally {
+            setIsSavingProfile(false);
+        }
+    };
 
     // Business Level (Contextual)
     const [businessShield, setBusinessShield] = useState(0); // 0 = None, 1 = Trust, 2 = Fatora
@@ -157,8 +198,7 @@ export default function MerchantSettings() {
                                             <Label>Email Address</Label>
                                             <div className="relative flex items-center">
                                                 <Mail className="absolute left-3 w-4 h-4 text-slate-400" />
-                                                <Input className="pl-9 bg-slate-50 dark:bg-slate-900" value={personalInfo.email} disabled />
-                                                <Badge className="absolute right-2 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-0">Verified</Badge>
+                                                <Input className="pl-9 bg-slate-50 dark:bg-slate-900" value={personalInfo.email} onChange={(e) => setPersonalInfo({ ...personalInfo, email: e.target.value })} />
                                             </div>
                                         </div>
                                         <div className="space-y-2">
@@ -169,7 +209,10 @@ export default function MerchantSettings() {
                                             </div>
                                         </div>
                                     </div>
-                                    <Button>Save Identity Changes</Button>
+                                    <Button onClick={handleSaveProfile} disabled={isSavingProfile}>
+                                        {isSavingProfile ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                                        Save Identity Changes
+                                    </Button>
                                 </CardContent>
                             </Card>
 

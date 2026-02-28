@@ -3,16 +3,21 @@
 -- ==========================================
 
 -- 1. Create User Roles Enum
-CREATE TYPE public.user_role AS ENUM ('user', 'merchant', 'admin');
+DO $$ 
+BEGIN
+    CREATE TYPE public.user_role AS ENUM ('user', 'merchant', 'admin');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- 2. Update profiles table to include role (defaults to 'user')
 ALTER TABLE public.profiles 
-ADD COLUMN role public.user_role DEFAULT 'user'::public.user_role NOT NULL;
+ADD COLUMN IF NOT EXISTS role public.user_role DEFAULT 'user'::public.user_role NOT NULL;
 
 -- 3. Create Business Claims Table
 -- For merchants claiming their stores from the Tagdeer directory
-CREATE TABLE public.business_claims (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE TABLE IF NOT EXISTS public.business_claims (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     business_id UUID NOT NULL, -- references businesses.id assuming it exists or will exist
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
@@ -27,10 +32,12 @@ CREATE TABLE public.business_claims (
 -- Add RLS for business claims
 ALTER TABLE public.business_claims ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own claims" ON public.business_claims;
 CREATE POLICY "Users can view their own claims"
     ON public.business_claims FOR SELECT
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Admins can view all claims" ON public.business_claims;
 CREATE POLICY "Admins can view all claims"
     ON public.business_claims FOR SELECT
     USING (
@@ -42,8 +49,8 @@ CREATE POLICY "Admins can view all claims"
 
 -- 4. Create Campaigns Table
 -- For admins to manage coupon allocations
-CREATE TABLE public.campaigns (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE TABLE IF NOT EXISTS public.campaigns (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     description TEXT,
     allocated_coupons INTEGER NOT NULL DEFAULT 0,
@@ -59,6 +66,7 @@ CREATE TABLE public.campaigns (
 -- Add RLS for campaigns
 ALTER TABLE public.campaigns ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Admins have full access to campaigns" ON public.campaigns;
 CREATE POLICY "Admins have full access to campaigns"
     ON public.campaigns FOR ALL
     USING (
@@ -68,6 +76,7 @@ CREATE POLICY "Admins have full access to campaigns"
         )
     );
 
+DROP POLICY IF EXISTS "Merchants and users can view active campaigns" ON public.campaigns;
 CREATE POLICY "Merchants and users can view active campaigns"
     ON public.campaigns FOR SELECT
     USING (status = 'active');

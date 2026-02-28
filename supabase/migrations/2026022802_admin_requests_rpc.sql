@@ -4,6 +4,7 @@
 
 DO $$
 BEGIN
+    ALTER TABLE public.business_claims ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pending';
     ALTER TABLE public.business_claims DROP CONSTRAINT IF EXISTS business_claims_status_check;
     ALTER TABLE public.business_claims ADD CONSTRAINT business_claims_status_check CHECK (status IN ('pending', 'approved', 'rejected', 'missing_docs'));
 EXCEPTION

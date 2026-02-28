@@ -1,16 +1,61 @@
+'use client';
 'use client'
 
-import { BarChart3, LineChart, PieChart, Activity, Users, Download, Zap } from 'lucide-react'
-
-// Dummy Data Arrays for visualization context
-const growthData = [
-    { month: 'Jan', signups: 1200, uninstalls: 300 },
-    { month: 'Feb', signups: 1800, uninstalls: 450 },
-    { month: 'Mar', signups: 2400, uninstalls: 400 },
-    { month: 'Apr', signups: 3100, uninstalls: 500 },
-]
+import { useState, useEffect } from 'react'
+import { BarChart3, LineChart, PieChart, Activity, Users, Download, Zap, Loader2 } from 'lucide-react'
+import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function ReportsPage() {
+    const { supabase } = useTagdeer()
+    const [metrics, setMetrics] = useState({
+        globalScore: 0,
+        totalLogs: 0,
+        totalDisputes: 0,
+        totalRedemptions: 0,
+        totalUsers: 0
+    })
+    const [isLoading, setIsLoading] = useState(true)
+
+    useEffect(() => {
+        if (!supabase) return;
+
+        const fetchMetrics = async () => {
+            setIsLoading(true);
+            try {
+                // Fetch aggregate counts. Note: In a production app with huge tables, 
+                // these would be cached view queries or RPCs instead of raw count queries.
+                const [usersRes, logsRes, disputesRes, redemptionsRes, profilesRes] = await Promise.all([
+                    supabase.from('profiles').select('*', { count: 'exact', head: true }),
+                    supabase.from('logs').select('*', { count: 'exact', head: true }),
+                    supabase.from('disputes').select('*', { count: 'exact', head: true }),
+                    supabase.from('coupon_redemptions').select('*', { count: 'exact', head: true }),
+                    supabase.from('profiles').select('trust_points')
+                ]);
+
+                // Calculate global health score based on average trust points
+                let avgTrust = 80;
+                if (profilesRes.data && profilesRes.data.length > 0) {
+                    const totalTrust = profilesRes.data.reduce((acc, curr) => acc + (curr.trust_points || 0), 0);
+                    avgTrust = Math.round(totalTrust / profilesRes.data.length);
+                    // Clamp to 100 max for visual score
+                    avgTrust = Math.min(100, avgTrust);
+                }
+
+                setMetrics({
+                    totalUsers: usersRes.count || 0,
+                    totalLogs: logsRes.count || 0,
+                    totalDisputes: disputesRes.count || 0,
+                    totalRedemptions: redemptionsRes.count || 0,
+                    globalScore: avgTrust
+                });
+            } catch (err) {
+                console.error("Error fetching report metrics", err);
+            }
+            setIsLoading(false);
+        }
+
+        fetchMetrics();
+    }, [supabase])
     return (
         <div className="animate-in fade-in duration-500 min-h-[calc(100vh-8rem)] flex flex-col">
 
@@ -90,11 +135,16 @@ export default function ReportsPage() {
                     <div className="flex items-start gap-8 mb-6">
                         <div className="bg-slate-900 border border-emerald-500/30 p-4 rounded-xl flex-1 border-l-4 border-l-emerald-500">
                             <div className="text-xs text-slate-400 mb-1">Current Global Score</div>
-                            <div className="text-4xl font-black text-white">88<span className="text-xl text-emerald-500">/100</span></div>
+                            <div className="text-4xl font-black text-white">
+                                {isLoading ? <Loader2 className="w-8 h-8 animate-spin text-emerald-500" /> : `${metrics.globalScore}`}
+                                {!isLoading && <span className="text-xl text-emerald-500">/100</span>}
+                            </div>
                         </div>
-                        <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl flex-1">
-                            <div className="text-xs text-slate-400 mb-1">Highest Rated Zone</div>
-                            <div className="text-xl font-bold text-white">Tripoli (94)</div>
+                        <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl flex-1 justify-center flex flex-col">
+                            <div className="text-xs text-slate-400 mb-1">Total Registered Users</div>
+                            <div className="text-xl font-bold text-white">
+                                {isLoading ? <Loader2 className="w-5 h-5 animate-spin text-slate-400" /> : metrics.totalUsers.toLocaleString()}
+                            </div>
                         </div>
                     </div>
 
@@ -121,8 +171,10 @@ export default function ReportsPage() {
 
                         <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl flex items-center justify-between">
                             <div>
-                                <div className="text-sm text-slate-400 mb-2">Total Receipts Uploaded</div>
-                                <div className="text-3xl font-bold text-white">124,592</div>
+                                <div className="text-sm text-slate-400 mb-2">Total Logs Uploaded</div>
+                                <div className="text-3xl font-bold text-white">
+                                    {isLoading ? <Loader2 className="w-6 h-6 animate-spin text-slate-400" /> : metrics.totalLogs.toLocaleString()}
+                                </div>
                             </div>
                             <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center">
                                 <BarChart3 className="w-8 h-8 text-blue-500" />
@@ -132,7 +184,9 @@ export default function ReportsPage() {
                         <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl flex items-center justify-between">
                             <div>
                                 <div className="text-sm text-slate-400 mb-2">Total Disputes Handled</div>
-                                <div className="text-3xl font-bold text-white">3,104</div>
+                                <div className="text-3xl font-bold text-white">
+                                    {isLoading ? <Loader2 className="w-6 h-6 animate-spin text-slate-400" /> : metrics.totalDisputes.toLocaleString()}
+                                </div>
                             </div>
                             <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center">
                                 <Activity className="w-8 h-8 text-red-500" />
@@ -142,7 +196,9 @@ export default function ReportsPage() {
                         <div className="bg-slate-900 border border-slate-700 p-6 rounded-xl flex items-center justify-between">
                             <div>
                                 <div className="text-sm text-slate-400 mb-2">Rewards Redeemed</div>
-                                <div className="text-3xl font-bold text-white">45,880</div>
+                                <div className="text-3xl font-bold text-white">
+                                    {isLoading ? <Loader2 className="w-6 h-6 animate-spin text-slate-400" /> : metrics.totalRedemptions.toLocaleString()}
+                                </div>
                             </div>
                             <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center">
                                 <PieChart className="w-8 h-8 text-amber-500" />

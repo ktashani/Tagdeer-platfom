@@ -1,11 +1,13 @@
+'use client';
 'use client'
 
 import { useState, useEffect } from 'react'
 import { Search, UserX, UserMinus, ShieldAlert, Award, AlertTriangle, AlertCircle, TrendingUp, TrendingDown, History, Loader2 } from 'lucide-react'
-import { supabase } from '@/lib/supabaseClient'
+import { useTagdeer } from '@/context/TagdeerContext'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function UsersPage() {
+    const { supabase, showToast } = useTagdeer()
     const [users, setUsers] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('all') // 'all' or 'anti-cheat'
@@ -17,6 +19,7 @@ export default function UsersPage() {
     const [adjustmentReason, setAdjustmentReason] = useState('')
 
     useEffect(() => {
+        if (!supabase) return;
         const fetchUsers = async () => {
             setIsLoading(true)
             const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
@@ -38,15 +41,15 @@ export default function UsersPage() {
             setIsLoading(false)
         }
         fetchUsers()
-    }, [])
+    }, [supabase])
 
     useEffect(() => {
         const fetchUserLogs = async () => {
-            if (!selectedUser?.id) return
+            if (!selectedUser?.id || !supabase) return
             setUserLogs([])
             setIsLoadingLogs(true)
             const { data, error } = await supabase
-                .from('logs')
+                .from('interactions') // Fixed: changed from 'logs' to 'interactions'
                 .select('*, businesses(name)')
                 .eq('profile_id', selectedUser.id)
                 .order('created_at', { ascending: false })
@@ -58,7 +61,7 @@ export default function UsersPage() {
             setIsLoadingLogs(false)
         }
         fetchUserLogs()
-    }, [selectedUser])
+    }, [selectedUser, supabase])
 
     const filteredUsers = users.filter(u =>
         (activeTab === 'anti-cheat' ? u.isFlagged : true) &&
@@ -67,18 +70,47 @@ export default function UsersPage() {
             u.email.toLowerCase().includes(searchTerm.toLowerCase()))
     )
 
-    const handlePurge = () => {
+    const handlePurge = async () => {
+        if (!supabase || !selectedUser) return;
+
         if (confirm(`Are you sure you want to purge logs and reset Trust Points for ${selectedUser.name}? This cannot be undone.`)) {
-            alert(`User ${selectedUser.name} purged and reset to 0 points.`)
+            const { error } = await supabase.rpc('admin_purge_user', { p_user_id: selectedUser.id });
+
+            if (error) {
+                console.error(error);
+                showToast("Failed to purge user data.");
+            } else {
+                showToast(`User ${selectedUser.name} purged and reset to 0 points.`);
+                setSelectedUser(null);
+                // The main users listener in TagdeerContext or a local refetch would update the UI
+            }
         }
     }
 
-    const handleAdjustment = (type) => {
-        if (!adjustmentAmount || !adjustmentReason) {
-            alert("Please enter both amount and reason.")
+    const handleAdjustment = async (type) => {
+        if (!adjustmentAmount || !adjustmentReason || !supabase || !selectedUser) {
+            showToast("Please enter both amount and reason.")
             return
         }
-        alert(`${type === 'add' ? 'Awarded' : 'Deducted'} ${adjustmentAmount} points. Reason: ${adjustmentReason}`)
+
+        const amount = type === 'add' ? parseInt(adjustmentAmount) : -parseInt(adjustmentAmount);
+
+        const { error } = await supabase.rpc('admin_manage_user_gader', {
+            p_user_id: selectedUser.id,
+            p_amount: amount,
+            p_reason: adjustmentReason
+        });
+
+        if (error) {
+            console.error(error);
+            showToast("Failed to adjust points.");
+        } else {
+            showToast(`${type === 'add' ? 'Awarded' : 'Deducted'} ${Math.abs(amount)} points.`);
+            // Optimistic UI Update locally
+            setSelectedUser(prev => ({ ...prev, trustPoints: Math.max((prev.trustPoints || 0) + amount, 0) }));
+            setUsers(users.map(u => u.id === selectedUser.id ? { ...u, trustPoints: Math.max(u.trustPoints + amount, 0) } : u));
+        }
+
         setAdjustmentAmount('')
         setAdjustmentReason('')
     }

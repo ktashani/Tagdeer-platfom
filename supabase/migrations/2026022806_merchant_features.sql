@@ -3,8 +3,8 @@
 -- ==========================================
 
 -- 1. Create Business Interactions Table (Physical Scans)
-CREATE TABLE public.business_interactions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE TABLE IF NOT EXISTS public.business_interactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
     profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     interaction_type TEXT NOT NULL DEFAULT 'scan' CHECK (interaction_type IN ('scan')),
@@ -30,8 +30,8 @@ CREATE POLICY "Users can log interactions"
 
 
 -- 2. Create Merchant Coupons Table
-CREATE TABLE public.merchant_coupons (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE TABLE IF NOT EXISTS public.merchant_coupons (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
     created_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     
@@ -65,8 +65,8 @@ CREATE POLICY "Public can view active coupons"
 
 
 -- 3. Create Coupon Redemptions Table
-CREATE TABLE public.coupon_redemptions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE TABLE IF NOT EXISTS public.coupon_redemptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     coupon_id UUID NOT NULL REFERENCES public.merchant_coupons(id) ON DELETE CASCADE,
     profile_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     redeemed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -100,9 +100,9 @@ CREATE POLICY "Merchants can insert redemptions"
 
 
 -- 4. Create Disputes Table (Flagged as Fake)
-CREATE TABLE public.disputes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    log_id UUID NOT NULL REFERENCES public.logs(id) ON DELETE CASCADE, -- Assuming 'interactions' or 'logs' is the reviews table
+CREATE TABLE IF NOT EXISTS public.disputes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    log_id BIGINT NOT NULL REFERENCES public.logs(id) ON DELETE CASCADE, -- Assuming 'interactions' or 'logs' is the reviews table
     business_id UUID NOT NULL REFERENCES public.businesses(id) ON DELETE CASCADE,
     merchant_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     

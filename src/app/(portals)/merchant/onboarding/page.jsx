@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 
 export default function MerchantOnboarding() {
     const router = useRouter();
+    const { supabase, user, showToast } = useTagdeer();
 
     // Wizard State
     const [step, setStep] = useState(1);
@@ -43,12 +44,70 @@ export default function MerchantOnboarding() {
     const submitOrder = async () => {
         setIsSubmitting(true);
         try {
-            // Simulate network request delay
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            if (!user) throw new Error("Authentication required");
+
+            // 1. Upload Verification Document
+            let documentUrl = null;
+            if (documents) {
+                const fileExt = documents.name.split('.').pop();
+                const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+                const { error: uploadError } = await supabase.storage
+                    .from('business_documents')
+                    .upload(fileName, documents);
+
+                if (uploadError) throw new Error("Document upload failed: " + uploadError.message);
+
+                // Get public URL (or construct it if bucket is private and we just want to save the path)
+                documentUrl = fileName;
+            }
+
+            // 2. Create the Unverified Business record
+            const { data: businessObj, error: bError } = await supabase
+                .from('businesses')
+                .insert([{
+                    name: businessData.name,
+                    category: businessData.category,
+                    region: businessData.region,
+                    claimed_by: user.id,
+                    is_shielded: shieldLevel > 0,
+                    source: 'Merchant Onboarding'
+                }])
+                .select('id')
+                .single();
+
+            if (bError) throw new Error("Business creation failed: " + bError.message);
+
+            // 3. Create the Business Claim
+            const { error: claimError } = await supabase
+                .from('business_claims')
+                .insert([{
+                    business_id: businessObj.id,
+                    user_id: user.id,
+                    status: 'pending',
+                    document_url: documentUrl
+                }]);
+
+            if (claimError) throw new Error("Claim submission failed: " + claimError.message);
+
+            // 4. Record the requested Financial Upgrade (if applicable)
+            if (shieldLevel > 0) {
+                const amount = shieldLevel === 1 ? 20 : 50;
+                await supabase.from('transactions').insert([{
+                    business_id: businessObj.id,
+                    user_id: user.id,
+                    amount: amount,
+                    status: paymentMethod === 'manual' ? 'pending' : 'completed',
+                    payment_method: paymentMethod,
+                    requested_tier: shieldLevel === 1 ? 'Tier 1' : 'Tier 2',
+                    duration: '1 Month'
+                }]);
+            }
+
             setStep(4);
-            toast.success('Registration submitted successfully!');
+            if (showToast) showToast('Registration submitted successfully!');
         } catch (error) {
-            toast.error('Failed to process. Please try again.');
+            console.error(error);
+            if (showToast) showToast(error.message || 'Failed to process. Please try again.', 'error');
         } finally {
             setIsSubmitting(false);
         }

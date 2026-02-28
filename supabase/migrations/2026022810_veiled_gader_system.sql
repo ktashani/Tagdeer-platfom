@@ -11,6 +11,9 @@ RENAME COLUMN health_score TO shadow_score;
 ALTER TABLE public.businesses
 ADD COLUMN IF NOT EXISTS display_score INTEGER DEFAULT 0;
 
+ALTER TABLE public.businesses 
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
 -- 3. Initially sync display_score with shadow_score, then apply clamps for unclaimed businesses
 UPDATE public.businesses
 SET display_score = 

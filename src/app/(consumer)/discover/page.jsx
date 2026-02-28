@@ -331,12 +331,24 @@ function LogItem({ log }) {
     const { t, showToast, lang, supabase, user } = useTagdeer();
     const [isExpanded, setIsExpanded] = useState(false);
 
-    // Add local state for optimistic UI updates
+    const [votedType, setVotedType] = useState(null);
     const [localVotes, setLocalVotes] = useState({
         up: log.helpful_votes || 0,
         down: log.unhelpful_votes || 0
     });
-    const [votedType, setVotedType] = useState(null);
+
+    // Initial load of votes from props and voted status from localStorage
+    useEffect(() => {
+        setLocalVotes({
+            up: log.helpful_votes || 0,
+            down: log.unhelpful_votes || 0
+        });
+
+        const storedVote = localStorage.getItem(`tagdeer_vote_${log.id}`);
+        if (storedVote) {
+            setVotedType(storedVote);
+        }
+    }, [log.helpful_votes, log.unhelpful_votes, log.id]);
 
     // Fallbacks since our mock logs might not have these yet
     const isVerifiedAuthor = log.is_verified_author ?? false;
@@ -376,6 +388,9 @@ function LogItem({ log }) {
                     profile_id: user?.id || null,
                     fingerprint: user ? null : fingerprint
                 }]);
+
+                // Persist the fact that THIS browser voted on THIS log
+                localStorage.setItem(`tagdeer_vote_${log.id}`, voteType);
             } catch (err) {
                 console.error("Failed to submit vote:", err);
             }

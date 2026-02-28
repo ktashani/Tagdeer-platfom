@@ -29,3 +29,6 @@ BEGIN
 
 END;
 $$;
+
+-- Grant permissions for RPC calls
+GRANT EXECUTE ON FUNCTION public.admin_merge_businesses(UUID, UUID) TO anon, authenticated;
