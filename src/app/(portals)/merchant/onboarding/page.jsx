@@ -12,6 +12,14 @@ import { Switch } from "@/components/ui/switch";
 import { Store, UploadCloud, AlertCircle, Clock, Check, Crown, ShieldAlert, ShieldCheck, CreditCard, CheckCircle2, User, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
+const CATEGORIES = [
+    "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery",
+    "Healthcare", "Electronics", "Tech & Telecommunication", "Construction",
+    "Home Maintenance", "Automotive", "Beauty & Salon", "Real Estate",
+    "Education", "Travel", "Fashion & Retail", "Services", "Food & Beverage", "Delivery & Shipping"
+];
+const REGIONS = ["Tripoli", "Benghazi"];
+
 export default function MerchantOnboarding() {
     const router = useRouter();
     const { supabase, user, showToast, t, lang, isRTL } = useTagdeer();
@@ -153,14 +161,6 @@ export default function MerchantOnboarding() {
                 </div>
 
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl overflow-hidden min-h-[500px] relative">
-
-                    const CATEGORIES = [
-                    "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery",
-                    "Healthcare", "Electronics", "Tech & Telecommunication", "Construction",
-                    "Home Maintenance", "Automotive", "Beauty & Salon", "Real Estate",
-                    "Education", "Travel", "Fashion & Retail", "Services", "Food & Beverage", "Delivery & Shipping"
-                    ];
-                    const REGIONS = ["Tripoli", "Benghazi"];
 
                     {/* STEP 1: BUSINESS DETAILS */}
                     {step === 1 && (
