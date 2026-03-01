@@ -103,6 +103,12 @@ export default function MerchantOnboarding() {
                 }]);
             }
 
+            // 5. Elevate User Role to Merchant
+            await supabase
+                .from('profiles')
+                .update({ role: 'merchant' })
+                .eq('id', user.id);
+
             setStep(4);
             if (showToast) showToast('Registration submitted successfully!');
         } catch (error) {

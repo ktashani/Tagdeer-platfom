@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap } from 'lucide-react';
 import { calculateBusinessScore } from '@/lib/mathEngine';
+import { getDeviceFingerprint } from '@/lib/fingerprint';
 
 const CATEGORIES = [
     "All", "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery",
@@ -13,7 +14,7 @@ const CATEGORIES = [
 const REGIONS = ["All", "Tripoli", "Benghazi"];
 
 export default function DiscoverRoute() {
-    const { t, lang, isRTL, businesses, anonInteractions, showToast, setShowLimitModal, setVoteModal, setVoteReason, user } = useTagdeer();
+    const { t, lang, isRTL, businesses, anonInteractions, refreshAnonInteractions, showToast, setShowLimitModal, setVoteModal, setVoteReason, user } = useTagdeer();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedRegion, setSelectedRegion] = useState('All');
@@ -31,7 +32,7 @@ export default function DiscoverRoute() {
         return matchesSearch && matchesRegion && matchesCategory;
     });
 
-    const openVoteModal = (businessId, type, business) => {
+    const openVoteModal = async (businessId, type, business) => {
         // Shield Level Checks for Complaints
         if (type === 'complain') {
             if (business.shield_level === 2) {
@@ -48,11 +49,15 @@ export default function DiscoverRoute() {
             }
         }
 
-        // Only apply the 3-vote global limit to anonymous users
-        if (!user && anonInteractions >= 3) {
-            setShowLimitModal(true);
-            return;
+        // Fix: Fresh DB-side check for anonymous users before opening modal
+        if (!user) {
+            const currentCount = await refreshAnonInteractions();
+            if (currentCount >= 3) {
+                setShowLimitModal(true);
+                return;
+            }
         }
+
         setVoteModal({ isOpen: true, businessId, type });
         setVoteReason('');
     };
@@ -357,6 +362,9 @@ function LogItem({ log }) {
     const isLong = log.text.length > textLimit;
     const displayText = isExpanded ? log.text : log.text.substring(0, textLimit) + (isLong ? '...' : '');
 
+    // Identify if the current viewer is the author (either via profile or fingerprint)
+    const isOwner = (user && log.profile_id === user.id) || (!user && log.fingerprint === getDeviceFingerprint());
+
     const handleVote = async (voteType) => {
         if (votedType) return; // Prevent double voting locally
 
@@ -373,14 +381,7 @@ function LogItem({ log }) {
         // Database Update
         if (supabase) {
             try {
-                let fingerprint = null;
-                if (!user) {
-                    fingerprint = localStorage.getItem('tagdeer_fingerprint');
-                    if (!fingerprint) {
-                        fingerprint = Math.random().toString(36).substring(2, 15);
-                        localStorage.setItem('tagdeer_fingerprint', fingerprint);
-                    }
-                }
+                const fingerprint = getDeviceFingerprint();
 
                 await supabase.from('log_votes').insert([{
                     log_id: log.id,
@@ -431,16 +432,28 @@ function LogItem({ log }) {
 
             <div className="flex items-center gap-2 mt-2 pt-3 border-t border-slate-200">
                 <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-2">Community</span>
-                <button onClick={() => handleVote('up')} disabled={!!votedType} className={`flex items-center gap-1.5 text-xs font-bold px-2 py-1.5 rounded transition-colors group ${votedType === 'up' ? 'text-green-700 bg-green-100' : 'text-slate-500 hover:text-green-600 hover:bg-green-50'}`}>
+                <button
+                    onClick={() => handleVote('up')}
+                    disabled={!!votedType || isOwner}
+                    className={`flex items-center gap-1.5 text-xs font-bold px-2 py-1.5 rounded transition-colors group ${votedType === 'up' ? 'text-green-700 bg-green-100' : 'text-slate-500 hover:text-green-600 hover:bg-green-50'} ${isOwner ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={isOwner ? (lang === 'ar' ? 'لا يمكنك التصويت لتعليقك الخاص' : 'You cannot vote on your own log') : ''}
+                >
                     <ThumbsUp className={`w-3.5 h-3.5 ${votedType === 'up' ? 'fill-green-200' : 'group-hover:fill-green-100'}`} />
                     <span className={localVotes.up > 0 ? "text-green-600" : ""}>{localVotes.up}</span>
                 </button>
                 <div className="w-px h-3 bg-slate-200"></div>
-                <button onClick={() => handleVote('down')} disabled={!!votedType} className={`flex items-center gap-1.5 text-xs font-bold px-2 py-1.5 rounded transition-colors group ${votedType === 'down' ? 'text-red-700 bg-red-100' : 'text-slate-500 hover:text-red-600 hover:bg-red-50'}`}>
+                <button
+                    onClick={() => handleVote('down')}
+                    disabled={!!votedType || isOwner}
+                    className={`flex items-center gap-1.5 text-xs font-bold px-2 py-1.5 rounded transition-colors group ${votedType === 'down' ? 'text-red-700 bg-red-100' : 'text-slate-500 hover:text-red-600 hover:bg-red-50'} ${isOwner ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={isOwner ? (lang === 'ar' ? 'لا يمكنك التصويت لتعليقك الخاص' : 'You cannot vote on your own log') : ''}
+                >
                     <ThumbsDown className={`w-3.5 h-3.5 ${votedType === 'down' ? 'fill-red-200' : 'group-hover:fill-red-100'}`} />
                     <span className={localVotes.down > 0 ? "text-red-600" : ""}>{localVotes.down}</span>
                 </button>
-                <span className="ml-auto text-xs text-slate-400 italic">Does this help?</span>
+                <span className="ml-auto text-xs text-slate-400 italic">
+                    {isOwner ? (lang === 'ar' ? 'تعليقك الشخصي' : 'Your own log') : 'Does this help?'}
+                </span>
             </div>
         </div>
     );

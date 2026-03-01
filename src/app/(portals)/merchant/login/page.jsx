@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,15 @@ export default function MerchantLogin() {
     const [email, setEmail] = useState('');
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
     const [isLoading, setIsLoading] = useState(false);
-    const { loginWithEmail, verifyEmailOtp } = useTagdeer();
+    const router = useRouter();
+    const { loginWithEmail, verifyEmailOtp, user, loading } = useTagdeer();
+
+    // Auto-redirect if already logged in as merchant/admin
+    useEffect(() => {
+        if (!loading && user && (user.role === 'merchant' || user.role === 'admin')) {
+            router.push('/merchant/dashboard');
+        }
+    }, [user, loading, router]);
 
     const handleEmailSubmit = async (e) => {
         e.preventDefault();
@@ -93,7 +101,7 @@ export default function MerchantLogin() {
                     <CardDescription className="text-slate-500 text-base mt-2">
                         {step === 1
                             ? "Sign in or create an account to manage your business."
-                            : `We sent a 6-digit code to ${email}`}
+                            : `Click the link sent to your email OR enter the 6-digit code below.`}
                     </CardDescription>
                 </CardHeader>
 
@@ -149,6 +157,15 @@ export default function MerchantLogin() {
                                     disabled={isLoading || otp.join('').length < 6}
                                 >
                                     {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Verify Code"}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={() => handleEmailSubmit({ preventDefault: () => { } })}
+                                    className="w-full text-blue-600 font-bold hover:text-blue-700 hover:bg-blue-50"
+                                    disabled={isLoading}
+                                >
+                                    Resend Magic Link
                                 </Button>
                                 <Button
                                     type="button"

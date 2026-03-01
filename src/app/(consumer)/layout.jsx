@@ -159,28 +159,12 @@ export default function ClientLayout({ children }) {
 
         // Only track anonymous vote count for non-verified users
         if (!user) {
-            const newCount = anonInteractions + 1;
+            // Fix: Atomic read from storage to prevent race condition overwrite
+            const currentCount = parseInt(localStorage.getItem('trust_ledger_interactions') || '0');
+            const newCount = currentCount + 1;
             setAnonInteractions(newCount);
             localStorage.setItem('trust_ledger_interactions', newCount.toString());
         }
-
-        setBusinesses(businesses.map(b => {
-            if (b.id === businessId) {
-                const newLog = {
-                    id: Date.now(),
-                    type: type,
-                    text: voteReason || (type === 'recommend' ? 'User recommended' : 'User complained'),
-                    date: new Date().toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US')
-                };
-                return {
-                    ...b,
-                    recommends: type === 'recommend' ? b.recommends + 1 : b.recommends,
-                    complains: type === 'complain' ? b.complains + 1 : b.complains,
-                    logs: [newLog, ...b.logs]
-                };
-            }
-            return b;
-        }));
 
         setVoteModal({ isOpen: false, businessId: null, type: null });
 

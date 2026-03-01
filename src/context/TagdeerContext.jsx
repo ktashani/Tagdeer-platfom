@@ -3,7 +3,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useSupabase } from '../hooks/useSupabase';
 import { translations } from '../i18n/translations';
-import { createClient } from '@supabase/supabase-js';
 
 // --- Gamification Helpers ---
 export const calculateTier = (points, lang) => {
@@ -65,7 +64,15 @@ export function TagdeerProvider({ children }) {
     const [businesses, setBusinesses] = useState(INITIAL_BUSINESSES);
     const { supabase } = useSupabase();
 
-    const [anonInteractions, setAnonInteractions] = useState(0);
+    // Fix: Initialize directly from localStorage to prevent 0-reset race condition
+    const [anonInteractions, setAnonInteractions] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem('trust_ledger_interactions');
+            return stored ? parseInt(stored) : 0;
+        }
+        return 0;
+    });
+
     const [showLimitModal, setShowLimitModal] = useState(false);
     const [toastMessage, setToastMessage] = useState('');
 
@@ -80,21 +87,92 @@ export function TagdeerProvider({ children }) {
     const [loading, setLoading] = useState(true);
     const [showLoginModal, setShowLoginModal] = useState(false);
 
-    // Restore user from localStorage on client mount
+    // Sync session and handle auth state changes
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem('tagdeer-user');
-            if (stored) {
-                setUser(JSON.parse(stored));
+        if (!supabase) return;
+
+        // 1. Initial Check: Try to restore session from Supabase SDK
+        const checkInitialSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                await syncUserProfile(session.user);
             } else {
-                setUser(null); // Explicitly no user found
+                // Background fallback: check localStorage for legacy/mock users
+                try {
+                    const stored = localStorage.getItem('tagdeer-user');
+                    if (stored) setUser(JSON.parse(stored));
+                    else setUser(null);
+                } catch {
+                    setUser(null);
+                }
             }
-        } catch {
-            setUser(null);
+            setLoading(false);
+        };
+
+        checkInitialSession();
+
+        // 2. Auth State Listener: React to Magic Links, Logins, Logouts
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            console.log("Supabase Auth Event:", event, session?.user?.email);
+
+            if (event === 'SIGNED_IN' && session) {
+                await syncUserProfile(session.user);
+            } else if (event === 'SIGNED_OUT') {
+                setUser(null);
+                localStorage.removeItem('tagdeer-user');
+            }
+        });
+
+        return () => subscription.unsubscribe();
+    }, [supabase]);
+
+    /**
+     * Helper to fetch profile and update user state
+     */
+    const syncUserProfile = async (supabaseUser) => {
+        try {
+            const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', supabaseUser.id)
+                .single();
+
+            if (error && error.code !== 'PGRST116') {
+                console.error("Sync Profile Error (Postgrest):", error);
+                // Also log as a string just in case it's not a standard object
+                console.error("Sync Profile Error Details:", JSON.stringify(error));
+            }
+
+            const userObj = {
+                id: supabaseUser.id,
+                email: supabaseUser.email,
+                phone: profile?.phone || supabaseUser.phone,
+                userId: profile?.user_id || `AUTH-${supabaseUser.id.substring(0, 5).toUpperCase()}`,
+                gader: profile?.gader_points || 0,
+                vipTier: profile?.vip_tier || 'Bronze',
+                full_name: profile?.full_name || supabaseUser.email?.split('@')[0] || 'Tagdeer User',
+                role: profile?.role || 'consumer',
+                isDevBypass: false
+            };
+
+            setUser(userObj);
+            localStorage.setItem('tagdeer-user', JSON.stringify(userObj));
+        } catch (err) {
+            console.error("Exception syncing profile:", err);
+            if (err.name === 'AbortError') {
+                console.warn("Profile sync aborted (likely due to lock/steal).");
+            }
+            // Fallback: at least allow access as a basic consumer if they have a session
+            const fallbackUser = {
+                id: supabaseUser.id,
+                email: supabaseUser.email,
+                role: 'consumer'
+            };
+            setUser(fallbackUser);
         } finally {
             setLoading(false);
         }
-    }, []);
+    };
 
     // Persist user state to localStorage whenever it changes
     useEffect(() => {
@@ -231,35 +309,10 @@ export function TagdeerProvider({ children }) {
             throw new Error((data && data.error) || (lang === 'ar' ? 'رمز غير صحيح أو منتهي الصلاحية' : 'Invalid or expired code'));
         }
 
-        // Success! Set the user state based on the Edge Function's returned profile
-        const fetchedPoints = data.profile.gader_points || 20; // Default to 20 if 0 or null
-        const assignedTier = data.profile.vip_tier || calculateTier(fetchedPoints, lang).name;
-        const assignedName = data.profile.full_name || getRandomCommunityTitle(lang);
-
-        setUser({
-            id: data.profile.id,
-            phone: data.profile.phone,
-            email: null, // Custom Edge Function doesn't currently attach Auth email
-            profile_email: null,
-            userId: data.profile.user_id,
-            gader: fetchedPoints,
-            vipTier: assignedTier,
-            full_name: assignedName,
-            avatarUrl: data.profile.avatar_url || '/avatars/default.png',
-            city: data.profile.city,
-            gender: data.profile.gender,
-            birth_date: data.profile.birth_date,
-            role: data.profile.role,
-            isDevBypass: false,
-        });
-
-        setShowLoginModal(false);
-
         if (data.isNewUser) {
             showToast(lang === 'ar' ? 'مرحباً بك في تقدير! حصلت على +20 نقطة مكافأة' : 'Welcome to Tagdeer! You earned +20 bonus points');
-        } else {
-            showToast(t('login_success') || 'Successfully logged in');
         }
+        // Note: setUser is now handled by the onAuthStateChange listener
     };
 
     const loginWithEmail = async (email) => {
@@ -300,32 +353,8 @@ export function TagdeerProvider({ children }) {
             if (error) throw error;
 
             if (data.user) {
-                // Fetch profile to get role and other metadata
-                const { data: profile, error: profileErr } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', data.user.id)
-                    .single();
-
-                if (profileErr && profileErr.code !== 'PGRST116') {
-                    console.error("Error fetching profile after email verify:", profileErr);
-                }
-
-                const userObj = {
-                    id: data.user.id,
-                    email: data.user.email,
-                    phone: profile?.phone || data.user.phone,
-                    userId: profile?.user_id || `AUTH-${data.user.id.substring(0, 5).toUpperCase()}`,
-                    gader: profile?.gader_points || 0,
-                    vipTier: profile?.vip_tier || 'Bronze',
-                    full_name: profile?.full_name || data.user.email.split('@')[0],
-                    role: profile?.role || 'consumer', // Default to consumer if not found
-                    isDevBypass: false
-                };
-
-                setUser(userObj);
-                showToast(t('login_success') || 'Successfully logged in');
-                return userObj;
+                // Success! onAuthStateChange will handle syncing the profile
+                return data.user;
             }
         } catch (err) {
             console.error("OTP Verification Error:", err);
@@ -385,7 +414,9 @@ export function TagdeerProvider({ children }) {
                                     trust_points: log.trust_points || null,
                                     is_verified: log.is_verified || false,
                                     helpful_votes: log.helpful_votes || 0,
-                                    unhelpful_votes: log.unhelpful_votes || 0
+                                    unhelpful_votes: log.unhelpful_votes || 0,
+                                    fingerprint: log.fingerprint,
+                                    profile_id: log.profile_id
                                 }))
                         };
                     });
@@ -449,7 +480,9 @@ export function TagdeerProvider({ children }) {
                                             trust_points: newLog.trust_points || null,
                                             is_verified: newLog.is_verified || false,
                                             helpful_votes: newLog.helpful_votes || 0,
-                                            unhelpful_votes: newLog.unhelpful_votes || 0
+                                            unhelpful_votes: newLog.unhelpful_votes || 0,
+                                            fingerprint: newLog.fingerprint,
+                                            profile_id: newLog.profile_id
                                         },
                                         ...b.logs
                                     ]
@@ -469,9 +502,41 @@ export function TagdeerProvider({ children }) {
     }, [supabase, lang]);
 
     useEffect(() => {
+        // Sync interactions count from storage on mount (secondary check)
         const storedInteractions = localStorage.getItem('trust_ledger_interactions');
         if (storedInteractions) setAnonInteractions(parseInt(storedInteractions));
     }, []);
+
+    /**
+     * Freshly sync anonymous interaction count from Supabase based on device fingerprint.
+     * This strengthens the client-side localStorage count.
+     */
+    const refreshAnonInteractions = async () => {
+        if (!supabase) return;
+
+        // Dynamic import to avoid SSR issues if fingerprint lib uses navigator
+        const { getDeviceFingerprint } = await import('../lib/fingerprint');
+        const fingerprint = getDeviceFingerprint();
+
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+        try {
+            const { count, error } = await supabase
+                .from('logs')
+                .select('*', { count: 'exact', head: true })
+                .eq('fingerprint', fingerprint)
+                .gte('created_at', twentyFourHoursAgo);
+
+            if (!error && count !== null) {
+                setAnonInteractions(count);
+                localStorage.setItem('trust_ledger_interactions', count.toString());
+                return count;
+            }
+        } catch (e) {
+            console.error("Failed to sync anon interactions:", e);
+        }
+        return anonInteractions;
+    };
 
     const showToast = (message) => {
         setToastMessage(message);
@@ -483,7 +548,7 @@ export function TagdeerProvider({ children }) {
             lang, setLang, t, isRTL,
             businesses, setBusinesses,
             supabase,
-            anonInteractions, setAnonInteractions,
+            anonInteractions, setAnonInteractions, refreshAnonInteractions,
             showLimitModal, setShowLimitModal,
             toastMessage, setToastMessage, showToast,
             voteModal, setVoteModal,

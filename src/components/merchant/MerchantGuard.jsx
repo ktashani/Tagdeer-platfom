@@ -13,8 +13,8 @@ export default function MerchantGuard({ children }) {
 
     useEffect(() => {
         if (!loading) {
-            // Don't guard the login page itself
-            if (pathname === '/merchant/login') {
+            // Don't guard the login or onboarding page itself
+            if (pathname === '/merchant/login' || pathname === '/merchant/onboarding') {
                 setIsAuthorized(true)
                 return
             }
@@ -22,7 +22,8 @@ export default function MerchantGuard({ children }) {
             if (!user) {
                 router.push('/merchant/login?redirect=' + encodeURIComponent(pathname))
             } else if (user?.role !== 'merchant' && user?.role !== 'admin') {
-                router.push('/discover') // Redirect unauthorized users to consumer app
+                // If they are in the merchant portal but not yet a merchant, send to onboarding
+                router.push('/merchant/onboarding')
             } else {
                 setIsAuthorized(true)
             }
