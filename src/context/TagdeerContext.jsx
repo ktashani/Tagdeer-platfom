@@ -262,6 +262,78 @@ export function TagdeerProvider({ children }) {
         }
     };
 
+    const loginWithEmail = async (email) => {
+        if (!supabase) {
+            showToast(lang === 'ar' ? 'فشل الاتصال بقاعدة البيانات' : 'Database connection failed');
+            return;
+        }
+
+        try {
+            const { error } = await supabase.auth.signInWithOtp({
+                email,
+                options: {
+                    emailRedirectTo: window.location.origin + '/merchant/dashboard',
+                },
+            });
+
+            if (error) throw error;
+            showToast(lang === 'ar' ? 'تم إرسال رمز التحقق إلى بريدك الإلكتروني' : 'Verification code sent to your email');
+        } catch (err) {
+            console.error("Email login error:", err);
+            showToast(err.message || "Failed to send OTP");
+            throw err;
+        }
+    };
+
+    const verifyEmailOtp = async (email, token) => {
+        if (!supabase) return;
+
+        try {
+            const { data, error } = await supabase.auth.verifyOtp({
+                email,
+                token,
+                type: 'magiclink',
+            });
+
+            console.log("Supabase OTP Verify Result:", { data, error, email, token });
+
+            if (error) throw error;
+
+            if (data.user) {
+                // Fetch profile to get role and other metadata
+                const { data: profile, error: profileErr } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', data.user.id)
+                    .single();
+
+                if (profileErr && profileErr.code !== 'PGRST116') {
+                    console.error("Error fetching profile after email verify:", profileErr);
+                }
+
+                const userObj = {
+                    id: data.user.id,
+                    email: data.user.email,
+                    phone: profile?.phone || data.user.phone,
+                    userId: profile?.user_id || `AUTH-${data.user.id.substring(0, 5).toUpperCase()}`,
+                    gader: profile?.gader_points || 0,
+                    vipTier: profile?.vip_tier || 'Bronze',
+                    full_name: profile?.full_name || data.user.email.split('@')[0],
+                    role: profile?.role || 'consumer', // Default to consumer if not found
+                    isDevBypass: false
+                };
+
+                setUser(userObj);
+                showToast(t('login_success') || 'Successfully logged in');
+                return userObj;
+            }
+        } catch (err) {
+            console.error("OTP Verification Error:", err);
+            showToast(err.message || (lang === 'ar' ? 'رمز غير صحيح' : 'Invalid code'));
+            throw err;
+        }
+    };
+
     const logout = async () => {
         if (supabase) {
             await supabase.auth.signOut().catch(() => { });
@@ -418,7 +490,7 @@ export function TagdeerProvider({ children }) {
             voteReason, setVoteReason,
             showVerifySoonModal, setShowVerifySoonModal,
             showPreRegModal, setShowPreRegModal,
-            user, setUser, loading, showLoginModal, setShowLoginModal, login, loginWithOtp, logout
+            user, setUser, loading, showLoginModal, setShowLoginModal, login, loginWithOtp, loginWithEmail, verifyEmailOtp, logout
         }}>
             {children}
         </TagdeerContext.Provider>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTagdeer } from '@/context/TagdeerContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,9 +14,9 @@ export default function MerchantLogin() {
     const [email, setEmail] = useState('');
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
     const [isLoading, setIsLoading] = useState(false);
-    const router = useRouter();
+    const { loginWithEmail, verifyEmailOtp } = useTagdeer();
 
-    const handleEmailSubmit = (e) => {
+    const handleEmailSubmit = async (e) => {
         e.preventDefault();
         if (!email.includes('@')) {
             toast.error("Please enter a valid email address");
@@ -23,12 +24,14 @@ export default function MerchantLogin() {
         }
 
         setIsLoading(true);
-        // Simulate API call
-        setTimeout(() => {
-            setIsLoading(false);
+        try {
+            await loginWithEmail(email);
             setStep(2);
-            toast.success("Verification code sent!");
-        }, 1000);
+        } catch (err) {
+            // Error handled by context toast
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleOtpChange = (index, value) => {
@@ -52,22 +55,25 @@ export default function MerchantLogin() {
         }
     };
 
-    const handleOtpSubmit = (e) => {
+    const handleOtpSubmit = async (e) => {
         e.preventDefault();
         const code = otp.join('');
+        console.log("Submitting code:", code, "for email:", email);
         if (code.length < 6) {
             toast.error("Please enter the full 6-digit code");
             return;
         }
 
         setIsLoading(true);
-        // Simulate API verification
-        setTimeout(() => {
-            setIsLoading(false);
-            toast.success("Authentication successful!");
-            // As per requirements: Always redirect to dashboard, dashboard handles the state
+        try {
+            await verifyEmailOtp(email, code);
+            // Redirection is handled by the guard or context, but we can also force it here
             router.push('/merchant/dashboard');
-        }, 1500);
+        } catch (err) {
+            // Error handled by context toast
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -120,7 +126,7 @@ export default function MerchantLogin() {
                         </form>
                     ) : (
                         <form onSubmit={handleOtpSubmit} className="space-y-8">
-                            <div className="flex justify-between gap-2 sm:gap-4">
+                            <div className="flex justify-between gap-2 sm:gap-4" dir="ltr">
                                 {otp.map((digit, index) => (
                                     <Input
                                         key={index}
