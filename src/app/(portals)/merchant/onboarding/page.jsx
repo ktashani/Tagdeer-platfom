@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Store, UploadCloud, AlertCircle, Clock, Check, Crown, ShieldAlert, ShieldCheck, CreditCard, CheckCircle2, User, FileText } from 'lucide-react';
 import { toast } from 'sonner';
+import { getPresignedUploadUrl } from '@/app/actions/storage';
 
 const CATEGORIES = [
     "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery",
@@ -54,19 +55,40 @@ export default function MerchantOnboarding() {
         try {
             if (!user) throw new Error("Authentication required");
 
-            // 1. Upload Verification Document
+            // 1. Upload Verification Document tracking
             let documentUrl = null;
+            let fileMetadata = { size: null, type: null };
+
             if (documents) {
-                const fileExt = documents.name.split('.').pop();
-                const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-                const { error: uploadError } = await supabase.storage
-                    .from('business_documents')
-                    .upload(fileName, documents);
+                // Get Presigned URL directly from Next.js server actions
+                const uploadInit = await getPresignedUploadUrl({
+                    folder: 'merchant_documents',
+                    filename: documents.name,
+                    contentType: documents.type || 'application/octet-stream' // fallback
+                });
 
-                if (uploadError) throw new Error("Document upload failed: " + uploadError.message);
+                if (!uploadInit?.success || !uploadInit.uploadUrl) {
+                    throw new Error("Failed to initialize secure upload");
+                }
 
-                // Get public URL (or construct it if bucket is private and we just want to save the path)
-                documentUrl = fileName;
+                // Actually upload the file straight to R2 from the browser using the signed URL
+                const response = await fetch(uploadInit.uploadUrl, {
+                    method: 'PUT',
+                    body: documents,
+                    headers: {
+                        'Content-Type': documents.type || 'application/octet-stream'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error("Failed to upload document to R2 storage");
+                }
+
+                documentUrl = uploadInit.publicUrl;
+                fileMetadata = {
+                    size: documents.size,
+                    type: documents.type || 'application/octet-stream'
+                };
             }
 
             // 2. Create the Unverified Business record
@@ -92,7 +114,9 @@ export default function MerchantOnboarding() {
                     business_id: businessObj.id,
                     user_id: user.id,
                     status: 'pending',
-                    document_url: documentUrl
+                    document_url: documentUrl,
+                    file_size: fileMetadata.size,
+                    mime_type: fileMetadata.type
                 }]);
 
             if (claimError) throw new Error("Claim submission failed: " + claimError.message);
