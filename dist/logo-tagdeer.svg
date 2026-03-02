@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
-  <circle cx="50" cy="50" r="45" fill="#10B981" fill-opacity="0.1"/>
-  <circle cx="50" cy="50" r="35" fill="#10B981" fill-opacity="0.2"/>
-  <path d="M50 20L60 35H40L50 20Z" fill="#3B82F6"/>
-  <circle cx="50" cy="55" r="20" fill="#10B981"/>
-  <path d="M42 55L47 60L58 48" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="50" y="88" text-anchor="middle" font-size="10" font-weight="bold" fill="#1E40AF">تقدير</text>
-</svg>
