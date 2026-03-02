@@ -1,8 +1,8 @@
 "use server";
 
-import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { r2Client, getR2PublicUrl } from "@/lib/r2";
+import { r2Client } from "@/lib/r2";
 import crypto from "crypto";
 
 const bucketName = process.env.R2_BUCKET_NAME;
@@ -12,7 +12,7 @@ const bucketName = process.env.R2_BUCKET_NAME;
  * @param {string} folder - E.g., 'documents', 'avatars'
  * @param {string} filename - Original filename to extract extension
  * @param {string} contentType - Mime type like 'image/jpeg'
- * @returns { uploadUrl, publicUrl, objectKey }
+ * @returns { uploadUrl, objectKey }
  */
 export async function getPresignedUploadUrl({ folder, filename, contentType }) {
     if (!bucketName) throw new Error("Missing R2_BUCKET_NAME configuration");
@@ -32,10 +32,7 @@ export async function getPresignedUploadUrl({ folder, filename, contentType }) {
         // URL expires in 15 minutes
         const uploadUrl = await getSignedUrl(r2Client, command, { expiresIn: 900 });
 
-        const publicDomain = getR2PublicUrl();
-        const publicUrl = `${publicDomain}/${objectKey}`;
-
-        return { uploadUrl, publicUrl, objectKey, success: true };
+        return { uploadUrl, objectKey, success: true };
     } catch (error) {
         console.error("Error generating presigned URL:", error);
         throw new Error("Failed to initialize upload");
@@ -43,21 +40,39 @@ export async function getPresignedUploadUrl({ folder, filename, contentType }) {
 }
 
 /**
- * Deletes a file from R2 safely.
- * @param {string} publicUrl - The full public URL saved in the database
+ * Gets a presigned URL to securely view a private file.
+ * @param {string} objectKey - The R2 object key (e.g., 'folder/file.pdf')
+ * @returns { viewUrl }
  */
-export async function deleteR2FileAction({ publicUrl }) {
-    if (!bucketName) return { success: false, error: "Missing config" };
-    if (!publicUrl) return { success: false, error: "No URL provided" };
+export async function getPresignedViewUrl({ objectKey }) {
+    if (!bucketName) throw new Error("Missing R2_BUCKET_NAME configuration");
+    if (!objectKey) throw new Error("No object key provided");
 
     try {
-        const publicDomain = getR2PublicUrl();
-        if (!publicUrl.startsWith(publicDomain)) {
-            return { success: false, error: "URL does not belong to bucket" };
-        }
+        const command = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: objectKey,
+        });
 
-        const objectKey = publicUrl.replace(`${publicDomain}/`, "");
+        // URL expires in 15 minutes
+        const viewUrl = await getSignedUrl(r2Client, command, { expiresIn: 900 });
 
+        return { viewUrl, success: true };
+    } catch (error) {
+        console.error("Error generating presigned view URL:", error);
+        throw new Error("Failed to initialize view");
+    }
+}
+
+/**
+ * Deletes a file from R2 safely.
+ * @param {string} objectKey - The R2 object key saved in the database
+ */
+export async function deleteR2FileAction({ objectKey }) {
+    if (!bucketName) return { success: false, error: "Missing config" };
+    if (!objectKey) return { success: false, error: "No object key provided" };
+
+    try {
         const command = new DeleteObjectCommand({
             Bucket: bucketName,
             Key: objectKey,

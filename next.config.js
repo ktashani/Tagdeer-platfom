@@ -12,14 +12,6 @@ const nextConfig = {
             ],
         }];
     },
-    images: {
-        remotePatterns: [
-            {
-                protocol: 'https',
-                hostname: 'pub-2e291b2cd42547b5957eac5e913acd6e.r2.dev',
-            },
-        ],
-    },
 }
 
 export default nextConfig;

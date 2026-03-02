@@ -84,7 +84,7 @@ export default function MerchantOnboarding() {
                     throw new Error("Failed to upload document to R2 storage");
                 }
 
-                documentUrl = uploadInit.publicUrl;
+                documentUrl = uploadInit.objectKey;
                 fileMetadata = {
                     size: documents.size,
                     type: documents.type || 'application/octet-stream'
