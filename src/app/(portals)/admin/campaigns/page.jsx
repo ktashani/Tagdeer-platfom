@@ -1,4 +1,3 @@
-'use client';
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -13,6 +12,7 @@ export default function CampaignsPage() {
     const [pools, setPools] = useState([])
     const [isLoading, setIsLoading] = useState(true)
 
+    const [showNewCampaignPopup, setShowNewCampaignPopup] = useState(false)
     const [showNewPoolPopup, setShowNewPoolPopup] = useState(false)
     const [newPoolParams, setNewPoolParams] = useState({ name: '', drop_logic: 'Dispense 1 code every 1 verified log' })
     const [poolFile, setPoolFile] = useState(null)

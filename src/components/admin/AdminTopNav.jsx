@@ -21,11 +21,11 @@ export default function AdminTopNav() {
 
     const handleLogout = async () => {
         await logoutAdmin()
-        window.location.href = '/login'
+        window.location.href = '/admin/login'
     }
 
     // Don't render navigation on the login page
-    if (pathname === '/login') return null;
+    if (pathname === '/admin/login') return null;
 
     return (
         <nav className="border-b border-slate-800 bg-slate-950 px-6 py-4 flex justify-between items-center sticky top-0 z-50">

@@ -325,7 +325,7 @@ export function TagdeerProvider({ children }) {
             const { error } = await supabase.auth.signInWithOtp({
                 email,
                 options: {
-                    emailRedirectTo: window.location.origin + '/merchant/dashboard',
+                    emailRedirectTo: window.location.origin + '/auth/callback',
                 },
             });
 

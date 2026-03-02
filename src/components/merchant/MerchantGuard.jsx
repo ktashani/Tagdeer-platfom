@@ -6,7 +6,7 @@ import { useTagdeer } from '@/context/TagdeerContext'
 import { Loader2 } from 'lucide-react'
 
 export default function MerchantGuard({ children }) {
-    const { user, profile, loading } = useTagdeer()
+    const { user, loading } = useTagdeer()
     const router = useRouter()
     const pathname = usePathname()
     const [isAuthorized, setIsAuthorized] = useState(false)
@@ -28,7 +28,7 @@ export default function MerchantGuard({ children }) {
                 setIsAuthorized(true)
             }
         }
-    }, [user, profile, loading, router, pathname])
+    }, [user, loading, router, pathname])
 
     if (loading || !isAuthorized) {
         return (

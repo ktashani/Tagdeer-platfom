@@ -1,5 +1,4 @@
 'use client';
-'use client';
 
 import React, { useState } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';

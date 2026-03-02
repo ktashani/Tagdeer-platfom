@@ -1,10 +1,8 @@
 'use client';
-'use client';
 
 import React, { useEffect, useState } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Mail, User, ShieldCheck, Phone, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -17,7 +15,7 @@ import { LogHistory } from '@/components/profile/LogHistory';
 import { GaderPassModal } from '@/components/profile/GaderPassModal';
 
 export default function ProfilePage() {
-    const { user, logout, t, isRTL, setShowLoginModal, lang } = useTagdeer();
+    const { user, logout, t, isRTL, setShowLoginModal, lang, supabase } = useTagdeer();
 
     // Check if we are in a dev/localhost environment for safe bypasses
     const isDevEnv = process.env.NODE_ENV === 'development' ||

@@ -148,7 +148,7 @@ export default function AdminDashboard() {
                         </div>
                     </div>
                     <div className="mt-6 pt-6 border-t border-slate-700/50 pl-12">
-                        <Link href="/requests" className="inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium border border-slate-700">
+                        <Link href="/admin/requests" className="inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium border border-slate-700">
                             Review Claims
                             <ArrowRight className="w-4 h-4" />
                         </Link>
@@ -172,7 +172,7 @@ export default function AdminDashboard() {
                         </div>
                     </div>
                     <div className="mt-6 pt-6 border-t border-slate-700/50 pl-12">
-                        <Link href="/disputes" className="inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium border border-slate-700">
+                        <Link href="/admin/disputes" className="inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium border border-slate-700">
                             Resolve Disputes
                             <ArrowRight className="w-4 h-4" />
                         </Link>
@@ -185,7 +185,7 @@ export default function AdminDashboard() {
             <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden">
                 <div className="p-6 border-b border-slate-700/50 flex justify-between items-center">
                     <h3 className="text-lg font-medium text-white">Recent Store Approvals</h3>
-                    <Link href="/businesses" className="text-sm text-emerald-400 hover:text-emerald-300 font-medium transition-colors">View All Directory</Link>
+                    <Link href="/admin/businesses" className="text-sm text-emerald-400 hover:text-emerald-300 font-medium transition-colors">View All Directory</Link>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm text-slate-400">
@@ -211,7 +211,7 @@ export default function AdminDashboard() {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <Link href="/businesses" className="text-slate-500 hover:text-slate-300 font-medium">Manage</Link>
+                                        <Link href="/admin/businesses" className="text-slate-500 hover:text-slate-300 font-medium">Manage</Link>
                                     </td>
                                 </tr>
                             ))}
