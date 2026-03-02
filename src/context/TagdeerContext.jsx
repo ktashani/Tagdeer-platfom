@@ -152,6 +152,7 @@ export function TagdeerProvider({ children }) {
                 vipTier: profile?.vip_tier || 'Bronze',
                 full_name: profile?.full_name || supabaseUser.email?.split('@')[0] || 'Tagdeer User',
                 role: profile?.role || 'consumer',
+                has_password: profile?.has_password || false,
                 isDevBypass: false
             };
 
@@ -363,6 +364,68 @@ export function TagdeerProvider({ children }) {
         }
     };
 
+    /**
+     * Login with email + password (for merchants who have set a password)
+     */
+    const loginWithPassword = async (email, password) => {
+        if (!supabase) {
+            showToast(lang === 'ar' ? 'فشل الاتصال بقاعدة البيانات' : 'Database connection failed');
+            throw new Error('No database connection');
+        }
+
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
+
+            if (error) throw error;
+
+            // onAuthStateChange will handle syncing the profile
+            return data.user;
+        } catch (err) {
+            console.error('Password login error:', err);
+            showToast(err.message || (lang === 'ar' ? 'فشل تسجيل الدخول' : 'Login failed'));
+            throw err;
+        }
+    };
+
+    /**
+     * Set a password for the currently authenticated merchant.
+     * Called after first OTP login to enable password-based login going forward.
+     */
+    const setMerchantPassword = async (password) => {
+        if (!supabase) throw new Error('No database connection');
+
+        try {
+            // 1. Set password on the Supabase Auth user
+            const { error: authError } = await supabase.auth.updateUser({
+                password,
+            });
+            if (authError) throw authError;
+
+            // 2. Mark has_password = true in profiles
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (authUser) {
+                const { error: profileError } = await supabase
+                    .from('profiles')
+                    .update({ has_password: true })
+                    .eq('id', authUser.id);
+
+                if (profileError) {
+                    console.error('Failed to update has_password flag:', profileError);
+                    // Don't throw — password was set successfully in Auth
+                }
+
+                // Update local user state
+                setUser(prev => prev ? { ...prev, has_password: true } : prev);
+            }
+        } catch (err) {
+            console.error('Set password error:', err);
+            throw err;
+        }
+    };
+
     const logout = async () => {
         if (supabase) {
             await supabase.auth.signOut().catch(() => { });
@@ -555,7 +618,7 @@ export function TagdeerProvider({ children }) {
             voteReason, setVoteReason,
             showVerifySoonModal, setShowVerifySoonModal,
             showPreRegModal, setShowPreRegModal,
-            user, setUser, loading, showLoginModal, setShowLoginModal, login, loginWithOtp, loginWithEmail, verifyEmailOtp, logout
+            user, setUser, loading, showLoginModal, setShowLoginModal, login, loginWithOtp, loginWithEmail, verifyEmailOtp, loginWithPassword, setMerchantPassword, logout
         }}>
             {children}
         </TagdeerContext.Provider>
