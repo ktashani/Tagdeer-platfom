@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mail, KeyRound, Lock, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Mail, KeyRound, Lock, ArrowRight, Loader2, Eye, EyeOff, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import SetPasswordPrompt from '@/components/merchant/SetPasswordPrompt';
 
@@ -20,14 +20,18 @@ export default function MerchantLogin() {
     const [isLoading, setIsLoading] = useState(false);
     const [isCheckingPassword, setIsCheckingPassword] = useState(false);
     const router = useRouter();
+    const searchParams = useSearchParams();
     const {
         loginWithEmail, verifyEmailOtp, loginWithPassword,
-        setMerchantPassword, user, loading
+        setMerchantPassword, user, loading, logout
     } = useTagdeer();
 
-    // Auto-redirect if already logged in as merchant/admin
+    // Detect if user was redirected here because they need a merchant account
+    const merchantRequired = searchParams.get('reason') === 'merchant_required';
+
+    // Auto-redirect if already logged in as merchant (only merchant — not admin or consumer)
     useEffect(() => {
-        if (!loading && user && (user.role === 'merchant' || user.role === 'admin')) {
+        if (!loading && user && user.role === 'merchant') {
             // If they just verified via OTP and don't have a password, show set-password prompt
             if (step === 'set-password') return;
             router.push('/merchant/dashboard');
@@ -59,14 +63,14 @@ export default function MerchantLogin() {
             } else {
                 // No password → go to OTP flow
                 setIsLoading(true);
-                await loginWithEmail(email);
+                await loginWithEmail(email, 'merchant');
                 setStep('otp');
             }
         } catch (err) {
             // If check fails, fall back to OTP
             try {
                 setIsLoading(true);
-                await loginWithEmail(email);
+                await loginWithEmail(email, 'merchant');
                 setStep('otp');
             } catch {
                 // Error handled by context toast
@@ -104,7 +108,7 @@ export default function MerchantLogin() {
     const handleForgotPassword = async () => {
         setIsLoading(true);
         try {
-            await loginWithEmail(email);
+            await loginWithEmail(email, 'merchant');
             setStep('otp');
             toast.info("Verification code sent. After verifying, you can reset your password.");
         } catch (err) {
@@ -232,6 +236,25 @@ export default function MerchantLogin() {
                 </CardHeader>
 
                 <CardContent className="pb-10 px-8">
+
+                    {/* Info banner when redirected from a protected merchant route */}
+                    {merchantRequired && step === 'email' && (
+                        <div className="mb-6 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 flex items-start gap-3">
+                            <Info className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+                            <div>
+                                <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Merchant Account Required</p>
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Please sign in with your merchant email to access the business portal. Admin and consumer accounts cannot be used here.</p>
+                                {user && (
+                                    <button
+                                        onClick={() => logout()}
+                                        className="mt-2 text-xs font-bold text-blue-700 dark:text-blue-300 underline hover:text-blue-900"
+                                    >
+                                        Sign out of current account first
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* ========== STEP: EMAIL ========== */}
                     {step === 'email' && (

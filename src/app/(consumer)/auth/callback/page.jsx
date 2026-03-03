@@ -1,14 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { Loader2 } from 'lucide-react';
 
-export default function AuthCallbackPage() {
+function AuthCallbackInner() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { supabase, login, lang } = useTagdeer();
     const [statusText, setStatusText] = useState(lang === 'ar' ? 'جاري التحقق...' : 'Verifying...');
+
+    // Detect if the user came from the merchant login flow
+    const fromMerchant = searchParams.get('from') === 'merchant';
 
     useEffect(() => {
         if (!supabase) return;
@@ -16,9 +20,17 @@ export default function AuthCallbackPage() {
         let isMounted = true;
         let authListener;
 
+        // Helper to decide where to redirect based on role + origin
+        const getRedirectPath = (role) => {
+            if (role === 'admin') return '/admin';
+            if (role === 'merchant') return '/merchant/dashboard';
+            // User role: if they came from merchant login, send to onboarding
+            if (fromMerchant) return '/merchant/onboarding';
+            return '/';
+        };
+
         const handleAuth = async () => {
             try {
-                // Check if we already have a session (Supabase client might have already parsed the hash)
                 const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
                 if (sessionError) throw sessionError;
@@ -29,14 +41,11 @@ export default function AuthCallbackPage() {
                     const { data: profile } = await supabase.from('profiles').select('role').eq('id', session.user.id).single();
 
                     if (isMounted) {
-                        if (profile?.role === 'admin') router.push('/admin');
-                        else if (profile?.role === 'merchant') router.push('/merchant/dashboard');
-                        else router.push('/');
+                        router.push(getRedirectPath(profile?.role));
                     }
                     return;
                 }
 
-                // If no session yet, listen for the SIGNED_IN event (Supabase might still be parsing the URL)
                 const subscription = supabase.auth.onAuthStateChange(async (event, newSession) => {
                     if (event === 'SIGNED_IN' && newSession?.user?.email) {
                         if (isMounted) setStatusText(lang === 'ar' ? 'تم تسجيل الدخول، جارِ التوجيه...' : 'Logged in, redirecting...');
@@ -44,9 +53,7 @@ export default function AuthCallbackPage() {
                         const { data: profile } = await supabase.from('profiles').select('role').eq('id', newSession.user.id).single();
 
                         if (isMounted) {
-                            if (profile?.role === 'admin') router.push('/admin');
-                            else if (profile?.role === 'merchant') router.push('/merchant/dashboard');
-                            else router.push('/');
+                            router.push(getRedirectPath(profile?.role));
                         }
                     }
                 });
@@ -68,7 +75,7 @@ export default function AuthCallbackPage() {
             isMounted = false;
             if (authListener) authListener.unsubscribe();
         };
-    }, [supabase, login, router, lang]);
+    }, [supabase, login, router, lang, fromMerchant]);
 
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-800">
@@ -78,5 +85,18 @@ export default function AuthCallbackPage() {
                 {lang === 'ar' ? 'يرجى الانتظار بينما نقوم بإعداد حسابك...' : 'Please wait while we set up your account...'}
             </p>
         </div>
+    );
+}
+
+export default function AuthCallbackPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-slate-800">
+                <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+                <h2 className="text-xl font-bold">Verifying...</h2>
+            </div>
+        }>
+            <AuthCallbackInner />
+        </Suspense>
     );
 }

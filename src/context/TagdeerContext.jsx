@@ -95,19 +95,6 @@ export function TagdeerProvider({ children }) {
 
         // 1. Initial Check: Try to restore session from Supabase SDK
         const checkInitialSession = async () => {
-            // First check if user is forcibly logged in as the admin mock bypass
-            try {
-                const stored = localStorage.getItem('tagdeer-user');
-                if (stored) {
-                    const parsed = JSON.parse(stored);
-                    if (parsed.role === 'admin') {
-                        setUser(parsed);
-                        setLoading(false);
-                        return;
-                    }
-                }
-            } catch { }
-
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
                 await syncUserProfile(session.user);
@@ -131,16 +118,8 @@ export function TagdeerProvider({ children }) {
             console.log("Supabase Auth Event:", event, session?.user?.email);
 
             if (event === 'SIGNED_IN' && session) {
-                try {
-                    const stored = localStorage.getItem('tagdeer-user');
-                    if (stored && JSON.parse(stored).role === 'admin') return;
-                } catch { }
                 await syncUserProfile(session.user);
             } else if (event === 'SIGNED_OUT') {
-                try {
-                    const stored = localStorage.getItem('tagdeer-user');
-                    if (stored && JSON.parse(stored).role === 'admin') return;
-                } catch { }
                 setUser(null);
                 localStorage.removeItem('tagdeer-user');
             }
@@ -175,6 +154,7 @@ export function TagdeerProvider({ children }) {
                 vipTier: profile?.vip_tier || 'Bronze',
                 full_name: profile?.full_name || supabaseUser.email?.split('@')[0] || 'Tagdeer User',
                 role: profile?.role || 'consumer',
+                status: profile?.status || 'Active',
                 has_password: profile?.has_password || false,
                 isDevBypass: false
             };
@@ -339,17 +319,18 @@ export function TagdeerProvider({ children }) {
         // Note: setUser is now handled by the onAuthStateChange listener
     };
 
-    const loginWithEmail = async (email) => {
+    const loginWithEmail = async (email, redirectFrom) => {
         if (!supabase) {
             showToast(lang === 'ar' ? 'فشل الاتصال بقاعدة البيانات' : 'Database connection failed');
             return;
         }
 
         try {
+            const redirectUrl = window.location.origin + '/auth/callback' + (redirectFrom ? `?from=${redirectFrom}` : '');
             const { error } = await supabase.auth.signInWithOtp({
                 email,
                 options: {
-                    emailRedirectTo: window.location.origin + '/auth/callback',
+                    emailRedirectTo: redirectUrl,
                 },
             });
 

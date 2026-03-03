@@ -70,6 +70,7 @@ export default function MerchantDashboard() {
     const [pendingDisputes, setPendingDisputes] = useState([]);
     const [activeCampaigns, setActiveCampaigns] = useState([]);
     const [couponsRedeemed, setCouponsRedeemed] = useState(0);
+    const [pendingClaim, setPendingClaim] = useState(null);
 
     // Only render once user loading finishes
     if (user === undefined) return <div className="min-h-screen flex items-center justify-center">Loading Dashboard...</div>;
@@ -81,10 +82,27 @@ export default function MerchantDashboard() {
     // FETCH REAL DATA
     // ==========================================
     useEffect(() => {
-        if (!supabase || !myBusiness) return;
+        if (!supabase || !myBusiness || !user) return;
 
         const fetchDashboardData = async () => {
             try {
+                // Fetch claim status to check if admin approval is pending
+                const { data: claimData } = await supabase
+                    .from('business_claims')
+                    .select('status, claim_status')
+                    .eq('business_id', myBusiness.id)
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                if (claimData) {
+                    const status = claimData.status || claimData.claim_status || 'pending';
+                    if (status === 'pending' || status === 'missing_docs') {
+                        setPendingClaim(status);
+                    }
+                }
+
                 // Fetch pending disputes
                 const { data: disputes } = await supabase
                     .from('disputes')
@@ -128,7 +146,7 @@ export default function MerchantDashboard() {
         };
 
         fetchDashboardData();
-    }, [supabase, myBusiness?.id]);
+    }, [supabase, myBusiness?.id, user?.id]);
 
     // ==========================================
     // DYNAMIC STATES
@@ -136,6 +154,8 @@ export default function MerchantDashboard() {
     let currentMockState = MOCK_STATES.ACTIVE;
     if (!myBusiness) {
         currentMockState = MOCK_STATES.NO_BUSINESS;
+    } else if (pendingClaim === 'pending' || pendingClaim === 'missing_docs') {
+        currentMockState = MOCK_STATES.PENDING_APPROVAL;
     } else if (myBusiness.status === 'restricted') {
         currentMockState = MOCK_STATES.RESTRICTED;
     } else if (myBusiness.status === 'pending_review') {
@@ -197,19 +217,23 @@ export default function MerchantDashboard() {
     if (currentMockState === MOCK_STATES.PENDING_APPROVAL) {
         return (
             <div className="h-[80vh] flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-500">
-                <div className="w-24 h-24 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-full flex items-center justify-center mb-6">
-                    <Clock className="w-12 h-12" />
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 ${pendingClaim === 'missing_docs' ? 'bg-red-100 dark:bg-red-900/30 text-red-600' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600'}`}>
+                    {pendingClaim === 'missing_docs' ? <AlertCircle className="w-12 h-12" /> : <Clock className="w-12 h-12" />}
                 </div>
-                <h2 className="text-3xl font-black mb-4">Profile Under Review</h2>
+                <h2 className="text-3xl font-black mb-4">{pendingClaim === 'missing_docs' ? 'Action Required' : 'Profile Under Review'}</h2>
                 <p className="text-slate-500 max-w-lg mx-auto text-lg mb-8">
-                    Your business profile is currently being reviewed by our admin team. You will regain access to the platform once your profile meets our directory standards and is approved.
+                    {pendingClaim === 'missing_docs'
+                        ? 'Your submission is missing required documents or they were unreadable. Please check your email for details from the admin team on how to provide them.'
+                        : 'Your business profile is currently being reviewed by our admin team. You will regain access to the platform once your profile meets our directory standards and is approved.'}
                 </p>
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl w-full max-w-md shadow-sm text-left">
                     <h3 className="font-bold mb-4 flex items-center gap-2"><Activity className="w-5 h-5 text-indigo-500" /> Account Status</h3>
                     <div className="space-y-4">
                         <div className="flex justify-between items-center text-sm">
                             <span className="text-slate-500">Verification Documents</span>
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-0">In Review</Badge>
+                            <Badge variant="outline" className={`border-0 ${pendingClaim === 'missing_docs' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
+                                {pendingClaim === 'missing_docs' ? 'Missing/Invalid' : 'In Review'}
+                            </Badge>
                         </div>
                         <div className="flex justify-between items-center text-sm">
                             <span className="text-slate-500">Subscription Setup</span>
