@@ -49,3 +49,44 @@ BEGIN
     WHERE id = p_user_id;
 END;
 $$;
+
+
+-- 3. Update User Status/Role
+CREATE OR REPLACE FUNCTION admin_update_user_status(p_user_id UUID, p_role TEXT, p_status TEXT)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    -- Ensure caller is admin
+    IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin') THEN
+        RAISE EXCEPTION 'Unauthorized';
+    END IF;
+
+    UPDATE public.profiles 
+    SET role = p_role,
+        status = p_status
+    WHERE id = p_user_id;
+END;
+$$;
+
+
+-- 4. Update User Profile Info
+CREATE OR REPLACE FUNCTION admin_update_user_info(p_user_id UUID, p_full_name TEXT, p_email TEXT, p_phone TEXT)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    -- Ensure caller is admin
+    IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin') THEN
+        RAISE EXCEPTION 'Unauthorized';
+    END IF;
+
+    UPDATE public.profiles 
+    SET full_name = p_full_name,
+        profile_email = p_email,
+        phone = p_phone
+    WHERE id = p_user_id;
+END;
+$$;

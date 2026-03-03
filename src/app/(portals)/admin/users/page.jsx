@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, UserX, UserMinus, ShieldAlert, Award, AlertTriangle, AlertCircle, TrendingUp, TrendingDown, History, Loader2 } from 'lucide-react'
+import { Search, UserX, UserMinus, ShieldAlert, Award, AlertTriangle, AlertCircle, TrendingUp, TrendingDown, History, Loader2, Settings, UserCheck, Edit3 } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -15,8 +15,11 @@ export default function UsersPage() {
     const [selectedUser, setSelectedUser] = useState(null)
     const [userLogs, setUserLogs] = useState([])
     const [isLoadingLogs, setIsLoadingLogs] = useState(false)
+    const [isSaving, setIsSaving] = useState(false)
     const [adjustmentAmount, setAdjustmentAmount] = useState('')
     const [adjustmentReason, setAdjustmentReason] = useState('')
+    const [isEditingInfo, setIsEditingInfo] = useState(false)
+    const [editForm, setEditForm] = useState({ name: '', email: '', phone: '' })
 
     useEffect(() => {
         if (!supabase) return;
@@ -32,7 +35,8 @@ export default function UsersPage() {
                     trustPoints: dbUser.gader || 0,
                     tier: (dbUser.gader || 0) > 5000 ? 'Gold' : (dbUser.gader || 0) > 1000 ? 'Silver' : 'Bronze',
                     flags: 0,
-                    status: 'Active',
+                    status: dbUser.status || 'Active',
+                    role: dbUser.role || 'user',
                     isFlagged: false,
                     flagReason: ''
                 }))
@@ -93,8 +97,14 @@ export default function UsersPage() {
             return
         }
 
-        const amount = type === 'add' ? parseInt(adjustmentAmount) : -parseInt(adjustmentAmount);
+        const amount = type === 'add' ? Math.abs(parseInt(adjustmentAmount)) : -Math.abs(parseInt(adjustmentAmount));
 
+        if (isNaN(amount)) {
+            showToast("Invalid amount.");
+            return;
+        }
+
+        setIsSaving(true);
         const { error } = await supabase.rpc('admin_manage_user_gader', {
             p_user_id: selectedUser.id,
             p_amount: amount,
@@ -102,17 +112,78 @@ export default function UsersPage() {
         });
 
         if (error) {
-            console.error(error);
-            showToast("Failed to adjust points.");
+            console.error('RPC Error:', error);
+            showToast(error.message || "Failed to adjust points.");
         } else {
             showToast(`${type === 'add' ? 'Awarded' : 'Deducted'} ${Math.abs(amount)} points.`);
             // Optimistic UI Update locally
-            setSelectedUser(prev => ({ ...prev, trustPoints: Math.max((prev.trustPoints || 0) + amount, 0) }));
-            setUsers(users.map(u => u.id === selectedUser.id ? { ...u, trustPoints: Math.max(u.trustPoints + amount, 0) } : u));
+            const updatedUser = { ...selectedUser, trustPoints: Math.max((selectedUser.trustPoints || 0) + amount, 0) };
+            setSelectedUser(updatedUser);
+            setUsers(users.map(u => u.id === selectedUser.id ? { ...u, trustPoints: updatedUser.trustPoints } : u));
         }
 
+        setIsSaving(false);
         setAdjustmentAmount('')
         setAdjustmentReason('')
+    }
+
+    const handleStatusUpdate = async (newStatus) => {
+        if (!supabase || !selectedUser) return;
+
+        setIsSaving(true);
+        const { error } = await supabase.rpc('admin_update_user_status', {
+            p_user_id: selectedUser.id,
+            p_role: selectedUser.role, // Keep existing role for now
+            p_status: newStatus
+        });
+
+        if (error) {
+            console.error('RPC Error:', error);
+            showToast(error.message || "Failed to update status.");
+        } else {
+            showToast(`User status updated to ${newStatus}.`);
+            setSelectedUser(prev => ({ ...prev, status: newStatus }));
+            setUsers(users.map(u => u.id === selectedUser.id ? { ...u, status: newStatus } : u));
+        }
+        setIsSaving(false);
+    }
+
+    const handleUpdateUserInfo = async () => {
+        if (!supabase || !selectedUser) return;
+
+        setIsSaving(true);
+        const { error } = await supabase.rpc('admin_update_user_info', {
+            p_user_id: selectedUser.id,
+            p_full_name: editForm.name,
+            p_email: editForm.email,
+            p_phone: editForm.phone
+        });
+
+        if (error) {
+            console.error('RPC Error:', error);
+            showToast(error.message || "Failed to update user info.");
+        } else {
+            showToast("User information updated.");
+            const updated = {
+                ...selectedUser,
+                name: editForm.name,
+                email: editForm.email,
+                phone: editForm.phone
+            };
+            setSelectedUser(updated);
+            setUsers(users.map(u => u.id === selectedUser.id ? updated : u));
+            setIsEditingInfo(false);
+        }
+        setIsSaving(false);
+    }
+
+    const startEditing = () => {
+        setEditForm({
+            name: selectedUser.name,
+            email: selectedUser.email,
+            phone: selectedUser.phone
+        });
+        setIsEditingInfo(true);
     }
 
     return (
@@ -207,9 +278,14 @@ export default function UsersPage() {
                                                 </td>
                                             )}
                                             <td className="px-6 py-4">
-                                                <div className="flex items-center gap-1.5">
-                                                    {user.flags > 0 && <span className="text-red-400 font-bold text-xs">{user.flags} Flags</span>}
-                                                    {user.flags === 0 && <span className="text-emerald-400 font-bold text-xs">Clean</span>}
+                                                <div className="flex flex-col gap-1">
+                                                    <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded w-fit ${user.status === 'Banned' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
+                                                            user.status === 'Restricted' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                                                                'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                                                        }`}>
+                                                        {user.status}
+                                                    </span>
+                                                    {user.flags > 0 && <span className="text-red-400 font-bold text-[10px]">{user.flags} Flags</span>}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-right">
@@ -249,13 +325,18 @@ export default function UsersPage() {
                                         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                                             {selectedUser.name}
                                             {selectedUser.flags > 2 && <ShieldAlert className="w-5 h-5 text-red-500" />}
+                                            <button onClick={startEditing} className="p-1 hover:bg-slate-700 rounded-full text-slate-500 hover:text-emerald-400 transition-colors">
+                                                <Edit3 className="w-4 h-4" />
+                                            </button>
                                         </h2>
                                         <p className="text-sm text-slate-400 mt-1">{selectedUser.phone} • {selectedUser.email}</p>
                                     </div>
                                 </div>
-                                <button onClick={() => setSelectedUser(null)} className="text-slate-500 hover:text-white transition-colors">
-                                    <UserX className="w-5 h-5" />
-                                </button>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setSelectedUser(null)} className="p-2 text-slate-500 hover:text-white transition-colors">
+                                        <UserX className="w-5 h-5" />
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Key Stats */}
@@ -294,10 +375,106 @@ export default function UsersPage() {
                                 </div>
                             )}
 
+                            {/* Edit Information Form */}
+                            {isEditingInfo && (
+                                <div className="mb-8 bg-slate-900 border border-emerald-500/30 rounded-xl p-4 animate-in slide-in-from-top-4 duration-300">
+                                    <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+                                        <Edit3 className="w-4 h-4 text-emerald-400" /> Edit User Information
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-400 mb-1">Full Name</label>
+                                            <input
+                                                type="text"
+                                                className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500"
+                                                value={editForm.name}
+                                                onChange={e => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-medium text-slate-400 mb-1">Email</label>
+                                                <input
+                                                    type="email"
+                                                    className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500"
+                                                    value={editForm.email}
+                                                    onChange={e => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-slate-400 mb-1">Phone</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500"
+                                                    value={editForm.phone}
+                                                    onChange={e => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2 pt-2">
+                                            <button
+                                                disabled={isSaving}
+                                                onClick={handleUpdateUserInfo}
+                                                className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-md transition-colors text-sm font-bold disabled:opacity-50"
+                                            >
+                                                {isSaving ? 'Saving...' : 'Save Changes'}
+                                            </button>
+                                            <button
+                                                onClick={() => setIsEditingInfo(false)}
+                                                className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-md transition-colors text-sm font-medium"
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Status Management */}
+                            <div className="mb-8">
+                                <h3 className="font-semibold text-white mb-4 border-b border-slate-700 pb-2 flex items-center gap-2">
+                                    <Settings className="w-4 h-4" /> Account Status Control
+                                </h3>
+                                <div className="flex gap-3">
+                                    <button
+                                        disabled={isSaving || selectedUser.status === 'Active'}
+                                        onClick={() => handleStatusUpdate('Active')}
+                                        className={`flex-1 py-2.5 rounded-lg border transition-all flex items-center justify-center gap-2 text-sm font-bold ${selectedUser.status === 'Active'
+                                                ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
+                                                : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400'
+                                            }`}
+                                    >
+                                        <UserCheck className="w-4 h-4" /> Active
+                                    </button>
+                                    <button
+                                        disabled={isSaving || selectedUser.status === 'Restricted'}
+                                        onClick={() => handleStatusUpdate('Restricted')}
+                                        className={`flex-1 py-2.5 rounded-lg border transition-all flex items-center justify-center gap-2 text-sm font-bold ${selectedUser.status === 'Restricted'
+                                                ? 'bg-amber-500/10 border-amber-500/50 text-amber-500'
+                                                : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-amber-500/50 hover:text-amber-400'
+                                            }`}
+                                    >
+                                        <AlertCircle className="w-4 h-4" /> Restrict
+                                    </button>
+                                    <button
+                                        disabled={isSaving || selectedUser.status === 'Banned'}
+                                        onClick={() => handleStatusUpdate('Banned')}
+                                        className={`flex-1 py-2.5 rounded-lg border transition-all flex items-center justify-center gap-2 text-sm font-bold ${selectedUser.status === 'Banned'
+                                                ? 'bg-red-500/10 border-red-500/50 text-red-500'
+                                                : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-red-500/50 hover:text-red-400'
+                                            }`}
+                                    >
+                                        <ShieldAlert className="w-4 h-4" /> Ban
+                                    </button>
+                                </div>
+                            </div>
+
                             {/* Manual Adjustment */}
                             <div className="mb-8">
-                                <h3 className="font-semibold text-white mb-4 border-b border-slate-700 pb-2">Manual Points Adjustment</h3>
-                                <div className="bg-slate-900 border border-slate-700 rounded-xl p-4">
+                                <h3 className="font-semibold text-white mb-4 border-b border-slate-700 pb-2 flex items-center gap-2">
+                                    <Award className="w-4 h-4" /> Manual Points Adjustment
+                                </h3>
+                                <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 shadow-inner">
                                     <div className="flex gap-4 mb-3">
                                         <div className="flex-1">
                                             <label className="block text-xs font-medium text-slate-400 mb-1">Amount (PTS)</label>
@@ -321,11 +498,19 @@ export default function UsersPage() {
                                         </div>
                                     </div>
                                     <div className="flex gap-3">
-                                        <button onClick={() => handleAdjustment('add')} className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 py-2 rounded-md transition-colors text-sm font-medium flex items-center justify-center gap-1.5">
-                                            <TrendingUp className="w-4 h-4" /> Award Points
+                                        <button
+                                            disabled={isSaving}
+                                            onClick={() => handleAdjustment('add')}
+                                            className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 py-2 rounded-md transition-colors text-sm font-medium flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                        >
+                                            <TrendingUp className="w-4 h-4" /> {isSaving ? '...' : 'Award Points'}
                                         </button>
-                                        <button onClick={() => handleAdjustment('deduct')} className="flex-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-500 py-2 rounded-md transition-colors text-sm font-medium flex items-center justify-center gap-1.5">
-                                            <TrendingDown className="w-4 h-4" /> Deduct Penalty
+                                        <button
+                                            disabled={isSaving}
+                                            onClick={() => handleAdjustment('deduct')}
+                                            className="flex-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-500 py-2 rounded-md transition-colors text-sm font-medium flex items-center justify-center gap-1.5 disabled:opacity-50"
+                                        >
+                                            <TrendingDown className="w-4 h-4" /> {isSaving ? '...' : 'Deduct Penalty'}
                                         </button>
                                     </div>
                                 </div>
