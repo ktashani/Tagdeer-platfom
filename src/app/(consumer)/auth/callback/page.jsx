@@ -25,9 +25,14 @@ export default function AuthCallbackPage() {
 
                 if (session?.user?.email) {
                     if (isMounted) setStatusText(lang === 'ar' ? 'تم تسجيل الدخول، جارِ التوجيه...' : 'Logged in, redirecting...');
-                    // Automatically log them into our TagdeerContext system
-                    await login(session.user.email);
-                    if (isMounted) router.push('/');
+
+                    const { data: profile } = await supabase.from('profiles').select('role').eq('id', session.user.id).single();
+
+                    if (isMounted) {
+                        if (profile?.role === 'admin') router.push('/admin');
+                        else if (profile?.role === 'merchant') router.push('/merchant/dashboard');
+                        else router.push('/');
+                    }
                     return;
                 }
 
@@ -35,8 +40,14 @@ export default function AuthCallbackPage() {
                 const subscription = supabase.auth.onAuthStateChange(async (event, newSession) => {
                     if (event === 'SIGNED_IN' && newSession?.user?.email) {
                         if (isMounted) setStatusText(lang === 'ar' ? 'تم تسجيل الدخول، جارِ التوجيه...' : 'Logged in, redirecting...');
-                        await login(newSession.user.email);
-                        if (isMounted) router.push('/');
+
+                        const { data: profile } = await supabase.from('profiles').select('role').eq('id', newSession.user.id).single();
+
+                        if (isMounted) {
+                            if (profile?.role === 'admin') router.push('/admin');
+                            else if (profile?.role === 'merchant') router.push('/merchant/dashboard');
+                            else router.push('/');
+                        }
                     }
                 });
 

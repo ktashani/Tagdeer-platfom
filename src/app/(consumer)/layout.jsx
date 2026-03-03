@@ -23,9 +23,11 @@ function Footer({ t }) {
                     <BadgeCheck className="h-8 w-8 text-green-500" />
                     <span className="font-bold text-xl text-white">Tagdeer</span>
                 </div>
-                <div className="flex gap-4 items-center">
-                    <a href="#" className="hover:text-white"><Facebook className="h-5 w-5" /></a>
-                    <a href="#" className="hover:text-white"><Twitter className="h-5 w-5" /></a>
+                <div className="flex gap-4 items-center text-sm">
+                    <Link href="/discover" className="hover:text-white transition-colors">Discover</Link>
+                    <Link href="/about" className="hover:text-white transition-colors">About</Link>
+                    <Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link>
+                    <a href="/merchant/login" className="hover:text-white transition-colors font-medium text-blue-400 hover:text-blue-300">Merchant Login</a>
                 </div>
                 <div className="flex flex-col items-center md:items-end gap-2">
                     <Link href="/privacy" className="text-sm hover:text-white transition-colors">
@@ -49,7 +51,7 @@ export default function ClientLayout({ children }) {
         voteReason, setVoteReason,
         showVerifySoonModal, setShowVerifySoonModal,
         showPreRegModal, setShowPreRegModal,
-        user
+        user, setUser
     } = useTagdeer();
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -149,8 +151,8 @@ export default function ClientLayout({ children }) {
                     .from('profiles')
                     .update({ gader_points: newPoints })
                     .eq('id', user.id);
-                // Update local state so UI reflects immediately
-                user.gader = newPoints;
+                // Update local state properly via setUser (not direct mutation)
+                setUser(prev => prev ? { ...prev, gader: newPoints } : prev);
             } catch (e) {
                 console.error('Error awarding points:', e);
             }

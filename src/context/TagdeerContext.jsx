@@ -61,7 +61,9 @@ export function TagdeerProvider({ children }) {
     };
     const isRTL = lang === 'ar';
 
-    const [businesses, setBusinesses] = useState(INITIAL_BUSINESSES);
+    const [businesses, setBusinesses] = useState(
+        process.env.NODE_ENV === 'development' ? INITIAL_BUSINESSES : []
+    );
     const { supabase } = useSupabase();
 
     // Fix: Initialize directly from localStorage to prevent 0-reset race condition
@@ -93,6 +95,19 @@ export function TagdeerProvider({ children }) {
 
         // 1. Initial Check: Try to restore session from Supabase SDK
         const checkInitialSession = async () => {
+            // First check if user is forcibly logged in as the admin mock bypass
+            try {
+                const stored = localStorage.getItem('tagdeer-user');
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (parsed.role === 'admin') {
+                        setUser(parsed);
+                        setLoading(false);
+                        return;
+                    }
+                }
+            } catch { }
+
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
                 await syncUserProfile(session.user);
@@ -116,8 +131,16 @@ export function TagdeerProvider({ children }) {
             console.log("Supabase Auth Event:", event, session?.user?.email);
 
             if (event === 'SIGNED_IN' && session) {
+                try {
+                    const stored = localStorage.getItem('tagdeer-user');
+                    if (stored && JSON.parse(stored).role === 'admin') return;
+                } catch { }
                 await syncUserProfile(session.user);
             } else if (event === 'SIGNED_OUT') {
+                try {
+                    const stored = localStorage.getItem('tagdeer-user');
+                    if (stored && JSON.parse(stored).role === 'admin') return;
+                } catch { }
                 setUser(null);
                 localStorage.removeItem('tagdeer-user');
             }
@@ -438,9 +461,16 @@ export function TagdeerProvider({ children }) {
         const fetchBusinesses = async () => {
             if (!supabase) return;
             try {
-                const { data, error } = await supabase
-                    .from('businesses')
-                    .select('*, logs(*)');
+                // If user is an admin or mock admin bypass, fetch everything. Otherwise only fetch published ones.
+                const isAdmin = user?.role === 'admin' || user?.userId === 'ADMIN-MOCK' || user?.isDevBypass;
+
+                let query = supabase.from('businesses').select('*, logs(*)');
+
+                if (!isAdmin) {
+                    query = query.eq('status', 'published');
+                }
+
+                const { data, error } = await query;
 
                 if (error) {
                     console.warn('Supabase fetch failed, falling back to mock data.', error);
@@ -466,6 +496,7 @@ export function TagdeerProvider({ children }) {
                             owner_id: b.claimed_by,
                             shield_level: b.shield_level || 0,
                             source: b.source,
+                            status: b.status || 'published',
                             external_url: b.external_url,
                             logs: rawLogs
                                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -505,6 +536,8 @@ export function TagdeerProvider({ children }) {
                                 owner_id: updatedBusiness.claimed_by,
                                 isShielded: updatedBusiness.is_shielded,
                                 shield_level: updatedBusiness.shield_level || 0,
+                                status: updatedBusiness.status || 'published',
+                                restriction_reason: updatedBusiness.restriction_reason,
                                 recommends: updatedBusiness.recommends ?? b.recommends,
                                 complains: updatedBusiness.complains ?? b.complains,
                                 shadow_score: updatedBusiness.shadow_score,
@@ -562,7 +595,7 @@ export function TagdeerProvider({ children }) {
                 supabase.removeChannel(logChannel);
             };
         }
-    }, [supabase, lang]);
+    }, [supabase, lang, user?.id, user?.role, user?.isDevBypass]);
 
     useEffect(() => {
         // Sync interactions count from storage on mount (secondary check)

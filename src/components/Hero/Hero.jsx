@@ -1,11 +1,12 @@
 import React from 'react';
-import { Search, 
-  ThumbsUp, 
-  ThumbsDown, 
-  MapPin, 
-  Facebook, 
-  Globe, 
-  AlertCircle, 
+import {
+  Search,
+  ThumbsUp,
+  ThumbsDown,
+  MapPin,
+  Facebook,
+  Globe,
+  AlertCircle,
   CheckCircle2,
   Menu,
   X,
@@ -29,16 +30,17 @@ import { Search,
   BookOpen,
   Users,
   TrendingUp,
-  LayoutGrid } from 'lucide-react';
+  LayoutGrid
+} from 'lucide-react';
 
-export function Hero({ 
-  t, 
-  lang, 
-  isRTL, 
-  searchQuery, 
-  setSearchQuery, 
-  navigateTo, 
-  topBusiness, 
+export function Hero({
+  t,
+  lang,
+  isRTL,
+  searchQuery,
+  setSearchQuery,
+  navigateTo,
+  topBusiness,
   setShowPreRegModal,
   faqItems,
   openFaqIndex,
@@ -51,18 +53,18 @@ export function Hero({
         <div className={`absolute top-[-20%] ${isRTL ? 'right-[-10%]' : 'left-[-10%]'} w-[500px] h-[500px] bg-blue-600/30 rounded-full blur-[100px] opacity-60`}></div>
         <div className={`absolute bottom-[-20%] ${isRTL ? 'left-[-10%]' : 'right-[-10%]'} w-[500px] h-[500px] bg-green-500/20 rounded-full blur-[100px] opacity-60`}></div>
         <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
-        
+
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          
+
           <div className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-white/10 border border-white/20 text-green-300 text-sm font-semibold tracking-wider mb-8 backdrop-blur-md shadow-lg">
             <Sparkles className="h-4 w-4 text-yellow-400" />
             {t('hero_badge')}
           </div>
-          
+
           <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold text-white leading-tight mb-6 tracking-tight drop-shadow-md">
             {t('hero_title')}
           </h1>
-          
+
           <p className="text-lg md:text-xl text-blue-100/90 mb-12 max-w-3xl mx-auto leading-relaxed font-medium">
             {t('hero_subtitle')}
           </p>
@@ -71,21 +73,21 @@ export function Hero({
           <div className="max-w-2xl mx-auto bg-white p-2 md:p-3 rounded-2xl shadow-[0_0_40px_-10px_rgba(59,130,246,0.5)] flex flex-col md:flex-row items-center gap-2 mb-8 transition-transform hover:scale-[1.02] duration-300">
             <div className={`flex-1 flex items-center w-full px-4 py-2 ${isRTL ? 'border-l' : 'border-r'} border-slate-100`}>
               <Search className="h-6 w-6 text-slate-400 shrink-0" />
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder={t('hero_search_placeholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    navigateTo('discover');
+                    navigateTo(searchQuery ? `discover?q=${encodeURIComponent(searchQuery)}` : 'discover');
                   }
                 }}
                 className="w-full bg-transparent border-none outline-none text-lg text-slate-800 px-4 placeholder:text-slate-400"
               />
             </div>
-            <button 
-              onClick={() => navigateTo('discover')}
+            <button
+              onClick={() => navigateTo(searchQuery ? `discover?q=${encodeURIComponent(searchQuery)}` : 'discover')}
               className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl font-bold text-lg transition-colors shrink-0 whitespace-nowrap"
             >
               {t('hero_search_btn')}
@@ -117,7 +119,7 @@ export function Hero({
               <div className="relative z-10">
                 <h3 className="text-xl font-bold text-blue-800 mb-1">{t('top_biz_title')}</h3>
                 <p className="text-sm text-slate-500 mb-6">{t('top_biz_subtitle')}</p>
-                
+
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
                   <div className="flex justify-between items-start mb-4">
                     <div>
@@ -146,8 +148,8 @@ export function Hero({
               </div>
               <h3 className="text-2xl font-bold text-white mb-3">{t('promo_shield_title')}</h3>
               <p className="text-blue-100 leading-relaxed mb-6">{t('promo_shield_desc')}</p>
-              <button 
-                onClick={() => setShowPreRegModal(true)} 
+              <button
+                onClick={() => setShowPreRegModal(true)}
                 className="bg-green-500 hover:bg-green-400 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg hover:shadow-green-500/30"
               >
                 {lang === 'ar' ? 'التسجيل المسبق للشركات' : 'Pre-Register Business'}
@@ -164,20 +166,20 @@ export function Hero({
             <h2 className="text-3xl font-bold text-blue-900 mb-4">{t('how_it_works')}</h2>
             <p className="text-lg text-slate-600 max-w-2xl mx-auto">{t('how_subtitle')}</p>
           </div>
-          
+
           <div className="grid md:grid-cols-3 gap-10">
             <div className="bg-slate-50 rounded-2xl p-8 border border-slate-100 shadow-sm relative overflow-hidden group">
               <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mb-6 text-blue-700"><HeartHandshake className="h-7 w-7" /></div>
               <h3 className="text-xl font-bold text-slate-800 mb-3">{lang === 'ar' ? 'مساعدة الآخرين' : 'Help Others'}</h3>
               <p className="text-slate-600">{lang === 'ar' ? 'ملاحظاتك ترشد الآخرين في مجتمعك لاتخاذ خيارات أفضل ودعم الشركات التي تستحق ذلك.' : 'Your feedback guides others in your community to make better choices and support deserving businesses.'}</p>
             </div>
-            
+
             <div className="bg-slate-50 rounded-2xl p-8 border border-slate-100 shadow-sm relative overflow-hidden group">
               <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center mb-6 text-blue-700"><ThumbsUp className="h-7 w-7" /></div>
               <h3 className="text-xl font-bold text-slate-800 mb-3">{lang === 'ar' ? 'تحسين مستوى الخدمة' : 'Elevate Service Quality'}</h3>
               <p className="text-slate-600">{lang === 'ar' ? 'التصويت الحقيقي يعطي أصحاب الأعمال رؤية واضحة حول أدائهم، مما يدفعهم لتحسين خدماتهم.' : 'Authentic votes give business owners a clear view of their performance, pushing them to improve their services.'}</p>
             </div>
-            
+
             <div className="bg-slate-50 rounded-2xl p-8 border border-slate-100 shadow-sm relative overflow-hidden group">
               <div className={`absolute top-0 ${isRTL ? 'left-0 rounded-br-full' : 'right-0 rounded-bl-full'} w-24 h-24 bg-green-500 opacity-10 group-hover:scale-110 transition-transform`}></div>
               <div className="w-14 h-14 bg-green-100 rounded-xl flex items-center justify-center mb-6 text-green-700"><BadgeCheck className="h-7 w-7" /></div>
@@ -194,7 +196,7 @@ export function Hero({
           <div className="text-center mb-12 relative">
             <div className="absolute top-0 left-1/4 animate-bounce hidden md:block opacity-50"><Sparkles className="h-8 w-8 text-yellow-400" /></div>
             <div className="absolute top-10 right-1/4 animate-pulse hidden md:block opacity-50"><HelpCircle className="h-10 w-10 text-indigo-300" /></div>
-            
+
             <h2 className="text-3xl md:text-4xl font-extrabold text-indigo-900 mb-4 tracking-tight">
               {t('faq_title')}
             </h2>
@@ -202,16 +204,16 @@ export function Hero({
               {t('faq_subtitle')}
             </p>
           </div>
-          
+
           <div className="space-y-4">
             {faqItems.map((item, index) => {
               const isOpen = openFaqIndex === index;
               return (
-                <div 
-                  key={index} 
+                <div
+                  key={index}
                   className={`bg-white rounded-2xl border transition-all duration-300 overflow-hidden shadow-sm hover:shadow-md ${isOpen ? 'border-indigo-400 ring-4 ring-indigo-50' : 'border-slate-200'}`}
                 >
-                  <button 
+                  <button
                     onClick={() => toggleFaq(index)}
                     className="w-full flex justify-between items-center p-6 text-left focus:outline-none"
                   >
@@ -222,8 +224,8 @@ export function Hero({
                       {isOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
                     </div>
                   </button>
-                  
-                  <div 
+
+                  <div
                     className={`px-6 transition-all duration-300 ease-in-out ${isOpen ? 'max-h-60 pb-6 opacity-100' : 'max-h-0 opacity-0 overflow-hidden'}`}
                   >
                     <p className="text-slate-600 leading-relaxed border-t border-indigo-50 pt-4">

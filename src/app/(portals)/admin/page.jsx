@@ -10,7 +10,9 @@ export default function AdminDashboard() {
         mrr: 0,
         vipUsers: 0,
         pendingClaims: 0,
-        openDisputes: 0
+        openDisputes: 0,
+        couponsRedeemed: 0,
+        systemHealth: null
     })
     const [recentApprovals, setRecentApprovals] = useState([])
     const [isLoading, setIsLoading] = useState(true)
@@ -54,11 +56,24 @@ export default function AdminDashboard() {
                         .slice(0, 5); // Just top 5
                 }
 
+                // Fetch total redeemed coupons (amount - remaining across all pools)
+                let totalCouponsRedeemed = 0;
+                try {
+                    const { data: pools } = await supabase
+                        .from('coupon_pools')
+                        .select('amount, remaining');
+                    if (pools) {
+                        totalCouponsRedeemed = pools.reduce((sum, p) => sum + ((p.amount || 0) - (p.remaining || 0)), 0);
+                    }
+                } catch (_) { /* table may not exist yet */ }
+
                 setStats({
                     mrr: calculatedMrr,
                     vipUsers: vipCount || 0,
                     pendingClaims: claimsCount || 0,
-                    openDisputes: disputesCount || 0
+                    openDisputes: disputesCount || 0,
+                    couponsRedeemed: totalCouponsRedeemed,
+                    systemHealth: null // Will be computed when monitoring is set up
                 });
                 setRecentApprovals(topApprovals);
 
@@ -97,7 +112,6 @@ export default function AdminDashboard() {
                         <DollarSign className="w-5 h-5 text-emerald-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
                     <div className="text-3xl font-bold text-white">{stats.mrr} <span className="text-lg text-slate-500">LYD</span></div>
-                    <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">+15% this month</div>
                 </div>
 
                 <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
@@ -106,7 +120,6 @@ export default function AdminDashboard() {
                         <Users className="w-5 h-5 text-purple-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
                     <div className="text-3xl font-bold text-white">{stats.vipUsers}</div>
-                    <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">+8% new upgrades</div>
                 </div>
 
                 <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
@@ -114,8 +127,8 @@ export default function AdminDashboard() {
                         <h3 className="text-sm font-medium text-slate-400">Coupon Burn Rate</h3>
                         <Activity className="w-5 h-5 text-blue-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <div className="text-3xl font-bold text-white">1,240 <span className="text-lg text-slate-500">/day</span></div>
-                    <div className="mt-2 text-xs font-medium text-amber-400 bg-amber-400/10 inline-block px-2 py-1 rounded-md">High usage rate</div>
+                    <div className="text-3xl font-bold text-white">{stats.couponsRedeemed || '—'} <span className="text-lg text-slate-500">/day</span></div>
+                    {stats.couponsRedeemed > 0 && <div className="mt-2 text-xs font-medium text-amber-400 bg-amber-400/10 inline-block px-2 py-1 rounded-md">Active usage</div>}
                 </div>
 
                 <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
@@ -123,8 +136,8 @@ export default function AdminDashboard() {
                         <h3 className="text-sm font-medium text-slate-400">System Health Score</h3>
                         <TrendingUp className="w-5 h-5 text-emerald-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
-                    <div className="text-3xl font-bold text-white">98.4<span className="text-lg font-normal text-slate-500">%</span></div>
-                    <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">Optimal Performance</div>
+                    <div className="text-3xl font-bold text-white">{stats.systemHealth || '—'}<span className="text-lg font-normal text-slate-500">%</span></div>
+                    {stats.systemHealth && <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">Operational</div>}
                 </div>
             </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Store, UploadCloud, AlertCircle, Clock, Check, Crown, ShieldAlert, ShieldCheck, CreditCard, CheckCircle2, User, FileText } from 'lucide-react';
+import { Store, UploadCloud, AlertCircle, Clock, Check, Crown, ShieldAlert, ShieldCheck, CreditCard, CheckCircle2, User, FileText, Search, MapPin, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { getPresignedUploadUrl } from '@/app/actions/storage';
 
@@ -31,6 +31,12 @@ export default function MerchantOnboarding() {
     // Step 1: Business Details
     const [businessData, setBusinessData] = useState({ name: '', category: '', region: 'Tripoli' });
     const [documents, setDocuments] = useState(null);
+    const [selectedExisting, setSelectedExisting] = useState(null); // existing business to claim
+
+    // Business Search
+    const [businessSearch, setBusinessSearch] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
 
     // Step 2: Shields (0 = None, 1 = Trust[20 LYD], 2 = Fatora[50 LYD])
     const [shieldLevel, setShieldLevel] = useState(0);
@@ -40,9 +46,56 @@ export default function MerchantOnboarding() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Pricing Math
-    // Note: Tier pricing is handled in the Dashboard popup before reaching here.
     const shieldPrice = shieldLevel === 1 ? 20 : (shieldLevel === 2 ? 50 : 0);
     const total = shieldPrice;
+
+    // Business search with debounce
+    const searchBusinesses = useCallback(async (query) => {
+        if (!supabase || !query || query.length < 2) {
+            setSearchResults([]);
+            return;
+        }
+        setIsSearching(true);
+        try {
+            const { data, error } = await supabase
+                .from('businesses')
+                .select('id, name, category, region, claimed_by')
+                .ilike('name', `%${query}%`)
+                .limit(10);
+
+            if (error) throw error;
+            setSearchResults(data || []);
+        } catch (err) {
+            console.error('Business search error:', err);
+            setSearchResults([]);
+        } finally {
+            setIsSearching(false);
+        }
+    }, [supabase]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            searchBusinesses(businessSearch);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [businessSearch, searchBusinesses]);
+
+    const selectExistingBusiness = (business) => {
+        if (business.claimed_by) return; // Can't select claimed businesses
+        setSelectedExisting(business);
+        setBusinessData({
+            name: business.name,
+            category: business.category || '',
+            region: business.region || 'Tripoli'
+        });
+        setBusinessSearch('');
+        setSearchResults([]);
+    };
+
+    const clearSelection = () => {
+        setSelectedExisting(null);
+        setBusinessData({ name: '', category: '', region: 'Tripoli' });
+    };
 
     const handleFileChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
@@ -53,25 +106,35 @@ export default function MerchantOnboarding() {
     const submitOrder = async () => {
         setIsSubmitting(true);
         try {
-            if (!user) throw new Error("Authentication required");
+            let activeUser = user;
+            if (!activeUser && supabase) {
+                // Fallback attempt to retrieve session if React context dropped
+                const { data: { session } } = await supabase.auth.getSession();
+                activeUser = session?.user;
+            }
+
+            if (!activeUser) {
+                if (showToast) showToast(lang === 'ar' ? 'يرجى تسجيل الدخول أولاً' : 'Session expired. Please log in first', 'error');
+                router.push('/merchant/login?redirect=/merchant/onboarding');
+                setIsSubmitting(false);
+                return;
+            }
 
             // 1. Upload Verification Document tracking
             let documentUrl = null;
             let fileMetadata = { size: null, type: null };
 
             if (documents) {
-                // Get Presigned URL directly from Next.js server actions
                 const uploadInit = await getPresignedUploadUrl({
                     folder: 'merchant_documents',
                     filename: documents.name,
-                    contentType: documents.type || 'application/octet-stream' // fallback
+                    contentType: documents.type || 'application/octet-stream'
                 });
 
                 if (!uploadInit?.success || !uploadInit.uploadUrl) {
                     throw new Error("Failed to initialize secure upload");
                 }
 
-                // Actually upload the file straight to R2 from the browser using the signed URL
                 const response = await fetch(uploadInit.uploadUrl, {
                     method: 'PUT',
                     body: documents,
@@ -91,28 +154,44 @@ export default function MerchantOnboarding() {
                 };
             }
 
-            // 2. Create the Unverified Business record
-            const { data: businessObj, error: bError } = await supabase
-                .from('businesses')
-                .insert([{
-                    name: businessData.name,
-                    category: businessData.category,
-                    region: businessData.region,
-                    claimed_by: user.id,
-                    is_shielded: shieldLevel > 0,
-                    source: 'Merchant Onboarding'
-                }])
-                .select('id')
-                .single();
+            // 2. Create or use existing business record
+            let businessId;
 
-            if (bError) throw new Error("Business creation failed: " + bError.message);
+            if (selectedExisting) {
+                // Claiming an existing unclaimed business
+                businessId = selectedExisting.id;
+                await supabase
+                    .from('businesses')
+                    .update({
+                        claimed_by: activeUser.id,
+                        is_shielded: shieldLevel > 0,
+                    })
+                    .eq('id', businessId);
+            } else {
+                // Creating a new business
+                const { data: businessObj, error: bError } = await supabase
+                    .from('businesses')
+                    .insert([{
+                        name: businessData.name,
+                        category: businessData.category,
+                        region: businessData.region,
+                        claimed_by: activeUser.id,
+                        is_shielded: shieldLevel > 0,
+                        source: 'Merchant Onboarding'
+                    }])
+                    .select('id')
+                    .single();
+
+                if (bError) throw new Error("Business creation failed: " + bError.message);
+                businessId = businessObj.id;
+            }
 
             // 3. Create the Business Claim
             const { error: claimError } = await supabase
                 .from('business_claims')
                 .insert([{
-                    business_id: businessObj.id,
-                    user_id: user.id,
+                    business_id: businessId,
+                    user_id: activeUser.id,
                     status: 'pending',
                     document_url: documentUrl,
                     file_size: fileMetadata.size,
@@ -125,8 +204,8 @@ export default function MerchantOnboarding() {
             if (shieldLevel > 0) {
                 const amount = shieldLevel === 1 ? 20 : 50;
                 await supabase.from('transactions').insert([{
-                    business_id: businessObj.id,
-                    user_id: user.id,
+                    business_id: businessId,
+                    user_id: activeUser.id,
                     amount: amount,
                     status: paymentMethod === 'manual' ? 'pending' : 'completed',
                     payment_method: paymentMethod,
@@ -139,7 +218,7 @@ export default function MerchantOnboarding() {
             await supabase
                 .from('profiles')
                 .update({ role: 'merchant' })
-                .eq('id', user.id);
+                .eq('id', activeUser.id);
 
             setStep(4);
             if (showToast) showToast(t('registration_submitted') || 'Registration submitted successfully!');
@@ -195,35 +274,126 @@ export default function MerchantOnboarding() {
                             <p className="text-slate-500 mb-8">{t('business_details_desc')}</p>
 
                             <div className="space-y-6 max-w-2xl">
-                                <div className="space-y-2">
-                                    <Label>{t('legal_business_name')}</Label>
-                                    <Input placeholder="e.g., Al-Saha Clinic" value={businessData.name} onChange={(e) => setBusinessData({ ...businessData, name: e.target.value })} className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label>{t('category')}</Label>
-                                        <select
-                                            className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-950 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748b%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.4c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095.3c3.6-3.6%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_12px] bg-[position:right_12px_center] bg-no-repeat"
-                                            value={businessData.category}
-                                            onChange={(e) => setBusinessData({ ...businessData, category: e.target.value })}
-                                            style={{ backgroundPosition: isRTL ? 'left 12px center' : 'right 12px center' }}
-                                        >
-                                            <option value="">{lang === 'ar' ? 'اختر...' : 'Select...'}</option>
-                                            {CATEGORIES.map(c => <option key={c} value={c}>{t(c)}</option>)}
-                                        </select>
+                                {/* Search Existing Business */}
+                                {!selectedExisting && (
+                                    <div className="space-y-3 p-5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl relative">
+                                        <Label className="text-slate-700 dark:text-slate-300 font-semibold">{t('search_existing_business', 'Search Existing Business')}</Label>
+                                        <p className="text-xs text-slate-500">{t('search_existing_desc', 'Check if your business is already on Tagdeer to claim its existing experiences.')}</p>
+                                        <div className="relative">
+                                            <Search className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400`} />
+                                            <Input
+                                                placeholder={t('search_placeholder', 'Search by name...')}
+                                                value={businessSearch}
+                                                onChange={(e) => setBusinessSearch(e.target.value)}
+                                                className={`bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 ${isRTL ? 'pr-9' : 'pl-9'}`}
+                                            />
+                                        </div>
+
+                                        {/* Search Results Dropdown */}
+                                        {businessSearch.length >= 2 && (
+                                            <div className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-10 max-h-60 overflow-y-auto">
+                                                {isSearching ? (
+                                                    <div className="p-4 text-center text-sm text-slate-500">Searching...</div>
+                                                ) : searchResults.length > 0 ? (
+                                                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                        {searchResults.map(b => (
+                                                            <div
+                                                                key={b.id}
+                                                                onClick={() => selectExistingBusiness(b)}
+                                                                className={`p-3 flex justify-between items-center transition-colors ${b.claimed_by ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-900' : 'cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}
+                                                            >
+                                                                <div>
+                                                                    <div className="font-semibold text-sm">{b.name}</div>
+                                                                    <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                                                                        <MapPin className="w-3 h-3" /> {b.region || 'Unknown'} • {b.category || 'Uncategorized'}
+                                                                    </div>
+                                                                </div>
+                                                                {b.claimed_by ? (
+                                                                    <Badge variant="outline" className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 border-0 flex items-center gap-1">
+                                                                        <Lock className="w-3 h-3" /> Claimed
+                                                                    </Badge>
+                                                                ) : (
+                                                                    <Button size="sm" variant="ghost" className="h-7 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-100 px-2 rounded-lg">
+                                                                        Claim
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-4 text-center text-sm text-slate-500">
+                                                        {t('no_business_found', 'No business found. You can create a new one below.')}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        <div className="relative pt-4 text-center">
+                                            <div className="absolute inset-0 flex items-center">
+                                                <div className="w-full border-t border-slate-200 dark:border-slate-700"></div>
+                                            </div>
+                                            <span className="relative bg-slate-50 dark:bg-slate-800/50 px-3 text-xs text-slate-500 font-medium uppercase tracking-wider">OR</span>
+                                        </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <Label>{t('region')}</Label>
-                                        <select
-                                            className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-950 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748b%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.4c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095.3c3.6-3.6%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_12px] bg-[position:right_12px_center] bg-no-repeat"
-                                            value={businessData.region}
-                                            onChange={(e) => setBusinessData({ ...businessData, region: e.target.value })}
-                                            style={{ backgroundPosition: isRTL ? 'left 12px center' : 'right 12px center' }}
-                                        >
-                                            {REGIONS.map(r => <option key={r} value={r}>{t(r)}</option>)}
-                                        </select>
+                                )}
+
+                                {/* Selected Existing Display */}
+                                {selectedExisting ? (
+                                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-5 flex justify-between items-center">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-800 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-300">
+                                                <Store className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-semibold text-blue-500 tracking-wider uppercase mb-0.5">Claiming Business</div>
+                                                <div className="font-bold text-slate-800 dark:text-slate-200">{selectedExisting.name}</div>
+                                                <div className="text-xs text-slate-500 mt-1 flex gap-2">
+                                                    <span>{selectedExisting.region || 'Unknown'}</span>
+                                                    <span>•</span>
+                                                    <span>{selectedExisting.category || 'Uncategorized'}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <Button variant="ghost" size="sm" onClick={clearSelection} className="text-slate-500 hover:text-red-500 hover:bg-red-50">
+                                            Cancel
+                                        </Button>
                                     </div>
-                                </div>
+                                ) : (
+                                    <>
+                                        {/* Manual Entry Form */}
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Label>{t('legal_business_name')}</Label>
+                                                <Input placeholder="e.g., Al-Saha Clinic" value={businessData.name} onChange={(e) => setBusinessData({ ...businessData, name: e.target.value })} className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500" />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label>{t('category')}</Label>
+                                                    <select
+                                                        className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-950 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748b%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.4c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095.3c3.6-3.6%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_12px] bg-[position:right_12px_center] bg-no-repeat"
+                                                        value={businessData.category}
+                                                        onChange={(e) => setBusinessData({ ...businessData, category: e.target.value })}
+                                                        style={{ backgroundPosition: isRTL ? 'left 12px center' : 'right 12px center' }}
+                                                    >
+                                                        <option value="">{lang === 'ar' ? 'اختر...' : 'Select...'}</option>
+                                                        {CATEGORIES.map(c => <option key={c} value={c}>{t(c)}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>{t('region')}</Label>
+                                                    <select
+                                                        className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-950 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748b%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.4c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095.3c3.6-3.6%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_12px] bg-[position:right_12px_center] bg-no-repeat"
+                                                        value={businessData.region}
+                                                        onChange={(e) => setBusinessData({ ...businessData, region: e.target.value })}
+                                                        style={{ backgroundPosition: isRTL ? 'left 12px center' : 'right 12px center' }}
+                                                    >
+                                                        {REGIONS.map(r => <option key={r} value={r}>{t(r)}</option>)}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
 
                                 <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
                                     <Label className="mb-3 block">{t('verification_doc')}</Label>

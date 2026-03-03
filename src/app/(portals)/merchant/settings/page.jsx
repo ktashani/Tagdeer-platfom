@@ -12,7 +12,10 @@ import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Cr
 import { useTagdeer } from '@/context/TagdeerContext';
 
 export default function MerchantSettings() {
-    const { user, supabase, showToast, setUser } = useTagdeer();
+    const { user, businesses, supabase, showToast, setUser } = useTagdeer();
+
+    // Dynamic Business Context Search
+    const myBusiness = businesses?.find(b => b.claimed_by === user?.id) || businesses?.[0] || null;
 
     // Account Level
     const [accountTier, setAccountTier] = useState(1); // 1 = Single Business, 2 = Multi-Business & Team
@@ -66,11 +69,53 @@ export default function MerchantSettings() {
     const [businessShield, setBusinessShield] = useState(0); // 0 = None, 1 = Trust, 2 = Fatora
     const [storefrontEnabled, setStorefrontEnabled] = useState(true);
 
+    useEffect(() => {
+        if (myBusiness) {
+            setBusinessShield(myBusiness.is_shielded ? 1 : 0); // Simplified for now since we just have a boolean in db
+        }
+    }, [myBusiness]);
+
+    const handleShieldToggle = async (level) => {
+        if (!myBusiness || !supabase) return;
+        try {
+            const newStatus = level > 0;
+            const { error } = await supabase
+                .from('businesses')
+                .update({ is_shielded: newStatus })
+                .eq('id', myBusiness.id);
+
+            if (error) throw error;
+            setBusinessShield(level);
+            if (showToast) showToast(`Shield level updated successfully!`);
+        } catch (err) {
+            console.error(err);
+            if (showToast) showToast('Failed to update shield settings.', 'error');
+        }
+    };
+
+    const handlePasswordReset = async () => {
+        if (!supabase || !user?.email) return;
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(user.email);
+            if (error) throw error;
+            if (showToast) showToast('Password reset link sent to your email!');
+        } catch (err) {
+            console.error(err);
+            if (showToast) showToast('Failed to send reset link.', 'error');
+        }
+    };
+
     // Team Management
-    const [teamMembers, setTeamMembers] = useState([
-        { id: 1, email: 'admin@alsaha.ly', role: 'Owner', access: 'All Businesses' },
-        { id: 2, email: 'reception@alsaha.ly', role: 'Manager', access: 'Al-Saha Clinic Tripoli' }
-    ]);
+    const [teamMembers, setTeamMembers] = useState([]);
+
+    useEffect(() => {
+        if (user) {
+            setTeamMembers([
+                { id: user.id, email: user.email || user.profile_email || '', role: 'Owner', access: 'All Businesses' }
+            ]);
+        }
+    }, [user]);
+
     const [inviteEmail, setInviteEmail] = useState('');
 
     const handleUpgradeTier = () => setAccountTier(2);
@@ -232,7 +277,7 @@ export default function MerchantSettings() {
                                                 <p className="text-sm text-slate-500">Last changed 3 months ago</p>
                                             </div>
                                         </div>
-                                        <Button variant="outline">Update Password</Button>
+                                        <Button variant="outline" onClick={handlePasswordReset}>Reset Password</Button>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -247,7 +292,7 @@ export default function MerchantSettings() {
                             <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl p-4 flex items-center gap-3">
                                 <Building className="w-5 h-5 text-indigo-600" />
                                 <p className="text-sm text-indigo-900 dark:text-indigo-200">
-                                    Currently configuring settings for: <strong className="font-bold">Al-Saha Clinic Tripoli</strong>
+                                    Currently configuring settings for: <strong className="font-bold">{myBusiness?.name || 'Your Business'}</strong>
                                 </p>
                             </div>
 
@@ -277,7 +322,7 @@ export default function MerchantSettings() {
                                             </div>
                                             <Switch
                                                 checked={businessShield >= 1}
-                                                onCheckedChange={(c) => setBusinessShield(c ? (businessShield === 2 ? 2 : 1) : 0)}
+                                                onCheckedChange={(c) => handleShieldToggle(c ? (businessShield === 2 ? 2 : 1) : 0)}
                                                 className="data-[state=checked]:bg-amber-500 shrink-0"
                                             />
                                         </div>
@@ -300,7 +345,7 @@ export default function MerchantSettings() {
                                             </div>
                                             <Switch
                                                 checked={businessShield === 2}
-                                                onCheckedChange={(c) => setBusinessShield(c ? 2 : 1)}
+                                                onCheckedChange={(c) => handleShieldToggle(c ? 2 : 1)}
                                                 disabled={businessShield === 0}
                                                 className="data-[state=checked]:bg-blue-600 shrink-0"
                                             />
@@ -369,7 +414,7 @@ export default function MerchantSettings() {
                                                 <div className="sm:w-1/3 space-y-2">
                                                     <Label>Access Scope</Label>
                                                     <select className="flex h-10 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:ring-offset-slate-950 dark:placeholder:text-slate-400 dark:focus:ring-slate-300">
-                                                        <option>Al-Saha Clinic Tripoli</option>
+                                                        <option>{myBusiness?.name || 'Your Business'}</option>
                                                         <option>All Businesses</option>
                                                     </select>
                                                 </div>

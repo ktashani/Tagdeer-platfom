@@ -1,5 +1,6 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap } from 'lucide-react';
 import { calculateBusinessScore } from '@/lib/mathEngine';
@@ -13,13 +14,20 @@ const CATEGORIES = [
 ];
 const REGIONS = ["All", "Tripoli", "Benghazi"];
 
-export default function DiscoverRoute() {
+function DiscoverContent() {
     const { t, lang, isRTL, businesses, anonInteractions, refreshAnonInteractions, showToast, setShowLimitModal, setVoteModal, setVoteReason, user } = useTagdeer();
+    const searchParams = useSearchParams();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedRegion, setSelectedRegion] = useState('All');
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [expandedLogs, setExpandedLogs] = useState({});
+
+    // Pre-populate search from URL ?q= param (e.g. from Hero search)
+    useEffect(() => {
+        const q = searchParams.get('q');
+        if (q) setSearchQuery(q);
+    }, [searchParams]);
 
     const toggleLogs = (id) => {
         setExpandedLogs(prev => ({ ...prev, [id]: !prev[id] }));
@@ -109,6 +117,14 @@ export default function DiscoverRoute() {
                 ))}
             </div>
         </div>
+    );
+}
+
+export default function DiscoverRoute() {
+    return (
+        <Suspense fallback={<div className="min-h-[60vh] flex items-center justify-center text-slate-500">Loading businesses...</div>}>
+            <DiscoverContent />
+        </Suspense>
     );
 }
 

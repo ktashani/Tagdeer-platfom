@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,12 +25,51 @@ const MOCK_STATES = {
     NO_BUSINESS: 'NO_BUSINESS',
     NO_TIER: 'NO_TIER',
     SUSPENDED: 'SUSPENDED',
-    PENDING_APPROVAL: 'PENDING_APPROVAL'
+    PENDING_APPROVAL: 'PENDING_APPROVAL',
+    RESTRICTED: 'RESTRICTED'
 };
 
+// Helper: convert ISO date to "2h ago" format
+function getRelativeTime(isoDate) {
+    if (!isoDate) return '';
+    const diff = Date.now() - new Date(isoDate).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+}
+
+// Helper: derive voting reason distribution from real log data
+function deriveVotingReasons(logs) {
+    const COLORS = ['#10b981', '#3b82f6', '#ef4444', '#eab308', '#8b5cf6', '#ec4899'];
+    const reasonCounts = {};
+    (logs || []).forEach(log => {
+        const reason = log.reason_text || (log.type === 'recommend' ? 'Positive' : 'Concern');
+        reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+    });
+    const entries = Object.entries(reasonCounts);
+    if (entries.length === 0) {
+        return [{ name: 'No Data', value: 1, color: '#cbd5e1' }];
+    }
+    return entries.map(([name, value], i) => ({
+        name,
+        value,
+        color: COLORS[i % COLORS.length]
+    }));
+}
+
 export default function MerchantDashboard() {
-    const { user, businesses } = useTagdeer();
+    const { user, businesses, supabase, showToast } = useTagdeer();
+    const router = useRouter();
     const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // Real data state
+    const [pendingDisputes, setPendingDisputes] = useState([]);
+    const [activeCampaigns, setActiveCampaigns] = useState([]);
+    const [couponsRedeemed, setCouponsRedeemed] = useState(0);
 
     // Only render once user loading finishes
     if (user === undefined) return <div className="min-h-screen flex items-center justify-center">Loading Dashboard...</div>;
@@ -38,17 +78,76 @@ export default function MerchantDashboard() {
     const myBusiness = businesses.find(b => b.owner_id === user?.id);
 
     // ==========================================
+    // FETCH REAL DATA
+    // ==========================================
+    useEffect(() => {
+        if (!supabase || !myBusiness) return;
+
+        const fetchDashboardData = async () => {
+            try {
+                // Fetch pending disputes
+                const { data: disputes } = await supabase
+                    .from('disputes')
+                    .select('id, reason, status, created_at')
+                    .eq('business_id', myBusiness.id)
+                    .in('status', ['pending_admin_review', 'in_review'])
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+
+                if (disputes) {
+                    setPendingDisputes(disputes.map(d => ({
+                        id: `DSP-${d.id.substring(0, 3).toUpperCase()}`,
+                        reason: d.reason || 'Dispute',
+                        status: d.status === 'pending_admin_review' ? 'Pending Admin' : 'In Review',
+                        time: getRelativeTime(d.created_at)
+                    })));
+                }
+
+                // Fetch active campaigns
+                const { data: campaigns } = await supabase
+                    .from('coupon_pools')
+                    .select('id, title, amount, remaining, status')
+                    .eq('business_id', myBusiness.id)
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+
+                if (campaigns) {
+                    setActiveCampaigns(campaigns.map(c => ({
+                        name: c.title || 'Campaign',
+                        redeemed: `${(c.amount || 0) - (c.remaining || 0)}/${c.amount || 0}`,
+                        status: c.status === 'active' ? 'Active' : (c.remaining === 0 ? 'Exhausted' : 'Paused')
+                    })));
+
+                    // Sum redeemed coupons
+                    const totalRedeemed = campaigns.reduce((sum, c) => sum + ((c.amount || 0) - (c.remaining || 0)), 0);
+                    setCouponsRedeemed(totalRedeemed);
+                }
+            } catch (err) {
+                console.error('Dashboard data fetch error:', err);
+            }
+        };
+
+        fetchDashboardData();
+    }, [supabase, myBusiness?.id]);
+
+    // ==========================================
     // DYNAMIC STATES
     // ==========================================
-    const currentMockState = !myBusiness ? MOCK_STATES.NO_BUSINESS : MOCK_STATES.ACTIVE;
+    let currentMockState = MOCK_STATES.ACTIVE;
+    if (!myBusiness) {
+        currentMockState = MOCK_STATES.NO_BUSINESS;
+    } else if (myBusiness.status === 'restricted') {
+        currentMockState = MOCK_STATES.RESTRICTED;
+    } else if (myBusiness.status === 'pending_review') {
+        currentMockState = MOCK_STATES.PENDING_APPROVAL;
+    }
 
     // Derived Metrics
     let metrics = {
         totalInteractions: 0,
         recommendations: 0,
         complaints: 0,
-        profileViews: 10300, // Still mock for now
-        couponsRedeemed: 145  // Still mock for now
+        couponsRedeemed: couponsRedeemed
     };
 
     let recentExperiences = [];
@@ -60,13 +159,13 @@ export default function MerchantDashboard() {
         metrics.totalInteractions = metrics.recommendations + metrics.complaints;
 
         // Map live logs to dashboard format
-        recentExperiences = [...(myBusiness.logs || [])].map((log, index) => ({
-            id: `LOG-${log.id.substring(0, 6).toUpperCase()}`,
-            user: log.is_verified ? 'VIP User' : `Anon-${Math.floor(Math.random() * 1000)}`,
+        recentExperiences = [...(myBusiness.logs || [])].map((log) => ({
+            id: `LOG-${String(log.id).substring(0, 6).toUpperCase()}`,
+            user: log.is_verified ? 'VIP User' : 'Anonymous',
             type: log.type === 'recommend' ? 'Recommend' : 'Complain',
             date: log.date,
             reason: log.text || 'N/A',
-            hasReceipt: false, // Wait for future receipt integration
+            hasReceipt: false,
             rawText: log.text
         }));
 
@@ -77,25 +176,20 @@ export default function MerchantDashboard() {
         ];
     }
 
-    // Derived Metric: Interaction Rate
-    const interactionRate = metrics.profileViews > 0 ? ((metrics.totalInteractions / metrics.profileViews) * 100).toFixed(1) : 0;
+    // Filter experiences by search query
+    const filteredExperiences = searchQuery
+        ? recentExperiences.filter(exp =>
+            exp.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            exp.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            exp.reason.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+        : recentExperiences;
 
-    const votingReasons = [
-        { name: 'Speed', value: 40, color: '#10b981' },
-        { name: 'Quality', value: 35, color: '#3b82f6' },
-        { name: 'Cleanliness', value: 15, color: '#ef4444' },
-        { name: 'Price', value: 10, color: '#eab308' },
-    ];
+    // Derived Metric: Interaction Rate (based on total interactions)
+    const interactionRate = metrics.totalInteractions > 0 ? ((metrics.recommendations / metrics.totalInteractions) * 100).toFixed(1) : 0;
 
-    const pendingDisputes = [
-        { id: 'DSP-099', reason: 'Fake review claim', status: 'Pending Admin', time: '2h ago' },
-        { id: 'DSP-098', reason: 'Malicious spam', status: 'In Review', time: '1d ago' },
-    ];
-
-    const activeCampaigns = [
-        { name: '10% Off Coffee', redeemed: '45/100', status: 'Active' },
-        { name: 'Free Dessert', redeemed: '100/100', status: 'Exhausted' },
-    ];
+    // Derive voting reasons from actual log data
+    const votingReasons = deriveVotingReasons(myBusiness?.logs || []);
 
     // ==========================================
     // RENDER: PENDING APPROVAL STATE
@@ -106,9 +200,9 @@ export default function MerchantDashboard() {
                 <div className="w-24 h-24 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-full flex items-center justify-center mb-6">
                     <Clock className="w-12 h-12" />
                 </div>
-                <h2 className="text-3xl font-black mb-4">Account Pending Approval</h2>
+                <h2 className="text-3xl font-black mb-4">Profile Under Review</h2>
                 <p className="text-slate-500 max-w-lg mx-auto text-lg mb-8">
-                    Your registration request and documents are currently under review by our admin team. You will be notified via email once approved and billing has been initiated.
+                    Your business profile is currently being reviewed by our admin team. You will regain access to the platform once your profile meets our directory standards and is approved.
                 </p>
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl w-full max-w-md shadow-sm text-left">
                     <h3 className="font-bold mb-4 flex items-center gap-2"><Activity className="w-5 h-5 text-indigo-500" /> Account Status</h3>
@@ -147,6 +241,67 @@ export default function MerchantDashboard() {
                         </Button>
                         <Button variant="outline" className="border-red-200 text-red-700 hover:bg-red-50 rounded-xl h-12 px-8 text-base">
                             Contact Support
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ==========================================
+    // RENDER: RESTRICTED STATE (REQUIRES FIXES)
+    // ==========================================
+    if (currentMockState === MOCK_STATES.RESTRICTED) {
+        return (
+            <div className="min-h-[80vh] flex flex-col items-center justify-center p-4">
+                <div className="bg-red-50 dark:bg-red-950/30 border-2 border-red-200 dark:border-red-900 rounded-3xl p-8 md:p-12 text-center max-w-2xl w-full shadow-2xl shadow-red-500/10 animate-in slide-in-from-bottom-4 relative overflow-hidden">
+                    <div className="w-20 h-20 bg-red-100 dark:bg-red-900 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Flag className="w-10 h-10" />
+                    </div>
+                    <h2 className="text-3xl md:text-4xl font-black text-red-700 dark:text-red-500 mb-4">Profile Restricted</h2>
+                    <p className="text-lg text-red-600/80 dark:text-red-400 mb-6 leading-relaxed">
+                        Your business profile has been temporarily hidden from the public directory. Our moderation team has left the following note regarding necessary changes:
+                    </p>
+
+                    <div className="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 rounded-xl p-5 mb-8 text-left relative">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-red-500 rounded-l-xl"></div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-red-500" /> Admin Note
+                        </h4>
+                        <p className="text-slate-600 dark:text-slate-400 whitespace-pre-wrap">
+                            {myBusiness?.restriction_reason || "Please ensure your business details comply with our directory guidelines."}
+                        </p>
+                    </div>
+
+                    <p className="text-sm text-slate-500 mb-6 font-medium">
+                        Please update your profile details in the Settings page to comply with this notice, then resubmit your profile for review.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                        <Button
+                            className="bg-red-600 hover:bg-red-700 text-white rounded-xl h-12 px-8 text-base shadow-sm"
+                            onClick={async () => {
+                                try {
+                                    const { error } = await supabase
+                                        .from('businesses')
+                                        .update({ status: 'pending_review' })
+                                        .eq('id', myBusiness.id);
+                                    if (error) throw error;
+                                    showToast("Profile resubmitted for review successfully.");
+                                } catch (err) {
+                                    console.error("Resubmit error:", err);
+                                    showToast("Failed to resubmit profile.", "error");
+                                }
+                            }}
+                        >
+                            Resubmit Profile for Review
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="border-red-200 text-red-700 hover:bg-red-50 rounded-xl h-12 px-8 text-base bg-white dark:bg-transparent dark:hover:bg-red-900/20"
+                            onClick={() => router.push('/merchant/settings')}
+                        >
+                            Edit Profile Details
                         </Button>
                     </div>
                 </div>
@@ -240,6 +395,8 @@ export default function MerchantDashboard() {
                     <Input
                         placeholder="Search VIP logs, coupons, disputes..."
                         className="pl-10 bg-slate-50/50 border-slate-200 rounded-full h-11 shadow-inner focus-visible:ring-indigo-500 w-full"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
 
@@ -260,9 +417,6 @@ export default function MerchantDashboard() {
                 {/* Metric 1 */}
                 <Card className="border-slate-200 shadow-sm col-span-1 rounded-2xl overflow-hidden relative group">
                     <div className="absolute top-0 right-0 p-3">
-                        <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200 flex items-center gap-1 font-semibold text-[10px] px-1.5 py-0.5">
-                            <ArrowUpRight className="w-3 h-3" /> 2.5%
-                        </Badge>
                     </div>
                     <CardContent className="p-5 pt-8">
                         <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mb-4">
@@ -276,9 +430,6 @@ export default function MerchantDashboard() {
                 {/* Metric 2 */}
                 <Card className="border-slate-200 shadow-sm col-span-1 rounded-2xl overflow-hidden relative group">
                     <div className="absolute top-0 right-0 p-3">
-                        <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 flex items-center gap-1 font-semibold text-[10px] px-1.5 py-0.5">
-                            <ArrowDownRight className="w-3 h-3" /> 1.5%
-                        </Badge>
                     </div>
                     <CardContent className="p-5 pt-8">
                         <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-4">
@@ -292,16 +443,13 @@ export default function MerchantDashboard() {
                 {/* Metric 3 */}
                 <Card className="border-slate-200 shadow-sm col-span-1 rounded-2xl overflow-hidden relative group">
                     <div className="absolute top-0 right-0 p-3">
-                        <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200 flex items-center gap-1 font-semibold text-[10px] px-1.5 py-0.5">
-                            <ArrowUpRight className="w-3 h-3" /> 4.2%
-                        </Badge>
                     </div>
                     <CardContent className="p-5 pt-8">
                         <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-500 flex items-center justify-center mb-4">
                             <Activity className="w-5 h-5" />
                         </div>
                         <div className="text-3xl font-bold text-slate-800 mb-1">{interactionRate}%</div>
-                        <div className="text-xs text-slate-500 font-medium">Interaction Rate</div>
+                        <div className="text-xs text-slate-500 font-medium">Recommend Rate</div>
                     </CardContent>
                 </Card>
 
@@ -374,13 +522,13 @@ export default function MerchantDashboard() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
-                            {recentExperiences.map((exp) => (
+                            {filteredExperiences.map((exp) => (
                                 <tr key={exp.id} className="hover:bg-slate-50/50 transition-colors group">
                                     <td className="px-6 py-4 font-medium text-slate-600">{exp.id}</td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
                                             <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
-                                                {exp.user.substring(4, 6)}
+                                                {exp.user.substring(0, 2)}
                                             </div>
                                             <span className="text-slate-700 font-medium">{exp.user}</span>
                                         </div>
@@ -397,10 +545,10 @@ export default function MerchantDashboard() {
                                             {exp.type === 'Complain' ? (
                                                 <>
                                                     {exp.hasReceipt && <Button size="sm" variant="outline" className="h-8 text-xs border-amber-200 text-amber-700 hover:bg-amber-50"><Flag className="w-3 h-3 mr-1" /> Flag</Button>}
-                                                    <Button size="sm" variant="outline" className="h-8 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50"><MessageSquare className="w-3 h-3 mr-1" /> Chat</Button>
+                                                    <Button size="sm" variant="outline" className="h-8 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50" onClick={() => router.push('/merchant/inbox')}><MessageSquare className="w-3 h-3 mr-1" /> Chat</Button>
                                                 </>
                                             ) : (
-                                                <Button size="sm" variant="ghost" className="h-8 text-xs text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700">Thank User</Button>
+                                                <Button size="sm" variant="ghost" className="h-8 text-xs text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700" onClick={() => showToast('Thank you noted! 🎉')}>Thank User</Button>
                                             )}
                                         </div>
                                     </td>
@@ -507,7 +655,7 @@ export default function MerchantDashboard() {
             <ScannerModal
                 isOpen={isScannerOpen}
                 onClose={() => setIsScannerOpen(false)}
-                businessId="mock-business-id"
+                businessId={myBusiness?.id || ''}
             />
 
         </div>
