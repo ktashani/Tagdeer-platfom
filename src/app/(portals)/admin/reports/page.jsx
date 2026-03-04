@@ -1,9 +1,17 @@
-'use client';
 'use client'
 
 import { useState, useEffect } from 'react'
 import { BarChart3, LineChart, PieChart, Activity, Users, Download, Zap, Loader2 } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
+
+const growthData = [
+    { month: 'Oct', signups: 1200, uninstalls: 300 },
+    { month: 'Nov', signups: 1800, uninstalls: 400 },
+    { month: 'Dec', signups: 2200, uninstalls: 350 },
+    { month: 'Jan', signups: 2800, uninstalls: 500 },
+    { month: 'Feb', signups: 3200, uninstalls: 600 },
+    { month: 'Mar', signups: 3800, uninstalls: 450 },
+]
 
 export default function ReportsPage() {
     const { supabase } = useTagdeer()

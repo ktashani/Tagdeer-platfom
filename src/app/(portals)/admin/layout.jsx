@@ -11,7 +11,7 @@ export default function AdminLayout({ children }) {
         <div className="min-h-screen bg-slate-900 text-slate-100 font-sans">
             <AdminGuard>
                 <AdminTopNav />
-                <main className="p-8 max-w-7xl mx-auto">
+                <main className="p-4 md:p-8 max-w-7xl mx-auto">
                     {children}
                 </main>
             </AdminGuard>
