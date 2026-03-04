@@ -456,6 +456,7 @@ export function TagdeerProvider({ children }) {
                 }
 
                 const { data, error } = await query;
+                const { data: coupons } = await supabase.from('merchant_coupons').eq('status', 'active');
 
                 if (error) {
                     console.warn('Supabase fetch failed, falling back to mock data.', error);
@@ -472,6 +473,7 @@ export function TagdeerProvider({ children }) {
                             name: b.name,
                             region: b.region,
                             category: b.category,
+                            hasActiveDiscount: coupons?.some(c => c.business_id === b.id),
                             recommends: b.recommends ?? derivedRecommends,
                             complains: b.complains ?? derivedComplains,
                             shadow_score: b.shadow_score,

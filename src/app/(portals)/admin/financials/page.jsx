@@ -10,7 +10,12 @@ export default function FinancialsPage() {
     const { supabase, showToast } = useTagdeer()
     const [transfers, setTransfers] = useState([])
     const [subscriptions, setSubscriptions] = useState([])
+    const [businesses, setBusinesses] = useState([])
     const [isLoading, setIsLoading] = useState(true)
+
+    const [showTrialModal, setShowTrialModal] = useState(false)
+    const [trialForm, setTrialForm] = useState({ businessId: '', tier: 'Pro', months: 1 })
+    const [isGrantingTrial, setIsGrantingTrial] = useState(false)
 
     const [selectedTxn, setSelectedTxn] = useState(null)
     const [activeTab, setActiveTab] = useState('queue') // queue, subs, reports
@@ -21,9 +26,10 @@ export default function FinancialsPage() {
 
         const fetchData = async () => {
             setIsLoading(true)
-            const [txnData, subData] = await Promise.all([
+            const [txnData, subData, bizData] = await Promise.all([
                 supabase.from('transactions').select('*, businesses(name), profiles(email)').eq('status', 'pending').order('created_at', { ascending: false }),
-                supabase.from('subscriptions').select('*, businesses(name)').order('expires_at', { ascending: true })
+                supabase.from('subscriptions').select('*, businesses(name)').order('expires_at', { ascending: true }),
+                supabase.from('businesses').select('id, name').order('name', { ascending: true })
             ])
 
             if (txnData.data) {
@@ -44,11 +50,16 @@ export default function FinancialsPage() {
                 setSubscriptions(subData.data.map(s => ({
                     id: s.id,
                     business: s.businesses?.name || 'Unknown',
-                    tier: s.tier,
+                    tier: s.tier === 'Tier 1' ? 'Pro' : s.tier === 'Tier 2' ? 'Enterprise' : s.tier,
                     expires: new Date(s.expires_at).toLocaleDateString(),
                     status: s.status,
+                    isTrial: s.is_trial,
+                    trialMonths: s.trial_months,
                     autoRenew: s.auto_renew
                 })))
+            }
+            if (bizData.data) {
+                setBusinesses(bizData.data)
             }
             setIsLoading(false)
         }
@@ -68,6 +79,27 @@ export default function FinancialsPage() {
             setSelectedTxn(null);
         }
         setIsConfirming(false);
+    }
+
+    const handleGrantTrial = async () => {
+        if (!trialForm.businessId) return showToast("Select a business", "error")
+        setIsGrantingTrial(true)
+        const { data, error } = await supabase.rpc('admin_grant_free_trial', {
+            p_business_id: trialForm.businessId,
+            p_tier: trialForm.tier,
+            p_months: parseInt(trialForm.months)
+        })
+
+        if (error || !data?.success) {
+            showToast(error?.message || data?.error || "Failed to grant trial", "error")
+        } else {
+            showToast(`Granted ${trialForm.tier} Trial successfully!`)
+            setShowTrialModal(false)
+            setTrialForm({ businessId: '', tier: 'Pro', months: 1 })
+            // Optional: refresh data inline
+            window.location.reload()
+        }
+        setIsGrantingTrial(false)
     }
 
 
@@ -210,7 +242,10 @@ export default function FinancialsPage() {
                     <div className="w-full bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden flex flex-col">
                         <div className="p-4 border-b border-slate-700/50 bg-slate-800/50 flex justify-between items-center shrink-0">
                             <h3 className="font-semibold text-white">Active Premium Subscriptions</h3>
-                            <button className="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition-colors font-medium">Export CSV</button>
+                            <div>
+                                <button onClick={() => setShowTrialModal(true)} className="text-sm bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-1.5 rounded-lg transition-colors font-medium mr-2">Grant Trial</button>
+                                <button className="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition-colors font-medium">Export CSV</button>
+                            </div>
                         </div>
                         <div className="flex-1 overflow-auto">
                             <table className="w-full text-left text-sm text-slate-400">
@@ -229,7 +264,12 @@ export default function FinancialsPage() {
                                     ) : subscriptions.map(sub => (
                                         <tr key={sub.id} className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
                                             <td className="px-6 py-4 font-medium text-white">{sub.business}</td>
-                                            <td className="px-6 py-4 font-bold text-emerald-400">{sub.tier}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-emerald-400">{sub.tier}</span>
+                                                    {sub.isTrial && <span className="text-[10px] text-amber-500 font-medium">Trial: {sub.trialMonths}m</span>}
+                                                </div>
+                                            </td>
                                             <td className="px-6 py-4">{sub.expires}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${sub.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
@@ -264,7 +304,7 @@ export default function FinancialsPage() {
                             <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl">
                                 <h3 className="text-sm font-medium text-slate-400 mb-2">Active Paid Accounts</h3>
                                 <div className="text-4xl font-bold text-white mb-2">342</div>
-                                <div className="text-slate-400 text-sm font-medium">Accounts on Tier 1 or Tier 2</div>
+                                <div className="text-slate-400 text-sm font-medium">Accounts on Pro or Enterprise</div>
                             </div>
                             <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl">
                                 <h3 className="text-sm font-medium text-slate-400 mb-2">ARPU (Avg Rev Per User)</h3>
@@ -282,6 +322,46 @@ export default function FinancialsPage() {
                 )}
 
             </div>
+
+            {/* Trial Modal */}
+            {showTrialModal && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in">
+                    <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                        <h2 className="text-2xl font-bold text-white mb-2">Grant Free Trial</h2>
+                        <p className="text-sm text-slate-400 mb-6">Provide a business with temporary premium access.</p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Select Business</label>
+                                <select value={trialForm.businessId} onChange={e => setTrialForm({ ...trialForm, businessId: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-emerald-500 appearance-none">
+                                    <option value="">-- Choose a Business --</option>
+                                    {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Tier</label>
+                                <select value={trialForm.tier} onChange={e => setTrialForm({ ...trialForm, tier: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-emerald-500 appearance-none">
+                                    <option value="Pro">Pro</option>
+                                    <option value="Enterprise">Enterprise</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Duration (Months)</label>
+                                <input type="number" min="1" max="12" value={trialForm.months} onChange={e => setTrialForm({ ...trialForm, months: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-emerald-500" />
+                            </div>
+                        </div>
+
+                        <div className="mt-8 flex gap-3">
+                            <button onClick={() => setShowTrialModal(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-2 rounded-lg transition-colors border border-slate-700">Cancel</button>
+                            <button disabled={isGrantingTrial} onClick={handleGrantTrial} className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)] disabled:opacity-50">
+                                {isGrantingTrial ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CheckCircle2 className="w-4 h-4" /> Grant Trial</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

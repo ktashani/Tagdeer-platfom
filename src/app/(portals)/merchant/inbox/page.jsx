@@ -17,7 +17,24 @@ export default function MerchantInbox() {
     const [newMessage, setNewMessage] = useState('');
     const [isLoading, setIsLoading] = useState(true);
 
+    const [showCouponModal, setShowCouponModal] = useState(false);
+    const [merchantCoupons, setMerchantCoupons] = useState([]);
+
     const myBusiness = user && businesses ? businesses.find(b => b.owner_id === user?.id) : null;
+
+    // Fetch active coupons for modal
+    useEffect(() => {
+        if (!supabase || !myBusiness) return;
+        const fetchCoupons = async () => {
+            const { data } = await supabase
+                .from('merchant_coupons')
+                .select('*')
+                .eq('business_id', myBusiness.id)
+                .eq('status', 'active');
+            if (data) setMerchantCoupons(data);
+        };
+        fetchCoupons();
+    }, [supabase, myBusiness]);
     // 1. Fetch complaints for the sidebar
     useEffect(() => {
         if (!supabase || !myBusiness) {
@@ -152,28 +169,29 @@ export default function MerchantInbox() {
         }
     };
 
-    const handleAttachCoupon = async () => {
+    const handleAttachCoupon = async (coupon) => {
         if (!selectedChat?.thread_id || !supabase || !user) return;
 
+        setShowCouponModal(false);
+
         // Optimistic
+        const msgText = `Apology Attached: ${coupon.title || (coupon.discount_value + '% Discount')}`;
         const tempId = Date.now();
         setMessages(prev => [...prev, {
             id: tempId,
             sender: 'merchant',
             isCoupon: true,
-            text: 'Apology Accepted: Free Dessert on next visit',
+            text: msgText,
             time: 'Sending...'
         }]);
 
         try {
-            // Note: Currently hardcoding the apology text and lack of real coupon ID 
-            // until Coupon Selection Modal is built. 
             const { data, error } = await supabase.from('resolution_messages').insert([{
                 thread_id: selectedChat.thread_id,
                 sender_id: user.id,
                 sender_role: 'merchant',
-                message: 'Apology Accepted: Free Dessert on next visit',
-                // coupon_id: ...
+                message: msgText,
+                coupon_id: coupon.id
             }]).select().single();
 
             if (error) throw error;
@@ -328,7 +346,7 @@ export default function MerchantInbox() {
                                         <Button
                                             type="button"
                                             variant="outline"
-                                            onClick={handleAttachCoupon}
+                                            onClick={() => setShowCouponModal(true)}
                                             title="Attach Resolution Coupon"
                                             className="shrink-0 border-dashed border-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
                                         >
@@ -363,6 +381,44 @@ export default function MerchantInbox() {
 
                 </div>
             </div>
+
+            {/* Coupon Selection Modal */}
+            {showCouponModal && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in p-4">
+                    <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl p-6 shadow-2xl relative">
+                        <h2 className="text-xl font-bold text-white mb-2">Attach Apology Coupon</h2>
+                        <p className="text-sm text-slate-400 mb-6">Select an active campaign to offer to the customer privately.</p>
+
+                        <div className="space-y-3 max-h-64 overflow-y-auto mb-6 pr-2">
+                            {merchantCoupons.length === 0 ? (
+                                <p className="text-slate-500 text-center py-6 border border-dashed border-slate-700 rounded-xl">No active campaigns found.<br /><span className="text-xs">Create one in the Coupons tab first.</span></p>
+                            ) : (
+                                merchantCoupons.map(coupon => (
+                                    <button
+                                        key={coupon.id}
+                                        onClick={() => handleAttachCoupon(coupon)}
+                                        className="w-full text-left bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-4 transition-colors flex items-center justify-between group"
+                                    >
+                                        <div>
+                                            <p className="font-bold text-white group-hover:text-emerald-400 transition-colors">{coupon.title || 'Special Discount'}</p>
+                                            <p className="text-xs text-slate-400 mt-1">Value: {coupon.discount_value}%</p>
+                                        </div>
+                                        <Gift className="w-5 h-5 text-slate-500 group-hover:text-emerald-500" />
+                                    </button>
+                                ))
+                            )}
+                        </div>
+
+                        <Button
+                            variant="outline"
+                            className="w-full bg-slate-800 border-slate-700 text-white hover:bg-slate-700 hover:text-white"
+                            onClick={() => setShowCouponModal(false)}
+                        >
+                            Cancel
+                        </Button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

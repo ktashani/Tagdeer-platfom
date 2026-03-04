@@ -25,28 +25,62 @@ import { useTagdeer } from '@/context/TagdeerContext';
 export default function TopNav() {
     const pathname = usePathname();
     const router = useRouter();
-    const { user, businesses, logout } = useTagdeer();
+    const { user, businesses, supabase, logout } = useTagdeer();
 
     const [isStoreMenuOpen, setIsStoreMenuOpen] = useState(false);
     const storeMenuRef = useRef(null);
 
+    // Filter to only businesses owned by the current user
+    const myBusinesses = businesses?.filter(b => b.owner_id === user?.id) || [];
+
     // Store Selection State
     const [selectedStoreId, setSelectedStoreId] = useState(null);
+    const [pendingClaim, setPendingClaim] = useState(null);
 
     // Default select the first business when loaded
     useEffect(() => {
-        if (businesses && businesses.length > 0 && !selectedStoreId) {
-            setSelectedStoreId(businesses[0].id);
+        if (myBusinesses.length > 0 && !selectedStoreId) {
+            setSelectedStoreId(myBusinesses[0].id);
         }
-    }, [businesses, selectedStoreId]);
+    }, [myBusinesses, selectedStoreId]);
 
-    const activeStore = businesses?.find(b => b.id === selectedStoreId) || businesses?.[0];
+    // Fetch pending claim if they have no active businesses yet
+    useEffect(() => {
+        if (!supabase || !user || myBusinesses.length > 0) return;
+
+        const fetchPendingClaim = async () => {
+            try {
+                // Fetch claim with business details
+                const { data } = await supabase
+                    .from('business_claims')
+                    .select('status, claim_status, business_id')
+                    .eq('user_id', user.id)
+                    .in('status', ['pending', 'missing_docs'])
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                if (data && data.business_id) {
+                    // Get business name if possible from local businesses list or fetch
+                    const bInfo = businesses?.find(b => b.id === data.business_id);
+                    setPendingClaim({
+                        name: bInfo?.name || 'Pending Business',
+                        region: bInfo?.region || 'In Review',
+                        status: data.status || data.claim_status
+                    });
+                }
+            } catch (err) {
+                // Not found or error
+            }
+        };
+        fetchPendingClaim();
+    }, [supabase, user, myBusinesses.length, businesses]);
+
+    const activeStore = myBusinesses?.find(b => b.id === selectedStoreId) || myBusinesses?.[0];
 
     // Business Logic: 1 business = free tier max. 2+ businesses = requires Pro Tier.
-    // The button shows if they have NO businesses (0), OR if they are Pro.
-    // (You can also check context for subscription tier if needed)
     const isPro = false;
-    const showAddButton = (businesses?.length || 0) < 1 || isPro;
+    const showAddButton = myBusinesses.length < 1 || isPro;
 
     const handleStoreSelect = (storeId) => {
         setSelectedStoreId(storeId);
@@ -131,10 +165,26 @@ export default function TopNav() {
                     >
                         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isStoreMenuOpen ? 'rotate-180' : ''}`} />
                         <div className="flex flex-col items-start leading-none">
-                            <span className="text-sm font-bold text-white mb-1">{activeStore?.name || 'No Business'}</span>
-                            <span className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium">
-                                Open <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden sm:block"></span>
-                            </span>
+                            {myBusinesses.length > 0 ? (
+                                <>
+                                    <span className="text-sm font-bold text-white mb-1">{activeStore?.name || 'Select Business'}</span>
+                                    <span className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium">
+                                        Open <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden sm:block"></span>
+                                    </span>
+                                </>
+                            ) : pendingClaim ? (
+                                <>
+                                    <span className="text-sm font-bold text-white mb-1">{pendingClaim.name}</span>
+                                    <span className="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
+                                        {pendingClaim.status === 'missing_docs' ? 'Action Required' : 'Approval Pending'}
+                                    </span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="text-sm font-bold text-slate-400 mb-1">No Business</span>
+                                    <span className="text-[11px] text-slate-500 font-medium">Claim your business</span>
+                                </>
+                            )}
                         </div>
                         <div className="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center ml-2 border border-blue-500/30">
                             <Store className="w-4 h-4" />
@@ -149,29 +199,42 @@ export default function TopNav() {
                                 <p className="text-[13px] font-bold text-slate-400 tracking-[0.2em] text-center mb-4">YOUR BUSINESSES</p>
 
                                 <div className="space-y-2">
-                                    {(businesses || []).map(store => {
-                                        const isActive = store.id === selectedStoreId;
-                                        return (
-                                            <button
-                                                key={store.id}
-                                                onClick={() => handleStoreSelect(store.id)}
-                                                className={`w-full px-5 py-4 text-left flex justify-between items-center transition-all rounded-xl group ${isActive
-                                                    ? 'bg-[#1E222B] border border-[#2A2D35]'
-                                                    : 'hover:bg-[#1A1C23] border border-transparent'
-                                                    }`}
-                                            >
-                                                <div className="flex flex-col items-start w-full">
-                                                    <p className={`text-lg font-bold ${isActive ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>{store.name}</p>
-                                                    <p className="text-sm text-slate-500 mt-1">{store.region || 'Libya'}</p>
-                                                </div>
-                                                {isActive && (
-                                                    <div className="w-6 h-6 rounded-full border-2 border-indigo-500 flex items-center justify-center shrink-0">
-                                                        <CheckCircle2 className="w-4 h-4 text-indigo-400" />
+                                    {myBusinesses.length > 0 ? (
+                                        myBusinesses.map(store => {
+                                            const isActive = store.id === selectedStoreId;
+                                            return (
+                                                <button
+                                                    key={store.id}
+                                                    onClick={() => handleStoreSelect(store.id)}
+                                                    className={`w-full px-5 py-4 text-left flex justify-between items-center transition-all rounded-xl group ${isActive
+                                                        ? 'bg-[#1E222B] border border-[#2A2D35]'
+                                                        : 'hover:bg-[#1A1C23] border border-transparent'
+                                                        }`}
+                                                >
+                                                    <div className="flex flex-col items-start w-full">
+                                                        <p className={`text-lg font-bold ${isActive ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>{store.name}</p>
+                                                        <p className="text-sm text-slate-500 mt-1">{store.region || 'Libya'}</p>
                                                     </div>
-                                                )}
-                                            </button>
-                                        );
-                                    })}
+                                                    {isActive && (
+                                                        <div className="w-6 h-6 rounded-full border-2 border-indigo-500 flex items-center justify-center shrink-0">
+                                                            <CheckCircle2 className="w-4 h-4 text-indigo-400" />
+                                                        </div>
+                                                    )}
+                                                </button>
+                                            );
+                                        })
+                                    ) : pendingClaim ? (
+                                        <div className="w-full px-5 py-4 text-left flex justify-between items-center rounded-xl bg-[#1A1C23] border border-amber-500/30 opacity-80 cursor-not-allowed">
+                                            <div className="flex flex-col items-start w-full">
+                                                <p className="text-lg font-bold text-slate-300">{pendingClaim.name}</p>
+                                                <p className="text-sm text-amber-500 mt-1">{pendingClaim.status === 'missing_docs' ? 'Action Required' : 'Approval Pending'}</p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="w-full px-5 py-6 text-center rounded-xl border border-dashed border-[#2A2D35]">
+                                            <p className="text-slate-500 text-sm">No connected businesses</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

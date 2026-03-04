@@ -16,7 +16,7 @@ BEGIN
 
     -- Update User Profile
     UPDATE public.profiles 
-    SET gader = GREATEST(gader + p_amount, 0)
+    SET gader_points = GREATEST(gader_points + p_amount, 0)
     WHERE id = p_user_id;
 
     -- Note: In a production system, we would also insert an audit log here to record p_reason.
@@ -38,14 +38,15 @@ BEGIN
     END IF;
 
     -- Delete all community interactions (logs)
-    DELETE FROM public.interactions WHERE profile_id = p_user_id;
+    DELETE FROM public.interactions WHERE created_by = p_user_id;
+    DELETE FROM public.logs WHERE profile_id = p_user_id;
 
     -- Delete all votes
-    DELETE FROM public.log_votes WHERE user_id = p_user_id;
+    DELETE FROM public.log_votes WHERE profile_id = p_user_id;
 
     -- Reset Trust Points to 0
     UPDATE public.profiles 
-    SET gader = 0 
+    SET gader_points = 0 
     WHERE id = p_user_id;
 END;
 $$;
@@ -64,7 +65,7 @@ BEGIN
     END IF;
 
     UPDATE public.profiles 
-    SET role = p_role,
+    SET role = p_role::public.user_role,
         status = p_status
     WHERE id = p_user_id;
 END;
@@ -85,7 +86,7 @@ BEGIN
 
     UPDATE public.profiles 
     SET full_name = p_full_name,
-        profile_email = p_email,
+        email = p_email,
         phone = p_phone
     WHERE id = p_user_id;
 END;

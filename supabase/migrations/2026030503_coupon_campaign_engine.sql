@@ -48,11 +48,13 @@ CREATE INDEX IF NOT EXISTS idx_user_coupons_expiry ON public.user_coupons(valid_
 -- RLS for user_coupons
 ALTER TABLE public.user_coupons ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own coupons" ON public.user_coupons;
 CREATE POLICY "Users can view their own coupons"
   ON public.user_coupons FOR SELECT
   TO authenticated
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Merchants can view coupons from their campaigns" ON public.user_coupons;
 CREATE POLICY "Merchants can view coupons from their campaigns"
   ON public.user_coupons FOR SELECT
   TO authenticated

@@ -28,6 +28,8 @@ export default function BusinessRegistry() {
     const [isEditMode, setIsEditMode] = useState(false)
     const [editForm, setEditForm] = useState({ name: '', category: '', region: '' })
     const [isSaving, setIsSaving] = useState(false)
+    const [claimerProfile, setClaimerProfile] = useState(null)
+    const [isFetchingClaimer, setIsFetchingClaimer] = useState(false)
 
     // Restrict Reason Modal State
     const [isRestrictModalOpen, setIsRestrictModalOpen] = useState(false)
@@ -325,10 +327,33 @@ export default function BusinessRegistry() {
                                             {!isMergeMode && (
                                                 <td className="px-6 py-4 text-right">
                                                     <button
-                                                        onClick={() => {
+                                                        onClick={async () => {
                                                             setSelectedBusiness(business);
                                                             setEditForm({ name: business.name, category: business.category, region: business.city });
                                                             setIsEditMode(false);
+                                                            setClaimerProfile(null);
+
+                                                            if (business.claimed && business.owner_id) {
+                                                                setIsFetchingClaimer(true);
+                                                                try {
+                                                                    const { data, error } = await supabase
+                                                                        .from('profiles')
+                                                                        .select('*')
+                                                                        .eq('id', business.owner_id)
+                                                                        .single();
+
+                                                                    if (error && error.code !== 'PGRST116') {
+                                                                        throw error;
+                                                                    }
+                                                                    if (data) {
+                                                                        setClaimerProfile(data);
+                                                                    }
+                                                                } catch (err) {
+                                                                    console.error("Error fetching claimer profile:", err);
+                                                                } finally {
+                                                                    setIsFetchingClaimer(false);
+                                                                }
+                                                            }
                                                         }}
                                                         className="text-slate-400 hover:text-emerald-400 font-medium transition-colors flex items-center gap-1.5 justify-end w-full"
                                                     >
@@ -453,11 +478,11 @@ export default function BusinessRegistry() {
                 )}
             </div>
 
-            {/* View/Edit Business Modal */}
             <Dialog open={!!selectedBusiness} onOpenChange={(open) => {
                 if (!open) {
                     setSelectedBusiness(null);
                     setIsEditMode(false);
+                    setClaimerProfile(null);
                 }
             }}>
                 <DialogContent className="sm:max-w-[500px] bg-slate-900 border-slate-700 text-white">
@@ -480,9 +505,52 @@ export default function BusinessRegistry() {
                                 <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Profile Information</h3>
 
                                 {selectedBusiness.claimed && (
-                                    <div className="bg-blue-500/10 border border-blue-500/20 text-blue-400 p-3 rounded-lg flex gap-3 text-sm">
-                                        <Info className="w-5 h-5 shrink-0 mt-0.5" />
-                                        <p>This business has been claimed by an owner. Name, category, and region can only be modified by the owner to maintain data integrity.</p>
+                                    <div className="space-y-3 mb-4">
+                                        <div className="bg-blue-500/10 border border-blue-500/20 text-blue-400 p-3 rounded-lg flex gap-3 text-sm">
+                                            <Info className="w-5 h-5 shrink-0 mt-0.5" />
+                                            <p>This business has been claimed by an owner. Name, category, and region can only be modified by the owner to maintain data integrity.</p>
+                                        </div>
+
+                                        {/* Claimer Profile Section */}
+                                        <div className="bg-slate-800/80 border border-slate-700/50 rounded-lg p-4">
+                                            <h4 className="text-sm font-semibold text-emerald-400 mb-3 flex items-center gap-2">
+                                                <Shield className="w-4 h-4" /> Claimer Details
+                                            </h4>
+                                            {isFetchingClaimer ? (
+                                                <div className="space-y-2 animate-pulse">
+                                                    <div className="h-4 bg-slate-700 rounded w-1/3"></div>
+                                                    <div className="h-4 bg-slate-700 rounded w-1/2"></div>
+                                                    <div className="h-4 bg-slate-700 rounded w-1/4"></div>
+                                                </div>
+                                            ) : claimerProfile ? (
+                                                <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm text-slate-300">
+                                                    <div>
+                                                        <span className="block text-xs text-slate-500 mb-0.5">Full Name</span>
+                                                        <span className="font-medium text-white">{claimerProfile.full_name || 'N/A'}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="block text-xs text-slate-500 mb-0.5">Role</span>
+                                                        <span className="capitalize">{claimerProfile.role || 'Consumer'}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="block text-xs text-slate-500 mb-0.5">Phone</span>
+                                                        <span>{claimerProfile.phone || 'N/A'}</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="block text-xs text-slate-500 mb-0.5">Email</span>
+                                                        <span>{claimerProfile.email || 'N/A'}</span>
+                                                    </div>
+                                                    {claimerProfile.business_name && (
+                                                        <div className="col-span-2 mt-1">
+                                                            <span className="block text-xs text-slate-500 mb-0.5">Registered Business Name (Pre-reg)</span>
+                                                            <span className="text-amber-400">{claimerProfile.business_name}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="text-sm text-slate-500 italic">No exact claimer profile found.</div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 

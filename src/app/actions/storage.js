@@ -32,8 +32,7 @@ export async function getPresignedUploadUrl({ folder, filename, contentType }) {
         // URL expires in 15 minutes. unhoistableHeaders prevents AWS from requiring headers that 
         // the browser fetch API won't send by default (like x-amz-content-sha256).
         const uploadUrl = await getSignedUrl(r2Client, command, {
-            expiresIn: 900,
-            unhoistableHeaders: new Set(["x-amz-content-sha256"])
+            expiresIn: 900
         });
 
         return { uploadUrl, objectKey, success: true };

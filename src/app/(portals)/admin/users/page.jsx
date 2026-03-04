@@ -1,8 +1,7 @@
-'use client';
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Search, UserX, UserMinus, ShieldAlert, Award, AlertTriangle, AlertCircle, TrendingUp, TrendingDown, History, Loader2, Settings, UserCheck, Edit3 } from 'lucide-react'
+import { Search, UserX, UserMinus, ShieldAlert, Award, AlertCircle, TrendingUp, TrendingDown, History, Loader2, Settings, UserCheck, Edit3, Store, Users, User, AlertTriangle, Ban } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
 import { formatDistanceToNow } from 'date-fns'
 
@@ -10,17 +9,23 @@ export default function UsersPage() {
     const { supabase, showToast } = useTagdeer()
     const [users, setUsers] = useState([])
     const [isLoading, setIsLoading] = useState(true)
-    const [activeTab, setActiveTab] = useState('all') // 'all' or 'anti-cheat'
+    const [activeTab, setActiveTab] = useState('all') // 'all', 'consumers', 'merchants'
+    const [statusFilter, setStatusFilter] = useState('all') // 'all', 'Active', 'Restricted', 'Banned'
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedUser, setSelectedUser] = useState(null)
     const [userLogs, setUserLogs] = useState([])
+    const [merchantBusinesses, setMerchantBusinesses] = useState([])
     const [isLoadingLogs, setIsLoadingLogs] = useState(false)
+    const [isLoadingBusinesses, setIsLoadingBusinesses] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const [adjustmentAmount, setAdjustmentAmount] = useState('')
     const [adjustmentReason, setAdjustmentReason] = useState('')
     const [isEditingInfo, setIsEditingInfo] = useState(false)
     const [editForm, setEditForm] = useState({ name: '', email: '', phone: '' })
+    const [showBanCascadeWarning, setShowBanCascadeWarning] = useState(false)
+    const [pendingStatus, setPendingStatus] = useState(null)
 
+    // Fetch all users
     useEffect(() => {
         if (!supabase) return;
         const fetchUsers = async () => {
@@ -30,15 +35,14 @@ export default function UsersPage() {
                 const mapped = data.map(dbUser => ({
                     id: dbUser.id,
                     name: dbUser.full_name || 'Anonymous User',
-                    email: dbUser.profile_email || dbUser.email || '-',
+                    email: dbUser.email || '-',
                     phone: dbUser.phone || '-',
-                    trustPoints: dbUser.gader || 0,
-                    tier: (dbUser.gader || 0) > 5000 ? 'Gold' : (dbUser.gader || 0) > 1000 ? 'Silver' : 'Bronze',
+                    trustPoints: dbUser.gader_points || 0,
+                    tier: (dbUser.gader_points || 0) > 5000 ? 'Gold' : (dbUser.gader_points || 0) > 1000 ? 'Silver' : 'Bronze',
                     flags: 0,
                     status: dbUser.status || 'Active',
                     role: dbUser.role || 'user',
-                    isFlagged: false,
-                    flagReason: ''
+                    created_at: dbUser.created_at
                 }))
                 setUsers(mapped)
             }
@@ -47,46 +51,92 @@ export default function UsersPage() {
         fetchUsers()
     }, [supabase])
 
+    // Fetch user logs (from both interactions and logs tables)
     useEffect(() => {
         const fetchUserLogs = async () => {
             if (!selectedUser?.id || !supabase) return
             setUserLogs([])
             setIsLoadingLogs(true)
-            const { data, error } = await supabase
-                .from('interactions') // Fixed: changed from 'logs' to 'interactions'
+
+            // Fetch from interactions table (uses created_by)
+            const { data: interactions, error: intError } = await supabase
+                .from('interactions')
+                .select('*, businesses(name)')
+                .eq('created_by', selectedUser.id)
+                .order('created_at', { ascending: false })
+                .limit(10)
+
+            // Fetch from logs table (uses profile_id)
+            const { data: logs, error: logError } = await supabase
+                .from('logs')
                 .select('*, businesses(name)')
                 .eq('profile_id', selectedUser.id)
                 .order('created_at', { ascending: false })
                 .limit(10)
 
-            if (!error && data) {
-                setUserLogs(data)
-            }
+            // Combine and sort chronologically
+            const combined = [
+                ...(interactions || []).map(i => ({ ...i, source: 'interaction' })),
+                ...(logs || []).map(l => ({ ...l, source: 'log' }))
+            ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 15)
+
+            setUserLogs(combined)
             setIsLoadingLogs(false)
         }
         fetchUserLogs()
     }, [selectedUser, supabase])
 
-    const filteredUsers = users.filter(u =>
-        (activeTab === 'anti-cheat' ? u.isFlagged : true) &&
-        (u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    // Fetch merchant businesses when a merchant is selected
+    useEffect(() => {
+        const fetchMerchantBusinesses = async () => {
+            if (!selectedUser?.id || !supabase || selectedUser.role !== 'merchant') {
+                setMerchantBusinesses([])
+                return
+            }
+            setIsLoadingBusinesses(true)
+            const { data, error } = await supabase
+                .from('businesses')
+                .select('id, name, status, category, region')
+                .eq('claimed_by', selectedUser.id)
+
+            if (!error && data) {
+                setMerchantBusinesses(data)
+            } else {
+                setMerchantBusinesses([])
+            }
+            setIsLoadingBusinesses(false)
+        }
+        fetchMerchantBusinesses()
+    }, [selectedUser, supabase])
+
+    // Filter users by role tab, status, and search
+    const filteredUsers = users.filter(u => {
+        const matchesTab = activeTab === 'all' ? true :
+            activeTab === 'consumers' ? u.role === 'user' :
+                activeTab === 'merchants' ? u.role === 'merchant' : true
+        const matchesStatus = statusFilter === 'all' ? true : u.status === statusFilter
+        const matchesSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             u.phone.includes(searchTerm) ||
-            u.email.toLowerCase().includes(searchTerm.toLowerCase()))
-    )
+            u.email.toLowerCase().includes(searchTerm.toLowerCase())
+        return matchesTab && matchesStatus && matchesSearch
+    })
+
+    // Count stats
+    const consumerCount = users.filter(u => u.role === 'user').length
+    const merchantCount = users.filter(u => u.role === 'merchant').length
+    const restrictedCount = users.filter(u => u.status === 'Restricted').length
+    const bannedCount = users.filter(u => u.status === 'Banned').length
 
     const handlePurge = async () => {
         if (!supabase || !selectedUser) return;
-
         if (confirm(`Are you sure you want to purge logs and reset Trust Points for ${selectedUser.name}? This cannot be undone.`)) {
             const { error } = await supabase.rpc('admin_purge_user', { p_user_id: selectedUser.id });
-
             if (error) {
-                console.error(error);
-                showToast("Failed to purge user data.");
+                console.error('Purge RPC Error:', error);
+                showToast(error.message || "Failed to purge user data.");
             } else {
                 showToast(`User ${selectedUser.name} purged and reset to 0 points.`);
                 setSelectedUser(null);
-                // The main users listener in TagdeerContext or a local refetch would update the UI
             }
         }
     }
@@ -96,32 +146,26 @@ export default function UsersPage() {
             showToast("Please enter both amount and reason.")
             return
         }
-
         const amount = type === 'add' ? Math.abs(parseInt(adjustmentAmount)) : -Math.abs(parseInt(adjustmentAmount));
-
         if (isNaN(amount)) {
             showToast("Invalid amount.");
             return;
         }
-
         setIsSaving(true);
         const { error } = await supabase.rpc('admin_manage_user_gader', {
             p_user_id: selectedUser.id,
             p_amount: amount,
             p_reason: adjustmentReason
         });
-
         if (error) {
-            console.error('RPC Error:', error);
-            showToast(error.message || "Failed to adjust points.");
+            console.error('Adjustment RPC Error:', error);
+            showToast(error.hint || error.message || "Failed to adjust points.");
         } else {
             showToast(`${type === 'add' ? 'Awarded' : 'Deducted'} ${Math.abs(amount)} points.`);
-            // Optimistic UI Update locally
             const updatedUser = { ...selectedUser, trustPoints: Math.max((selectedUser.trustPoints || 0) + amount, 0) };
             setSelectedUser(updatedUser);
             setUsers(users.map(u => u.id === selectedUser.id ? { ...u, trustPoints: updatedUser.trustPoints } : u));
         }
-
         setIsSaving(false);
         setAdjustmentAmount('')
         setAdjustmentReason('')
@@ -130,27 +174,50 @@ export default function UsersPage() {
     const handleStatusUpdate = async (newStatus) => {
         if (!supabase || !selectedUser) return;
 
+        // If merchant has businesses and is being banned/restricted, show warning first
+        if (selectedUser.role === 'merchant' && (newStatus === 'Banned' || newStatus === 'Restricted') && merchantBusinesses.length > 0) {
+            setPendingStatus(newStatus)
+            setShowBanCascadeWarning(true)
+            return
+        }
+
+        await executeStatusUpdate(newStatus)
+    }
+
+    const executeStatusUpdate = async (newStatus) => {
+        setShowBanCascadeWarning(false)
+        setPendingStatus(null)
         setIsSaving(true);
         const { error } = await supabase.rpc('admin_update_user_status', {
             p_user_id: selectedUser.id,
-            p_role: selectedUser.role, // Keep existing role for now
+            p_role: selectedUser.role,
             p_status: newStatus
         });
-
         if (error) {
-            console.error('RPC Error:', error);
-            showToast(error.message || "Failed to update status.");
+            console.error('Status Update RPC Error:', error);
+            showToast(error.hint || error.message || "Failed to update status.");
         } else {
-            showToast(`User status updated to ${newStatus}.`);
+            const cascadeMsg = selectedUser.role === 'merchant' && merchantBusinesses.length > 0
+                ? ` (${merchantBusinesses.length} business${merchantBusinesses.length > 1 ? 'es' : ''} affected)`
+                : ''
+            showToast(`User status updated to ${newStatus}.${cascadeMsg}`);
             setSelectedUser(prev => ({ ...prev, status: newStatus }));
             setUsers(users.map(u => u.id === selectedUser.id ? { ...u, status: newStatus } : u));
+
+            // Refresh merchant businesses to show updated statuses
+            if (selectedUser.role === 'merchant') {
+                const { data } = await supabase
+                    .from('businesses')
+                    .select('id, name, status, category, region')
+                    .eq('claimed_by', selectedUser.id)
+                if (data) setMerchantBusinesses(data)
+            }
         }
         setIsSaving(false);
     }
 
     const handleUpdateUserInfo = async () => {
         if (!supabase || !selectedUser) return;
-
         setIsSaving(true);
         const { error } = await supabase.rpc('admin_update_user_info', {
             p_user_id: selectedUser.id,
@@ -158,18 +225,12 @@ export default function UsersPage() {
             p_email: editForm.email,
             p_phone: editForm.phone
         });
-
         if (error) {
-            console.error('RPC Error:', error);
-            showToast(error.message || "Failed to update user info.");
+            console.error('Info Update RPC Error:', error);
+            showToast(error.hint || error.message || "Failed to update user info.");
         } else {
             showToast("User information updated.");
-            const updated = {
-                ...selectedUser,
-                name: editForm.name,
-                email: editForm.email,
-                phone: editForm.phone
-            };
+            const updated = { ...selectedUser, name: editForm.name, email: editForm.email, phone: editForm.phone };
             setSelectedUser(updated);
             setUsers(users.map(u => u.id === selectedUser.id ? updated : u));
             setIsEditingInfo(false);
@@ -178,44 +239,67 @@ export default function UsersPage() {
     }
 
     const startEditing = () => {
-        setEditForm({
-            name: selectedUser.name,
-            email: selectedUser.email,
-            phone: selectedUser.phone
-        });
+        setEditForm({ name: selectedUser.name, email: selectedUser.email, phone: selectedUser.phone });
         setIsEditingInfo(true);
+    }
+
+    const getRoleBadge = (role) => {
+        switch (role) {
+            case 'merchant':
+                return <span className="bg-blue-500/10 text-blue-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-blue-500/20">Merchant</span>
+            case 'admin':
+                return <span className="bg-purple-500/10 text-purple-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-purple-500/20">Admin</span>
+            default:
+                return <span className="bg-slate-500/10 text-slate-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-slate-500/20">Consumer</span>
+        }
+    }
+
+    const getStatusBadge = (status) => {
+        switch (status) {
+            case 'Banned':
+                return <span className="bg-red-500/10 text-red-500 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-red-500/20">Banned</span>
+            case 'Restricted':
+                return <span className="bg-amber-500/10 text-amber-500 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-amber-500/20">Restricted</span>
+            default:
+                return <span className="bg-emerald-500/10 text-emerald-500 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-emerald-500/20">Active</span>
+        }
+    }
+
+    const getBusinessStatusBadge = (status) => {
+        switch (status) {
+            case 'hidden':
+                return <span className="bg-red-500/10 text-red-400 text-[10px] px-1.5 py-0.5 rounded font-bold">Hidden</span>
+            case 'restricted':
+                return <span className="bg-amber-500/10 text-amber-400 text-[10px] px-1.5 py-0.5 rounded font-bold">Restricted</span>
+            case 'pending_review':
+                return <span className="bg-blue-500/10 text-blue-400 text-[10px] px-1.5 py-0.5 rounded font-bold">Pending Review</span>
+            default:
+                return <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-1.5 py-0.5 rounded font-bold">Published</span>
+        }
     }
 
     return (
         <div className="animate-in fade-in duration-500 flex flex-col h-[calc(100vh-8rem)]">
 
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8 shrink-0">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6 shrink-0">
                 <div>
                     <h1 className="text-3xl font-bold text-white tracking-tight">User Management</h1>
-                    <p className="text-slate-400 mt-1">Monitor VIP economy and enforce platform rules.</p>
+                    <p className="text-slate-400 mt-1">Manage platform users, enforce rules, and monitor accounts.</p>
                 </div>
 
-                <div className="flex gap-4">
-                    <div className="bg-slate-800/50 p-1 rounded-lg border border-slate-700/50 flex text-sm font-medium">
-                        <button
-                            onClick={() => { setActiveTab('all'); setSelectedUser(null) }}
-                            className={`px-4 py-1.5 rounded-md transition-colors ${activeTab === 'all' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                        >
-                            All Users
-                        </button>
-                        <button
-                            onClick={() => { setActiveTab('anti-cheat'); setSelectedUser(null) }}
-                            className={`px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${activeTab === 'anti-cheat' ? 'bg-red-500/10 text-red-400 shadow-sm border border-red-500/20' : 'text-slate-400 hover:text-red-300'}`}
-                        >
-                            <ShieldAlert className="w-4 h-4" /> Anti-Cheat Flags
-                            {users.filter(u => u.isFlagged).length > 0 && (
-                                <span className="bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center ml-1">
-                                    {users.filter(u => u.isFlagged).length}
-                                </span>
-                            )}
-                        </button>
-                    </div>
+                <div className="flex gap-3 items-center">
+                    {/* Status Filter */}
+                    <select
+                        value={statusFilter}
+                        onChange={e => setStatusFilter(e.target.value)}
+                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                    >
+                        <option value="all">All Statuses</option>
+                        <option value="Active">Active ({users.filter(u => u.status === 'Active').length})</option>
+                        <option value="Restricted">Restricted ({restrictedCount})</option>
+                        <option value="Banned">Banned ({bannedCount})</option>
+                    </select>
 
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
@@ -230,6 +314,53 @@ export default function UsersPage() {
                 </div>
             </div>
 
+            {/* Role Tabs */}
+            <div className="flex gap-2 mb-4 shrink-0">
+                <button
+                    onClick={() => { setActiveTab('all'); setSelectedUser(null) }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'all'
+                        ? 'bg-slate-700 text-white shadow-sm border border-slate-600'
+                        : 'bg-slate-800/50 text-slate-400 hover:text-slate-200 border border-slate-700/50'}`}
+                >
+                    <Users className="w-4 h-4" /> All Users
+                    <span className="text-[10px] bg-slate-600/50 px-1.5 py-0.5 rounded-full">{users.length}</span>
+                </button>
+                <button
+                    onClick={() => { setActiveTab('consumers'); setSelectedUser(null) }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'consumers'
+                        ? 'bg-emerald-500/10 text-emerald-400 shadow-sm border border-emerald-500/30'
+                        : 'bg-slate-800/50 text-slate-400 hover:text-emerald-300 border border-slate-700/50'}`}
+                >
+                    <User className="w-4 h-4" /> Consumers
+                    <span className="text-[10px] bg-slate-600/50 px-1.5 py-0.5 rounded-full">{consumerCount}</span>
+                </button>
+                <button
+                    onClick={() => { setActiveTab('merchants'); setSelectedUser(null) }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'merchants'
+                        ? 'bg-blue-500/10 text-blue-400 shadow-sm border border-blue-500/30'
+                        : 'bg-slate-800/50 text-slate-400 hover:text-blue-300 border border-slate-700/50'}`}
+                >
+                    <Store className="w-4 h-4" /> Merchants
+                    <span className="text-[10px] bg-slate-600/50 px-1.5 py-0.5 rounded-full">{merchantCount}</span>
+                </button>
+
+                {/* Status summary badges */}
+                {(restrictedCount > 0 || bannedCount > 0) && (
+                    <div className="flex items-center gap-2 ml-auto">
+                        {restrictedCount > 0 && (
+                            <span className="text-[11px] text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg font-medium">
+                                {restrictedCount} Restricted
+                            </span>
+                        )}
+                        {bannedCount > 0 && (
+                            <span className="text-[11px] text-red-500 bg-red-500/10 border border-red-500/20 px-2 py-1 rounded-lg font-medium">
+                                {bannedCount} Banned
+                            </span>
+                        )}
+                    </div>
+                )}
+            </div>
+
             <div className="flex gap-6 flex-1 min-h-0 overflow-hidden">
 
                 {/* User List */}
@@ -240,8 +371,8 @@ export default function UsersPage() {
                                 <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50 sticky top-0 z-10">
                                     <tr>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300">User Details</th>
+                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300">Role</th>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-center">Trust Points & Tier</th>
-                                        {activeTab === 'anti-cheat' && <th scope="col" className="px-6 py-4 font-medium text-red-400">System Flag</th>}
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300">Status</th>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-right">Action</th>
                                     </tr>
@@ -252,13 +383,16 @@ export default function UsersPage() {
                                             key={user.id}
                                             className={`border-b border-slate-700/50 transition-colors cursor-pointer ${selectedUser?.id === user.id
                                                 ? 'bg-emerald-500/10 border-emerald-500/30'
-                                                : activeTab === 'anti-cheat' ? 'hover:bg-red-900/10' : 'hover:bg-slate-800/50'
+                                                : user.status === 'Banned' ? 'hover:bg-red-900/10' : user.status === 'Restricted' ? 'hover:bg-amber-900/10' : 'hover:bg-slate-800/50'
                                                 }`}
                                             onClick={() => setSelectedUser(user)}
                                         >
                                             <td className="px-6 py-4">
                                                 <div className="font-medium text-white">{user.name}</div>
                                                 <div className="text-xs text-slate-500 mt-1">{user.phone} • {user.email}</div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {getRoleBadge(user.role)}
                                             </td>
                                             <td className="px-6 py-4 text-center">
                                                 <div className="font-bold text-white mb-1">{user.trustPoints} PTS</div>
@@ -269,24 +403,8 @@ export default function UsersPage() {
                                                     {user.tier}
                                                 </span>
                                             </td>
-                                            {activeTab === 'anti-cheat' && (
-                                                <td className="px-6 py-4">
-                                                    <div className="text-xs text-red-400 max-w-[200px] line-clamp-2">
-                                                        <AlertTriangle className="w-3 h-3 inline mr-1 mb-0.5" />
-                                                        {user.flagReason}
-                                                    </div>
-                                                </td>
-                                            )}
                                             <td className="px-6 py-4">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded w-fit ${user.status === 'Banned' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
-                                                            user.status === 'Restricted' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
-                                                                'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                                                        }`}>
-                                                        {user.status}
-                                                    </span>
-                                                    {user.flags > 0 && <span className="text-red-400 font-bold text-[10px]">{user.flags} Flags</span>}
-                                                </div>
+                                                {getStatusBadge(user.status)}
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <button className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors text-xs">View Profile</button>
@@ -318,18 +436,23 @@ export default function UsersPage() {
                         <div className="p-6 border-b border-slate-700/50 bg-slate-800 shrink-0">
                             <div className="flex justify-between items-start">
                                 <div className="flex gap-4 items-center">
-                                    <div className="h-16 w-16 rounded-full bg-slate-700 border-2 border-slate-600 flex items-center justify-center text-xl font-bold text-white shadow-inner">
+                                    <div className={`h-16 w-16 rounded-full border-2 flex items-center justify-center text-xl font-bold text-white shadow-inner ${selectedUser.role === 'merchant' ? 'bg-blue-900/50 border-blue-500/50' : 'bg-slate-700 border-slate-600'}`}>
                                         {selectedUser.name.charAt(0)}
                                     </div>
                                     <div>
                                         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                                             {selectedUser.name}
-                                            {selectedUser.flags > 2 && <ShieldAlert className="w-5 h-5 text-red-500" />}
                                             <button onClick={startEditing} className="p-1 hover:bg-slate-700 rounded-full text-slate-500 hover:text-emerald-400 transition-colors">
                                                 <Edit3 className="w-4 h-4" />
                                             </button>
                                         </h2>
-                                        <p className="text-sm text-slate-400 mt-1">{selectedUser.phone} • {selectedUser.email}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <p className="text-sm text-slate-400">{selectedUser.phone} • {selectedUser.email}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            {getRoleBadge(selectedUser.role)}
+                                            {getStatusBadge(selectedUser.status)}
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="flex gap-2">
@@ -349,9 +472,11 @@ export default function UsersPage() {
                                     <div className="text-xs text-slate-500 font-medium mb-1">Current Tier</div>
                                     <div className="text-xl font-bold tracking-wide text-yellow-500">{selectedUser.tier}</div>
                                 </div>
-                                <div className="bg-slate-900 border border-amber-500/20 rounded-lg p-3 text-center">
-                                    <div className="text-xs text-slate-500 font-medium mb-1">Violation Flags</div>
-                                    <div className={`text-xl font-bold ${selectedUser.flags > 0 ? 'text-red-400' : 'text-slate-300'}`}>{selectedUser.flags}</div>
+                                <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-center">
+                                    <div className="text-xs text-slate-500 font-medium mb-1">Account Status</div>
+                                    <div className={`text-xl font-bold ${selectedUser.status === 'Banned' ? 'text-red-400' : selectedUser.status === 'Restricted' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                        {selectedUser.status}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -359,19 +484,40 @@ export default function UsersPage() {
                         {/* Scrollable Content */}
                         <div className="flex-1 overflow-y-auto p-6">
 
-                            {/* Anti-Cheat Alert */}
-                            {selectedUser.isFlagged && (
-                                <div className="mb-8 bg-red-500/10 border border-red-500/30 rounded-xl p-4">
-                                    <h3 className="flex items-center gap-2 font-bold text-red-400 mb-2">
-                                        <AlertTriangle className="w-5 h-5" /> Anti-Cheat System Flag
+                            {/* Ban Cascade Warning Modal */}
+                            {showBanCascadeWarning && (
+                                <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-xl p-5 animate-in slide-in-from-top-4 duration-300">
+                                    <h3 className="flex items-center gap-2 font-bold text-red-400 mb-3">
+                                        <AlertTriangle className="w-5 h-5" /> Merchant Business Impact Warning
                                     </h3>
-                                    <p className="text-sm text-red-200/80 mb-4">{selectedUser.flagReason}</p>
-                                    <button
-                                        onClick={handlePurge}
-                                        className="w-full bg-red-500 hover:bg-red-400 text-white font-bold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm shadow-[0_0_15px_rgba(239,68,68,0.2)]"
-                                    >
-                                        <UserMinus className="w-4 h-4" /> Purge Logs & Reset Points
-                                    </button>
+                                    <p className="text-sm text-red-200/80 mb-3">
+                                        {pendingStatus === 'Banned'
+                                            ? `Banning this merchant will HIDE all ${merchantBusinesses.length} of their businesses from the platform.`
+                                            : `Restricting this merchant will RESTRICT all ${merchantBusinesses.length} of their businesses.`
+                                        }
+                                    </p>
+                                    <div className="space-y-2 mb-4">
+                                        {merchantBusinesses.map(b => (
+                                            <div key={b.id} className="flex items-center justify-between bg-red-900/20 rounded-lg px-3 py-2">
+                                                <span className="text-sm text-red-200">{b.name}</span>
+                                                <span className="text-[10px] text-slate-400">{b.status} → {pendingStatus === 'Banned' ? 'hidden' : 'restricted'}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => executeStatusUpdate(pendingStatus)}
+                                            className="flex-1 bg-red-500 hover:bg-red-400 text-white font-bold py-2.5 rounded-lg transition-colors text-sm"
+                                        >
+                                            {pendingStatus === 'Banned' ? 'Confirm Ban' : 'Confirm Restriction'}
+                                        </button>
+                                        <button
+                                            onClick={() => { setShowBanCascadeWarning(false); setPendingStatus(null); }}
+                                            className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-lg text-sm"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
                                 </div>
                             )}
 
@@ -440,8 +586,8 @@ export default function UsersPage() {
                                         disabled={isSaving || selectedUser.status === 'Active'}
                                         onClick={() => handleStatusUpdate('Active')}
                                         className={`flex-1 py-2.5 rounded-lg border transition-all flex items-center justify-center gap-2 text-sm font-bold ${selectedUser.status === 'Active'
-                                                ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
-                                                : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400'
+                                            ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
+                                            : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400'
                                             }`}
                                     >
                                         <UserCheck className="w-4 h-4" /> Active
@@ -450,8 +596,8 @@ export default function UsersPage() {
                                         disabled={isSaving || selectedUser.status === 'Restricted'}
                                         onClick={() => handleStatusUpdate('Restricted')}
                                         className={`flex-1 py-2.5 rounded-lg border transition-all flex items-center justify-center gap-2 text-sm font-bold ${selectedUser.status === 'Restricted'
-                                                ? 'bg-amber-500/10 border-amber-500/50 text-amber-500'
-                                                : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-amber-500/50 hover:text-amber-400'
+                                            ? 'bg-amber-500/10 border-amber-500/50 text-amber-500'
+                                            : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-amber-500/50 hover:text-amber-400'
                                             }`}
                                     >
                                         <AlertCircle className="w-4 h-4" /> Restrict
@@ -460,14 +606,42 @@ export default function UsersPage() {
                                         disabled={isSaving || selectedUser.status === 'Banned'}
                                         onClick={() => handleStatusUpdate('Banned')}
                                         className={`flex-1 py-2.5 rounded-lg border transition-all flex items-center justify-center gap-2 text-sm font-bold ${selectedUser.status === 'Banned'
-                                                ? 'bg-red-500/10 border-red-500/50 text-red-500'
-                                                : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-red-500/50 hover:text-red-400'
+                                            ? 'bg-red-500/10 border-red-500/50 text-red-500'
+                                            : 'bg-slate-900 border-slate-700 text-slate-500 hover:border-red-500/50 hover:text-red-400'
                                             }`}
                                     >
                                         <ShieldAlert className="w-4 h-4" /> Ban
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Merchant Businesses Section */}
+                            {selectedUser.role === 'merchant' && (
+                                <div className="mb-8">
+                                    <h3 className="font-semibold text-white mb-4 border-b border-slate-700 pb-2 flex items-center gap-2">
+                                        <Store className="w-4 h-4 text-blue-400" /> Claimed Businesses
+                                    </h3>
+                                    {isLoadingBusinesses ? (
+                                        <div className="py-4 flex justify-center text-slate-400">
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                        </div>
+                                    ) : merchantBusinesses.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {merchantBusinesses.map(b => (
+                                                <div key={b.id} className="p-3 bg-slate-900 border border-slate-800 rounded-lg flex items-center justify-between">
+                                                    <div>
+                                                        <div className="font-medium text-white text-sm">{b.name}</div>
+                                                        <div className="text-xs text-slate-500 mt-0.5">{b.category} • {b.region}</div>
+                                                    </div>
+                                                    {getBusinessStatusBadge(b.status)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-slate-500 text-sm italic">No businesses claimed by this merchant.</div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Manual Adjustment */}
                             <div className="mb-8">
@@ -519,7 +693,7 @@ export default function UsersPage() {
                             {/* Log History Preview */}
                             <div>
                                 <h3 className="font-semibold text-white mb-4 border-b border-slate-700 pb-2 flex items-center gap-2">
-                                    <History className="w-4 h-4" /> Recent Interactions
+                                    <History className="w-4 h-4" /> Recent Activity Logs
                                 </h3>
                                 <div className="space-y-3">
                                     {isLoadingLogs ? (
@@ -530,14 +704,21 @@ export default function UsersPage() {
                                         userLogs.map(log => (
                                             <div key={log.id} className="p-3 bg-slate-900 border border-slate-800 rounded-lg text-sm">
                                                 <div className="flex justify-between items-start mb-1">
-                                                    <span className={`font-medium ${log.interaction_type === 'verified_receipt' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                                                    <span className={`font-medium ${log.interaction_type === 'verified_receipt' ? 'text-emerald-400' :
+                                                        log.interaction_type === 'recommend' ? 'text-emerald-400' :
+                                                            log.interaction_type === 'complain' ? 'text-red-400' : 'text-slate-300'}`}>
                                                         {log.interaction_type === 'verified_receipt' ? 'Receipt Upload' :
                                                             log.interaction_type === 'recommend' ? 'Recommendation' :
                                                                 log.interaction_type === 'complain' ? 'Complaint' : log.interaction_type}
                                                     </span>
-                                                    <span className="text-xs text-slate-500">
-                                                        {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${log.source === 'interaction' ? 'bg-blue-500/10 text-blue-400' : 'bg-slate-600/30 text-slate-400'}`}>
+                                                            {log.source === 'interaction' ? 'Interaction' : 'Log'}
+                                                        </span>
+                                                        <span className="text-xs text-slate-500">
+                                                            {formatDistanceToNow(new Date(log.created_at), { addSuffix: true })}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                                 <div className="text-slate-400 text-xs">
                                                     At {log.businesses?.name || 'Unknown Business'} ({log.weight > 0 ? '+' : ''}{log.weight || 0} PTS)
@@ -546,9 +727,19 @@ export default function UsersPage() {
                                             </div>
                                         ))
                                     ) : (
-                                        <div className="text-slate-500 text-sm italic">No interactions logged yet.</div>
+                                        <div className="text-slate-500 text-sm italic">No activity logged yet.</div>
                                     )}
                                 </div>
+                            </div>
+
+                            {/* Purge Section */}
+                            <div className="mt-8 pt-6 border-t border-slate-700/50">
+                                <button
+                                    onClick={handlePurge}
+                                    className="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-bold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+                                >
+                                    <UserMinus className="w-4 h-4" /> Purge Logs & Reset Points
+                                </button>
                             </div>
 
                         </div>
