@@ -317,10 +317,38 @@ export function TagdeerProvider({ children }) {
             throw new Error((data && data.error) || (lang === 'ar' ? 'رمز غير صحيح أو منتهي الصلاحية' : 'Invalid or expired code'));
         }
 
-        if (data.isNewUser) {
-            showToast(lang === 'ar' ? 'مرحباً بك في تقدير! حصلت على +20 نقطة مكافأة' : 'Welcome to Tagdeer! You earned +20 bonus points');
+        // Set user state from the Edge Function's returned profile
+        // (The Edge Function verifies OTP and returns/creates the profile,
+        //  but does NOT create a Supabase Auth session — so we set state directly)
+        const profile = data.profile;
+        if (profile) {
+            setUser({
+                id: profile.id,
+                phone: profile.phone,
+                email: profile.email,
+                profile_email: profile.email,
+                userId: profile.user_id,
+                gader: profile.gader_points ?? 20,
+                vipTier: profile.vip_tier || calculateTier(profile.gader_points ?? 20, lang).name,
+                full_name: profile.full_name || getRandomCommunityTitle(lang),
+                city: profile.city,
+                gender: profile.gender,
+                birth_date: profile.birth_date,
+                role: profile.role,
+                weekly_log_count: profile.weekly_log_count || 0,
+                coupon_difficulty_level: profile.coupon_difficulty_level || 0,
+            });
+            setShowLoginModal(false);
+
+            if (data.isNewUser) {
+                showToast(lang === 'ar' ? 'مرحباً بك في تقدير! حصلت على +20 نقطة مكافأة' : 'Welcome to Tagdeer! You earned +20 bonus points');
+            } else {
+                showToast(lang === 'ar' ? 'تم تسجيل الدخول بنجاح' : 'Successfully logged in');
+            }
+        } else {
+            throw new Error(lang === 'ar' ? 'لم يتم العثور على الملف الشخصي' : 'Profile not found after verification');
         }
-        // Note: setUser is now handled by the onAuthStateChange listener
+
     };
 
     const loginWithEmail = async (email, redirectFrom) => {

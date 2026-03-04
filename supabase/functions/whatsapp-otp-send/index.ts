@@ -30,11 +30,15 @@ serve(async (req) => {
         const code = String(Math.floor(100000 + Math.random() * 900000));
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes
 
-        // Store OTP in database (upsert — replace any existing code for this phone)
-        const supabaseAdmin = createClient(
-            Deno.env.get("SUPABASE_URL")!,
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-        );
+        // Store OTP in database
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+        if (!supabaseUrl || !supabaseKey) {
+            throw new Error("Missing Supabase configuration");
+        }
+
+        const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
         const { error: dbError } = await supabaseAdmin
             .from("otp_verifications")
@@ -45,19 +49,23 @@ serve(async (req) => {
 
         if (dbError) {
             console.error("DB upsert error:", dbError);
-            return new Response(
-                JSON.stringify({ error: "Failed to store OTP" }),
-                { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
+            throw new Error(`Failed to store OTP: ${dbError.message}`);
         }
 
         // Send WhatsApp message via Meta Graph API
         const metaAccessToken = Deno.env.get("META_ACCESS_TOKEN");
         const phoneNumberId = Deno.env.get("META_PHONE_NUMBER_ID");
         const templateName = Deno.env.get("META_TEMPLATE_NAME") || "tagdeer_otp";
+        const templateLang = Deno.env.get("META_TEMPLATE_LANG") || "ar";
 
-        // Strip the + for Meta API (they expect country code without +)
+        if (!metaAccessToken || !phoneNumberId) {
+            throw new Error("Missing Meta configuration (Token or Phone ID)");
+        }
+
+        // Strip the + for Meta API
         const recipientPhone = normalizedPhone.replace("+", "");
+
+        console.log(`Sending WhatsApp OTP to ${recipientPhone} using template ${templateName} (${templateLang})`);
 
         const metaResponse = await fetch(
             `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`,
@@ -73,7 +81,7 @@ serve(async (req) => {
                     type: "template",
                     template: {
                         name: templateName,
-                        language: { code: Deno.env.get("META_TEMPLATE_LANG") || "ar" },
+                        language: { code: templateLang },
                         components: [
                             {
                                 type: "body",
@@ -98,9 +106,17 @@ serve(async (req) => {
         const metaResult = await metaResponse.json();
 
         if (!metaResponse.ok) {
-            console.error("Meta API error:", JSON.stringify(metaResult));
+            console.error("Meta API error details:", JSON.stringify(metaResult));
             return new Response(
-                JSON.stringify({ error: "Failed to send WhatsApp message", details: metaResult }),
+                JSON.stringify({
+                    error: "Meta API rejected the request",
+                    meta_error: metaResult,
+                    config_used: {
+                        phone_id: phoneNumberId,
+                        template: templateName,
+                        lang: templateLang
+                    }
+                }),
                 { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
         }
@@ -111,9 +127,9 @@ serve(async (req) => {
         );
 
     } catch (err) {
-        console.error("Function error:", err);
+        console.error("Function exception:", err);
         return new Response(
-            JSON.stringify({ error: err.message }),
+            JSON.stringify({ error: err.message || "Internal function error" }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
     }
