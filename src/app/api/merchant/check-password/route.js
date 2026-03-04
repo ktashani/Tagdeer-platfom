@@ -8,8 +8,8 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.
  * Body: { email: string }
  * Returns: { hasPassword: boolean }
  *
- * Security: Only returns true/false — never confirms if email exists.
- * If email not found, returns { hasPassword: false } to prevent enumeration.
+ * Checks both the profiles.has_password flag and the Supabase auth identities
+ * to determine if the user has a password set.
  */
 export async function POST(request) {
     try {
@@ -19,22 +19,45 @@ export async function POST(request) {
             return Response.json({ hasPassword: false }, { status: 200 });
         }
 
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+            auth: { autoRefreshToken: false, persistSession: false }
+        });
 
-        // Look up the profile by matching the email from auth.users → profiles
-        // We query profiles joined with the email from the request
-        const { data: profile, error } = await supabase
+        // 1. Check profile's has_password flag first (fast path)
+        const { data: profile } = await supabase
             .from('profiles')
-            .select('has_password')
+            .select('id, has_password')
             .eq('email', email.toLowerCase().trim())
             .maybeSingle();
 
-        if (error || !profile) {
-            // Don't reveal whether account exists
-            return Response.json({ hasPassword: false }, { status: 200 });
+        if (profile?.has_password) {
+            return Response.json({ hasPassword: true }, { status: 200 });
         }
 
-        return Response.json({ hasPassword: !!profile.has_password }, { status: 200 });
+        // 2. If flag is false/missing, check Supabase Auth identities (authoritative source)
+        // This handles cases where password was set via Supabase directly but flag wasn't updated
+        if (profile?.id) {
+            try {
+                const { data: { user: authUser } } = await supabase.auth.admin.getUserById(profile.id);
+                if (authUser?.identities) {
+                    const hasEmailIdentity = authUser.identities.some(
+                        i => i.provider === 'email' && i.identity_data?.sub
+                    );
+                    // If they have an email identity AND their encrypted_password is set
+                    // (Supabase sets encrypted_password when user completes password flow)
+                    if (hasEmailIdentity && authUser.encrypted_password && authUser.encrypted_password !== '') {
+                        // Sync the flag for future fast lookups
+                        await supabase.from('profiles').update({ has_password: true }).eq('id', profile.id);
+                        return Response.json({ hasPassword: true }, { status: 200 });
+                    }
+                }
+            } catch (adminErr) {
+                console.error('Admin API check failed:', adminErr);
+                // Fall through to return false
+            }
+        }
+
+        return Response.json({ hasPassword: false }, { status: 200 });
     } catch (err) {
         console.error('check-password error:', err);
         return Response.json({ hasPassword: false }, { status: 200 });
