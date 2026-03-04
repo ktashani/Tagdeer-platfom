@@ -27,14 +27,14 @@ export default function MerchantGuard({ children }) {
                 return;
             }
 
-            if (user?.role === 'admin') {
-                // Admin accounts must use a separate merchant account
+            // Only allow merchant role (and dev bypass users)
+            if (user?.role && user.role !== 'merchant' && !user?.isDevBypass) {
+                // Admin and consumer accounts must use their own portals
                 router.push('/merchant/login?reason=merchant_required')
                 return;
             }
 
-            // Allow any authenticated user through — the dashboard handles
-            // empty-business and pending-approval states itself.
+            // Allow authenticated merchants through
             if (user?.status === 'Banned' || user?.status === 'Restricted') {
                 // Banned/Restricted merchants are blocked — handled in render below
                 setIsAuthorized(true)

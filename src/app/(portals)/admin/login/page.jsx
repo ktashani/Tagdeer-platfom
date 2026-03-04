@@ -4,12 +4,12 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { loginAdmin } from '@/actions/adminAuth'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Shield, Mail, Lock, Loader2 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 
 export default function AdminLogin() {
     const searchParams = useSearchParams()
-    const [username, setUsername] = useState('')
+    const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState('')
@@ -20,10 +20,8 @@ export default function AdminLogin() {
         setIsLoading(true)
 
         try {
-            const formData = new FormData()
-            const result = await loginAdmin(username, password)
+            const result = await loginAdmin(email, password)
             if (result.success) {
-                // Redirect to intended page or admin dashboard
                 const redirectPath = searchParams.get('redirect') || '/admin'
                 window.location.href = redirectPath
             } else {
@@ -39,7 +37,12 @@ export default function AdminLogin() {
     return (
         <div className="flex items-center justify-center min-h-[70vh]">
             <div className="bg-slate-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-slate-700">
-                <h1 className="text-3xl font-bold mb-6 text-center text-white">Admin Access</h1>
+                <div className="flex justify-center mb-6">
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                        <Shield className="w-8 h-8 text-emerald-400" />
+                    </div>
+                </div>
+                <h1 className="text-3xl font-bold mb-2 text-center text-white">Admin Access</h1>
                 <p className="text-slate-400 mb-8 text-center text-sm">Secure login for Tagdeer administrators.</p>
 
                 {error && (
@@ -51,35 +54,44 @@ export default function AdminLogin() {
 
                 <form className="space-y-4" onSubmit={handleLogin}>
                     <div>
-                        <label className="block text-sm font-medium text-slate-300 mb-1">Username</label>
-                        <input
-                            type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-                            placeholder="admin"
-                            required
-                        />
+                        <label className="block text-sm font-medium text-slate-300 mb-1">Admin Email</label>
+                        <div className="relative">
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                                placeholder="admin@tagdeer.co"
+                                required
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-300 mb-1">Password</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-                            placeholder="••••••••"
-                            required
-                        />
+                        <div className="relative">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                                placeholder="••••••••"
+                                required
+                            />
+                        </div>
                     </div>
                     <button
                         type="submit"
                         disabled={isLoading}
-                        className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-4"
+                        className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-4 flex items-center justify-center gap-2"
                     >
-                        {isLoading ? 'Authenticating...' : 'Authenticate'}
+                        {isLoading ? (
+                            <><Loader2 className="w-5 h-5 animate-spin" /> Authenticating...</>
+                        ) : (
+                            'Authenticate'
+                        )}
                     </button>
-                    <p className="text-xs text-center text-slate-500 mt-4">For demo: use admin / admin</p>
                 </form>
             </div>
         </div>
