@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logoutAdmin } from '@/actions/adminAuth'
+import { useTagdeer } from '@/context/TagdeerContext'
 
 const NAV_ITEMS = [
     { name: 'Dashboard', href: '/admin' },
@@ -18,9 +19,12 @@ const NAV_ITEMS = [
 
 export default function AdminTopNav() {
     const pathname = usePathname()
+    const { supabase } = useTagdeer()
 
     const handleLogout = async () => {
+        // Clear both admin cookie and Supabase Auth session
         await logoutAdmin()
+        if (supabase) await supabase.auth.signOut()
         window.location.href = '/admin/login'
     }
 

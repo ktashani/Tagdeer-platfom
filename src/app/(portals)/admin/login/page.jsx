@@ -3,12 +3,14 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { loginAdmin } from '@/actions/adminAuth'
+import { useTagdeer } from '@/context/TagdeerContext'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle, Shield, Mail, Lock, Loader2 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 
 export default function AdminLogin() {
     const searchParams = useSearchParams()
+    const { supabase } = useTagdeer()
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [isLoading, setIsLoading] = useState(false)
@@ -20,14 +22,22 @@ export default function AdminLogin() {
         setIsLoading(true)
 
         try {
+            // 1. Server-side: validate credentials + role, set admin cookie
             const result = await loginAdmin(email, password)
-            if (result.success) {
-                const redirectPath = searchParams.get('redirect') || '/admin'
-                window.location.href = redirectPath
-            } else {
+            if (!result.success) {
                 setError(result.error || 'Authentication failed')
                 setIsLoading(false)
+                return
             }
+
+            // 2. Client-side: also sign in via Supabase so TagdeerContext
+            //    recognizes the admin user and fetches all data (businesses, users)
+            if (supabase) {
+                await supabase.auth.signInWithPassword({ email, password })
+            }
+
+            const redirectPath = searchParams.get('redirect') || '/admin'
+            window.location.href = redirectPath
         } catch (err) {
             setError('An error occurred. Please try again.')
             setIsLoading(false)
