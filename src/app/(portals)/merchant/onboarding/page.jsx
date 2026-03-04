@@ -23,7 +23,25 @@ const REGIONS = ["Tripoli", "Benghazi"];
 
 export default function MerchantOnboarding() {
     const router = useRouter();
-    const { supabase, user, showToast, t, lang, isRTL } = useTagdeer();
+    const { supabase, user, showToast, t, lang, isRTL, loading } = useTagdeer();
+
+    // Block admin accounts from onboarding — they should never claim via this flow
+    if (!loading && user && user.role === 'admin') {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
+                <div className="max-w-md text-center">
+                    <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <AlertCircle className="w-8 h-8 text-amber-600" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">Admin Account Detected</h2>
+                    <p className="text-slate-500 mb-6">Admin accounts cannot claim businesses. Please log in with a dedicated merchant account to proceed.</p>
+                    <button onClick={() => router.push('/merchant/login?reason=merchant_required')} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors">
+                        Go to Merchant Login
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     // Wizard State
     const [step, setStep] = useState(1);
@@ -186,17 +204,17 @@ export default function MerchantOnboarding() {
                 businessId = businessObj.id;
             }
 
-            // 3. Create the Business Claim
+            // 3. Create or Update the Business Claim (Handles retries / duplicate clicks)
             const { error: claimError } = await supabase
                 .from('business_claims')
-                .insert([{
+                .upsert([{
                     business_id: businessId,
                     user_id: activeUser.id,
                     status: 'pending',
                     document_url: documentUrl,
                     file_size: fileMetadata.size,
                     mime_type: fileMetadata.type
-                }]);
+                }], { onConflict: 'business_id,user_id' });
 
             if (claimError) throw new Error("Claim submission failed: " + claimError.message);
 
@@ -214,11 +232,13 @@ export default function MerchantOnboarding() {
                 }]);
             }
 
-            // 5. Elevate User Role to Merchant
-            await supabase
-                .from('profiles')
-                .update({ role: 'merchant' })
-                .eq('id', activeUser.id);
+            // 5. Elevate User Role to Merchant (safety: never overwrite admin)
+            if (user?.role !== 'admin') {
+                await supabase
+                    .from('profiles')
+                    .update({ role: 'merchant' })
+                    .eq('id', activeUser.id);
+            }
 
             setStep(4);
             if (showToast) showToast(t('registration_submitted') || 'Registration submitted successfully!');
