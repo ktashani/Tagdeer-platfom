@@ -232,13 +232,8 @@ export default function MerchantOnboarding() {
                 }]);
             }
 
-            // 5. Elevate User Role to Merchant (safety: never overwrite admin)
-            if (user?.role !== 'admin') {
-                await supabase
-                    .from('profiles')
-                    .update({ role: 'merchant' })
-                    .eq('id', activeUser.id);
-            }
+            // NOTE: Role elevation to 'merchant' happens when admin approves
+            // the claim via admin_resolve_claim RPC — not here during onboarding.
 
             setStep(4);
             if (showToast) showToast(t('registration_submitted') || 'Registration submitted successfully!');

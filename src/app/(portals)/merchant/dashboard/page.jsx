@@ -76,7 +76,7 @@ export default function MerchantDashboard() {
     if (user === undefined) return <div className="min-h-screen flex items-center justify-center">Loading Dashboard...</div>;
 
     // Find the currently authenticated merchant's business
-    const myBusiness = businesses.find(b => b.owner_id === user?.id);
+    const myBusiness = businesses.find(b => b.claimed_by === user?.id);
 
     // ==========================================
     // FETCH REAL DATA
@@ -355,7 +355,7 @@ export default function MerchantDashboard() {
                 </div>
                 <h2 className="text-4xl font-black text-slate-900 dark:text-white mb-4">Welcome to Tagdeer!</h2>
                 <p className="text-xl text-slate-500 dark:text-slate-400 max-w-lg mx-auto mb-10">
-                    You have an active subscription, but you haven't brought your business onto the platform yet. Let's fix that.
+                    You don't have a business on the platform yet. Claim or register your business to unlock the full merchant dashboard.
                 </p>
                 <Link href="/merchant/onboarding">
                     <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white rounded-full h-14 px-10 text-lg shadow-lg shadow-blue-600/20 font-bold">
@@ -373,48 +373,7 @@ export default function MerchantDashboard() {
     return (
         <div className="space-y-8 animate-in fade-in duration-300 relative">
 
-            {/* NO_TIER Modal Overlay */}
-            <Dialog open={currentMockState === MOCK_STATES.NO_TIER} onOpenChange={() => { }}>
-                <DialogContent className="max-w-4xl p-0 overflow-hidden bg-slate-50 dark:bg-slate-950 border-0 rounded-[2rem] shadow-2xl [&>button]:hidden">
-                    <div className="p-8 md:p-12 text-center border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <AlertTriangle className="w-8 h-8" />
-                        </div>
-                        <DialogTitle className="text-3xl font-black text-slate-900 dark:text-white mb-3">Power Up Your Account</DialogTitle>
-                        <DialogDescription className="text-lg text-slate-500 text-center">
-                            You need an active tier subscription to access the Tagdeer Merchant Platform. Please select a plan below to proceed to checkout and unlock your dashboard.
-                        </DialogDescription>
-                    </div>
-
-                    <div className="p-8 md:p-12 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 dark:bg-slate-950">
-                        {/* Tier 1 Box in Modal */}
-                        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 shadow-sm flex flex-col">
-                            <h3 className="text-2xl font-bold mb-4 text-slate-900 dark:text-white">Tier 1 (Base)</h3>
-                            <div className="text-4xl font-black mb-6 text-slate-900 dark:text-white">49 <span className="text-xl font-bold">LYD</span><span className="text-base font-normal text-slate-500">/mo</span></div>
-                            <ul className="space-y-4 mb-8 flex-1">
-                                <li className="flex items-center gap-3 text-slate-700 dark:text-slate-300"><Check className="w-5 h-5 text-emerald-500" /> <span>Manage 1 Location</span></li>
-                                <li className="flex items-center gap-3 text-slate-700 dark:text-slate-300"><Check className="w-5 h-5 text-emerald-500" /> <span>Accept Reviews</span></li>
-                            </ul>
-                            <Link href="/merchant/onboarding" className="w-full block">
-                                <Button className="w-full h-12 text-lg rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700 border-0">Select Base Plan</Button>
-                            </Link>
-                        </div>
-                        {/* Tier 2 Box in Modal */}
-                        <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-3xl border border-indigo-500 p-8 shadow-xl flex flex-col relative text-white">
-                            <div className="absolute top-0 right-6 -translate-y-1/2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-4 py-1 rounded-full text-xs font-bold flex items-center gap-1"><Crown className="w-3 h-3" /> PRO</div>
-                            <h3 className="text-2xl font-bold mb-4">Tier 2 (Pro)</h3>
-                            <div className="text-4xl font-black mb-6">99 <span className="text-xl font-bold">LYD</span><span className="text-base font-normal text-indigo-300">/mo</span></div>
-                            <ul className="space-y-4 mb-8 flex-1">
-                                <li className="flex items-center gap-3 text-white"><Check className="w-5 h-5 text-emerald-400" /> <span>Unlimited Locations</span></li>
-                                <li className="flex items-center gap-3 text-white"><Check className="w-5 h-5 text-emerald-400" /> <span>Team Management</span></li>
-                            </ul>
-                            <Link href="/merchant/onboarding" className="w-full block">
-                                <Button className="w-full h-12 text-lg rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-bold border-0">Select Pro Plan</Button>
-                            </Link>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
+            {/* Placeholder for future tier upsell */}
 
             {/* 1. Welcome & Search Bar */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
