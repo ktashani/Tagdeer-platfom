@@ -156,6 +156,8 @@ export function TagdeerProvider({ children }) {
                 role: profile?.role || 'consumer',
                 status: profile?.status || 'Active',
                 has_password: profile?.has_password || false,
+                weekly_log_count: profile?.weekly_log_count || 0,
+                coupon_difficulty_level: profile?.coupon_difficulty_level || 0,
                 isDevBypass: false
             };
 
@@ -259,6 +261,8 @@ export function TagdeerProvider({ children }) {
                     gender: profile.gender,
                     birth_date: profile.birth_date,
                     role: profile.role,
+                    weekly_log_count: profile.weekly_log_count || 0,
+                    coupon_difficulty_level: profile.coupon_difficulty_level || 0,
                     isDevBypass: process.env.NODE_ENV === 'development',
                 });
                 setShowLoginModal(false);

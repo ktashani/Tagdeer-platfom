@@ -54,12 +54,20 @@ export function Navigation({
 
             <div className={`px-4 ${isRTL ? 'border-r' : 'border-l'} border-slate-200`}>
               {user ? (
-                <button
-                  onClick={() => navigateTo('profile')}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-bold transition-colors shadow-sm tracking-wide"
-                >
-                  {t('profile_nav') || 'Profile'}
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => navigateTo('wallet')}
+                    className="bg-amber-100 hover:bg-amber-200 text-amber-700 px-5 py-2.5 rounded-lg font-bold transition-colors shadow-sm tracking-wide flex items-center gap-2"
+                  >
+                    <span>💳</span> {t('wallet_nav') || (lang === 'ar' ? 'المحفظة' : 'Wallet')}
+                  </button>
+                  <button
+                    onClick={() => navigateTo('profile')}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg font-bold transition-colors shadow-sm tracking-wide"
+                  >
+                    {t('profile_nav') || (lang === 'ar' ? 'حسابي' : 'Profile')}
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => setShowLoginModal(true)}
@@ -100,12 +108,20 @@ export function Navigation({
             </button>
           ))}
           {user ? (
-            <button
-              onClick={() => { setIsMobileMenuOpen(false); navigateTo('profile'); }}
-              className="block w-full text-center mt-4 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-3 rounded-md font-bold transition-colors"
-            >
-              {t('profile_nav') || 'Profile'}
-            </button>
+            <div className="flex flex-col gap-2 mt-4">
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); navigateTo('wallet'); }}
+                className="block w-full text-center bg-amber-100 hover:bg-amber-200 text-amber-700 px-3 py-3 rounded-md font-bold transition-colors"
+              >
+                💳 {t('wallet_nav') || (lang === 'ar' ? 'المحفظة' : 'Wallet')}
+              </button>
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); navigateTo('profile'); }}
+                className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-3 rounded-md font-bold transition-colors"
+              >
+                {t('profile_nav') || (lang === 'ar' ? 'حسابي' : 'Profile')}
+              </button>
+            </div>
           ) : (
             <button
               onClick={() => { setIsMobileMenuOpen(false); setShowLoginModal(true); }}

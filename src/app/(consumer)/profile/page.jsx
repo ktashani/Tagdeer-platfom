@@ -8,6 +8,7 @@ import { Mail, User, ShieldCheck, Phone, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Toast } from '@/components/Toast';
+import { AccountStatusBanner } from '@/components/profile/AccountStatusBanner';
 
 // Extracted components
 import { ProfileHeader } from '@/components/profile/ProfileHeader';
@@ -264,6 +265,9 @@ export default function ProfilePage() {
     return (
         <div className="max-w-4xl mx-auto px-4 py-10" dir={isRTL ? 'rtl' : 'ltr'}>
 
+            {/* Account Status Banner (Banned/Restricted) */}
+            <AccountStatusBanner status={user?.status} lang={lang} />
+
             {/* Account Status Banner (if phone is missing) */}
             {!safePhone && (
                 <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl mb-4 flex justify-between items-center">
@@ -290,22 +294,69 @@ export default function ProfilePage() {
                 router={router}
             />
 
-            {/* 🛡️ Show My Gader Pass Button */}
-            {safePhone ? (
+            {/* 🛡️ Action Buttons (Gader Pass & Wallet) */}
+            <div className="flex justify-center gap-4 mt-4 mb-8">
+                {safePhone ? (
+                    <button
+                        onClick={() => setIsQrModalOpen(true)}
+                        className="w-full max-w-xs py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:from-blue-700 hover:to-blue-800 transition-all flex justify-center items-center gap-2"
+                    >
+                        🛡️ {lang === 'ar' ? 'عرض بطاقة قَدِّر' : 'Show Gader Pass'}
+                    </button>
+                ) : (
+                    <button
+                        disabled
+                        className="w-full max-w-xs py-3 bg-gray-300 text-gray-500 rounded-xl font-bold shadow-sm flex justify-center items-center gap-2 cursor-not-allowed"
+                    >
+                        🔒 {lang === 'ar' ? 'بطاقة قَدِّر مقفلة' : 'Pass Locked'}
+                    </button>
+                )}
+
                 <button
-                    onClick={() => setIsQrModalOpen(true)}
-                    className="w-full max-w-md mx-auto mt-4 mb-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:from-blue-700 hover:to-blue-800 transition-all flex justify-center items-center gap-2"
+                    onClick={() => router.push('/wallet')}
+                    className="w-full max-w-xs py-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:from-amber-500 hover:to-orange-600 transition-all flex justify-center items-center gap-2"
                 >
-                    🛡️ {lang === 'ar' ? 'عرض بطاقة قَدِّر الرقمية' : 'Show My Gader Pass'}
+                    💳 {lang === 'ar' ? 'محفظة المكافآت' : 'My Wallet'}
                 </button>
-            ) : (
-                <button
-                    disabled
-                    className="w-full max-w-md mx-auto mt-4 mb-8 py-3 bg-gray-300 text-gray-500 rounded-xl font-bold shadow-sm flex justify-center items-center gap-2 cursor-not-allowed"
-                >
-                    🔒 {lang === 'ar' ? 'وثق رقمك لعرض البطاقة' : 'Verify phone to show card'}
-                </button>
-            )}
+            </div>
+
+            {/* 🎯 Weekly Log Meter (Coupon Eligibility) */}
+            <div className="bg-white rounded-2xl shadow-sm border border-indigo-100 overflow-hidden mb-8 p-6 sm:p-8">
+                <div className="flex justify-between items-end mb-3">
+                    <div className="flex items-center gap-2">
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                            <Target className="w-6 h-6" />
+                        </div>
+                        <div className="flex flex-col">
+                            <h3 className="text-lg font-bold text-slate-800">
+                                {lang === 'ar' ? 'مؤشر المكافآت الأسبوعي' : 'Weekly Rewards Meter'}
+                            </h3>
+                            <p className="text-sm text-slate-500 font-medium">
+                                {lang === 'ar'
+                                    ? 'سجل تجاربك لتفتح تصاريح الخصم الحصرية.'
+                                    : 'Log experiences to unlock exclusive discount coupons.'}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <span className="text-2xl font-black text-indigo-600">{user?.weekly_log_count || 0}</span>
+                        <span className="text-slate-400 font-medium"> / {3 + (user?.coupon_difficulty_level || 0)}</span>
+                    </div>
+                </div>
+
+                <div className="relative h-4 bg-slate-100 rounded-full overflow-hidden mb-2">
+                    <div
+                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-indigo-500 to-blue-500 transition-all duration-500 rounded-full"
+                        style={{ width: `${Math.min(100, ((user?.weekly_log_count || 0) / (3 + (user?.coupon_difficulty_level || 0))) * 100)}%` }}
+                    ></div>
+                </div>
+
+                <p className="text-xs text-slate-500 text-center font-medium">
+                    {lang === 'ar'
+                        ? `تحتاج إلى ${Math.max(0, (3 + (user?.coupon_difficulty_level || 0)) - (user?.weekly_log_count || 0))} تقييمات إضافية للحصول على مكافأة جديدة.`
+                        : `Need ${Math.max(0, (3 + (user?.coupon_difficulty_level || 0)) - (user?.weekly_log_count || 0))} more logs to earn a new reward.`}
+                </p>
+            </div>
 
             {/* ═══ Personal Details & Email Section ═══ */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8 p-6 sm:p-10">
