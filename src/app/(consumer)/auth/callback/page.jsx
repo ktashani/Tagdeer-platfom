@@ -13,6 +13,7 @@ function AuthCallbackInner() {
 
     // Detect if the user came from the merchant login flow
     const fromMerchant = searchParams.get('from') === 'merchant';
+    const nextPath = searchParams.get('next');
 
     useEffect(() => {
         if (!supabase) return;
@@ -21,11 +22,13 @@ function AuthCallbackInner() {
         let authListener;
 
         // Helper to decide where to redirect based on role + origin
-        const getRedirectPath = (role) => {
+        const getRedirectPath = (role, event) => {
+            // If there's an explicit next path (e.g. password reset), use it
+            if (nextPath) return nextPath;
             if (role === 'admin') return '/admin';
             if (role === 'merchant') return '/merchant/dashboard';
-            // User role: if they came from merchant login, send to onboarding
-            if (fromMerchant) return '/merchant/onboarding';
+            // User role: if they came from merchant login, send to dashboard
+            if (fromMerchant) return '/merchant/dashboard';
             return '/';
         };
 

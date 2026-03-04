@@ -112,7 +112,10 @@ export default function MerchantSettings() {
     const handlePasswordReset = async () => {
         if (!supabase || !user?.email) return;
         try {
-            const { error } = await supabase.auth.resetPasswordForEmail(user.email);
+            const redirectUrl = `${window.location.origin}/auth/callback?next=/merchant/reset-password`;
+            const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+                redirectTo: redirectUrl,
+            });
             if (error) throw error;
             if (showToast) showToast('Password reset link sent to your email!');
         } catch (err) {
