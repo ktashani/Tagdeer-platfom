@@ -61,9 +61,21 @@ export default function MerchantGuard({ children }) {
     useEffect(() => {
         if (isAuthorized && user) {
             const checkSub = async () => {
-                const { data } = await supabase.from('subscriptions').select('tier').eq('profile_id', user.id).eq('status', 'active').single()
-                setSubTier(data?.tier || 'Free')
-                setCheckingSub(false)
+                try {
+                    const { data, error } = await supabase
+                        .from('subscriptions')
+                        .select('tier')
+                        .eq('profile_id', user.id)
+                        .eq('status', 'active')
+                        .maybeSingle();
+
+                    setSubTier(data?.tier || 'Free');
+                } catch (err) {
+                    console.error("Subscription check error:", err);
+                    setSubTier('Free');
+                } finally {
+                    setCheckingSub(false);
+                }
             }
             checkSub()
         } else if (!isAuthorized && !loading) {

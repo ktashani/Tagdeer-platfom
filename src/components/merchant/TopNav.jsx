@@ -6,31 +6,50 @@ import { LayoutDashboard, MessageSquare, Ticket, Settings, Bell, ChevronDown, St
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
 import { useState, useRef, useEffect } from 'react';
+import { useTagdeer } from '@/context/TagdeerContext';
 
 export default function TopNav() {
     const pathname = usePathname();
     const router = useRouter();
+    const { user, businesses, logout } = useTagdeer();
+
     const [isStoreMenuOpen, setIsStoreMenuOpen] = useState(false);
     const storeMenuRef = useRef(null);
 
-    // Mock stores as state so we can select them
-    const [stores, setStores] = useState([
-        { id: '1', name: 'Al-Saha Clinic', location: 'Tripoli', active: true }
-        // Uncomment to test Pro Tier limit
-        // ,{ id: '2', name: 'Al-Saha Pharmacy', location: 'Benghazi', active: false }
-    ]);
+    // Store Selection State
+    const [selectedStoreId, setSelectedStoreId] = useState(null);
+
+    // Default select the first business when loaded
+    useEffect(() => {
+        if (businesses && businesses.length > 0 && !selectedStoreId) {
+            setSelectedStoreId(businesses[0].id);
+        }
+    }, [businesses, selectedStoreId]);
+
+    const activeStore = businesses?.find(b => b.id === selectedStoreId) || businesses?.[0];
 
     // Business Logic: 1 business = free tier max. 2+ businesses = requires Pro Tier.
     // The button shows if they have NO businesses (0), OR if they are Pro.
+    // (You can also check context for subscription tier if needed)
     const isPro = false;
-    const showAddButton = stores.length < 1 || isPro;
+    const showAddButton = (businesses?.length || 0) < 1 || isPro;
 
     const handleStoreSelect = (storeId) => {
-        setStores(stores.map(store => ({
-            ...store,
-            active: store.id === storeId
-        })));
+        setSelectedStoreId(storeId);
         setIsStoreMenuOpen(false);
     };
 
@@ -112,7 +131,7 @@ export default function TopNav() {
                     >
                         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isStoreMenuOpen ? 'rotate-180' : ''}`} />
                         <div className="flex flex-col items-start leading-none">
-                            <span className="text-sm font-bold text-white mb-1">{stores.find(s => s.active)?.name || 'Select Store'}</span>
+                            <span className="text-sm font-bold text-white mb-1">{activeStore?.name || 'No Business'}</span>
                             <span className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium">
                                 Open <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden sm:block"></span>
                             </span>
@@ -130,26 +149,29 @@ export default function TopNav() {
                                 <p className="text-[13px] font-bold text-slate-400 tracking-[0.2em] text-center mb-4">YOUR BUSINESSES</p>
 
                                 <div className="space-y-2">
-                                    {stores.map(store => (
-                                        <button
-                                            key={store.id}
-                                            onClick={() => handleStoreSelect(store.id)}
-                                            className={`w-full px-5 py-4 text-left flex justify-between items-center transition-all rounded-xl group ${store.active
-                                                ? 'bg-[#1E222B] border border-[#2A2D35]'
-                                                : 'hover:bg-[#1A1C23] border border-transparent'
-                                                }`}
-                                        >
-                                            <div className="flex flex-col items-start w-full">
-                                                <p className={`text-lg font-bold ${store.active ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>{store.name}</p>
-                                                <p className="text-sm text-slate-500 mt-1">{store.location}</p>
-                                            </div>
-                                            {store.active && (
-                                                <div className="w-6 h-6 rounded-full border-2 border-indigo-500 flex items-center justify-center shrink-0">
-                                                    <CheckCircle2 className="w-4 h-4 text-indigo-400" />
+                                    {(businesses || []).map(store => {
+                                        const isActive = store.id === selectedStoreId;
+                                        return (
+                                            <button
+                                                key={store.id}
+                                                onClick={() => handleStoreSelect(store.id)}
+                                                className={`w-full px-5 py-4 text-left flex justify-between items-center transition-all rounded-xl group ${isActive
+                                                    ? 'bg-[#1E222B] border border-[#2A2D35]'
+                                                    : 'hover:bg-[#1A1C23] border border-transparent'
+                                                    }`}
+                                            >
+                                                <div className="flex flex-col items-start w-full">
+                                                    <p className={`text-lg font-bold ${isActive ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>{store.name}</p>
+                                                    <p className="text-sm text-slate-500 mt-1">{store.region || 'Libya'}</p>
                                                 </div>
-                                            )}
-                                        </button>
-                                    ))}
+                                                {isActive && (
+                                                    <div className="w-6 h-6 rounded-full border-2 border-indigo-500 flex items-center justify-center shrink-0">
+                                                        <CheckCircle2 className="w-4 h-4 text-indigo-400" />
+                                                    </div>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
@@ -180,18 +202,54 @@ export default function TopNav() {
                     )}
                 </div>
 
-                <button className="relative p-2 text-slate-400 hover:text-white transition-colors bg-slate-800 rounded-full">
-                    <Bell className="w-4 h-4" />
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-[#1A1C23]"></span>
-                </button>
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <button className="relative p-2 text-slate-400 hover:text-white transition-colors bg-slate-800 rounded-full focus:outline-none focus:ring-0">
+                            <Bell className="w-4 h-4" />
+                            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-[#1A1C23]"></span>
+                        </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="end" className="w-80 bg-[#16181D] border-[#2A2D35] p-0 shadow-2xl">
+                        <div className="p-4 border-b border-[#2A2D35]">
+                            <h4 className="font-bold text-white leading-none">Notifications</h4>
+                        </div>
+                        <div className="py-8 px-4 text-center">
+                            <div className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-500">
+                                <Bell className="w-6 h-6" />
+                            </div>
+                            <p className="text-slate-400 text-sm">You have no new notifications.</p>
+                        </div>
+                    </PopoverContent>
+                </Popover>
 
-                <div className="flex items-center gap-2 pl-2 border-l border-slate-700 cursor-pointer hover:bg-slate-800 p-1.5 rounded-full pr-3 transition-colors">
-                    <img src="https://flagcdn.com/w20/ly.png" alt="English" className="w-5 h-3.5 rounded-sm object-cover hidden sm:block" />
-                    <Avatar className="w-8 h-8 border border-slate-700">
-                        <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-xs">WD</AvatarFallback>
-                    </Avatar>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                </div>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <div className="flex items-center gap-2 pl-2 border-l border-slate-700 cursor-pointer hover:bg-slate-800 p-1.5 rounded-full pr-3 transition-colors outline-none focus:ring-0">
+                            <img src="https://flagcdn.com/w20/ly.png" alt="Libya" className="w-5 h-3.5 rounded-sm object-cover hidden sm:block" />
+                            <Avatar className="w-8 h-8 border border-slate-700">
+                                <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-xs">
+                                    {user?.full_name?.substring(0, 2).toUpperCase() || 'TG'}
+                                </AvatarFallback>
+                            </Avatar>
+                            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                        </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56 bg-[#16181D] border-[#2A2D35] text-slate-300 shadow-2xl">
+                        <DropdownMenuLabel className="font-bold text-white">
+                            {user?.full_name || 'Tagdeer Merchant'}
+                        </DropdownMenuLabel>
+                        <DropdownMenuSeparator className="bg-[#2A2D35]" />
+                        <DropdownMenuItem className="focus:bg-[#1E222B] focus:text-white cursor-pointer" onClick={() => router.push(`${basePath}/settings`)}>
+                            Settings
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="focus:bg-red-900/50 focus:text-red-400 cursor-pointer text-red-500 font-medium" onClick={() => {
+                            if (logout) logout();
+                            router.push('/');
+                        }}>
+                            Log out
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
         </nav>
     );
