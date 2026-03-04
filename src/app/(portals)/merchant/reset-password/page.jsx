@@ -35,6 +35,15 @@ export default function ResetPasswordPage() {
             const { error } = await supabase.auth.updateUser({ password });
             if (error) throw error;
 
+            // Also mark has_password = true in the profile so login detects it
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (authUser) {
+                await supabase
+                    .from('profiles')
+                    .update({ has_password: true })
+                    .eq('id', authUser.id);
+            }
+
             setSuccess(true);
             showToast('Password updated successfully!');
             setTimeout(() => router.push('/merchant/settings'), 2000);

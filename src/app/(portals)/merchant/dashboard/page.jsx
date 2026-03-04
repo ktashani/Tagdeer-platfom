@@ -76,7 +76,8 @@ export default function MerchantDashboard() {
     if (user === undefined) return <div className="min-h-screen flex items-center justify-center">Loading Dashboard...</div>;
 
     // Find the currently authenticated merchant's business
-    const myBusiness = businesses.find(b => b.claimed_by === user?.id);
+    // Note: TagdeerContext maps claimed_by → owner_id
+    const myBusiness = businesses.find(b => b.owner_id === user?.id);
 
     // ==========================================
     // FETCH REAL DATA
