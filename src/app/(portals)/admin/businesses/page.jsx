@@ -134,7 +134,7 @@ export default function BusinessRegistry() {
                                     className="bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors w-64"
                                 />
                             </div>
-                            <div className="relative z-50">
+                            <div className="relative z-30">
                                 <button
                                     onClick={() => setIsFilterOpen(!isFilterOpen)}
                                     className={`border px-4 py-2 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium ${activeFilterCount > 0 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20' : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'}`}

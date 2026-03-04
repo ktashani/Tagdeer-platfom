@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { scaleLinear } from 'd3-scale' // Dummy import comment for visual context if doing actual charts later
-import { FileText, MessageSquare, AlertTriangle, ShieldCheck, CheckCircle2, XCircle, Search, Clock, ZoomIn, AlertCircle } from 'lucide-react'
+import { FileText, MessageSquare, AlertTriangle, ShieldCheck, CheckCircle2, XCircle, Search, Clock, ZoomIn, AlertCircle, ArrowLeft } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function DisputesPage() {
@@ -81,7 +81,7 @@ export default function DisputesPage() {
     }
 
     return (
-        <div className="animate-in fade-in duration-500 h-[calc(100vh-8rem)] flex flex-col">
+        <div className="animate-in fade-in duration-500 h-[calc(100vh-5rem)] md:h-[calc(100vh-8rem)] flex flex-col">
 
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8 shrink-0">
@@ -99,7 +99,7 @@ export default function DisputesPage() {
             <div className="flex gap-6 flex-1 min-h-0 overflow-hidden">
 
                 {/* List of Disputes */}
-                <div className="w-1/3 flex flex-col min-h-0 bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden">
+                <div className={`${selectedDispute ? 'hidden md:flex' : 'flex'} w-full md:w-1/3 flex-col min-h-0 bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden`}>
                     <div className="p-4 border-b border-slate-700/50 flex-shrink-0 bg-slate-800/50">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
@@ -146,12 +146,21 @@ export default function DisputesPage() {
 
                 {/* Split-Screen Interface */}
                 {selectedDispute ? (
-                    <div className="w-2/3 flex flex-col bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden shadow-xl animate-in fade-in duration-300">
+                    <div className="w-full md:w-2/3 flex flex-col bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden shadow-xl animate-in fade-in duration-300">
+                        {/* Mobile back button */}
+                        <div className="md:hidden p-3 border-b border-slate-700/50 bg-slate-800/50">
+                            <button
+                                onClick={() => setSelectedDispute(null)}
+                                className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
+                            >
+                                <ArrowLeft className="w-4 h-4" /> Back to Disputes
+                            </button>
+                        </div>
                         {/* Split Content Area */}
-                        <div className="flex flex-1 min-h-0">
+                        <div className="flex flex-col md:flex-row flex-1 min-h-0">
 
                             {/* Left Side: The Receipt */}
-                            <div className="flex-1 border-r border-slate-700/50 bg-slate-900 flex flex-col">
+                            <div className="flex-1 border-b md:border-b-0 md:border-r border-slate-700/50 bg-slate-900 flex flex-col">
                                 <div className="p-4 border-b border-slate-700/50 flex items-center justify-between shrink-0 bg-slate-800/50">
                                     <h3 className="font-semibold text-white flex items-center gap-2">
                                         <FileText className="w-4 h-4 text-emerald-400" /> User's Uploaded Receipt
@@ -246,7 +255,8 @@ export default function DisputesPage() {
                                 >
                                     <div className="absolute inset-0 bg-emerald-500/10 translate-y-full group-hover:translate-y-0 transition-transform"></div>
                                     <CheckCircle2 className="w-5 h-5 relative z-10" />
-                                    <span className="relative z-10">Valid Receipt (Reject Dispute)</span>
+                                    <span className="relative z-10 hidden sm:inline">Valid Receipt (Reject Dispute)</span>
+                                    <span className="relative z-10 sm:hidden">Valid Receipt</span>
                                 </button>
 
                                 <button
@@ -255,7 +265,8 @@ export default function DisputesPage() {
                                 >
                                     <div className="absolute inset-0 bg-red-500/10 translate-y-full group-hover:translate-y-0 transition-transform"></div>
                                     <XCircle className="w-5 h-5 relative z-10" />
-                                    <span className="relative z-10">Fake Receipt (Approve Dispute)</span>
+                                    <span className="relative z-10 hidden sm:inline">Fake Receipt (Approve Dispute)</span>
+                                    <span className="relative z-10 sm:hidden">Fake Receipt</span>
                                 </button>
                             </div>
                             <p className="text-center text-[10px] text-slate-500 mt-3">
@@ -264,7 +275,7 @@ export default function DisputesPage() {
                         </div>
                     </div>
                 ) : (
-                    <div className="w-2/3 flex items-center justify-center bg-slate-800/30 border border-slate-700/50 rounded-2xl">
+                    <div className="hidden md:flex w-full md:w-2/3 items-center justify-center bg-slate-800/30 border border-slate-700/50 rounded-2xl">
                         <div className="text-center text-slate-500 max-w-sm">
                             <CheckCircle2 className="w-16 h-16 mx-auto mb-4 text-emerald-500/20" />
                             <h3 className="text-xl font-medium text-slate-300 mb-2">Queue Empty</h3>

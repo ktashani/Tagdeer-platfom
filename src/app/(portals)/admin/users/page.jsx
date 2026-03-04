@@ -314,11 +314,23 @@ export default function UsersPage() {
                 </div>
             </div>
 
-            {/* Role Tabs */}
-            <div className="flex gap-2 mb-4 shrink-0 overflow-x-auto pb-2">
+            {/* Role Tabs - Dropdown on mobile, buttons on desktop */}
+            <div className="flex gap-2 mb-4 shrink-0 items-center">
+                {/* Mobile dropdown */}
+                <select
+                    value={activeTab}
+                    onChange={e => { setActiveTab(e.target.value); setSelectedUser(null) }}
+                    className="md:hidden bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                >
+                    <option value="all">All Users ({users.length})</option>
+                    <option value="consumers">Consumers ({consumerCount})</option>
+                    <option value="merchants">Merchants ({merchantCount})</option>
+                </select>
+
+                {/* Desktop buttons */}
                 <button
                     onClick={() => { setActiveTab('all'); setSelectedUser(null) }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'all'
+                    className={`hidden md:flex px-4 py-2 rounded-lg text-sm font-medium transition-colors items-center gap-2 ${activeTab === 'all'
                         ? 'bg-slate-700 text-white shadow-sm border border-slate-600'
                         : 'bg-slate-800/50 text-slate-400 hover:text-slate-200 border border-slate-700/50'}`}
                 >
@@ -327,7 +339,7 @@ export default function UsersPage() {
                 </button>
                 <button
                     onClick={() => { setActiveTab('consumers'); setSelectedUser(null) }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'consumers'
+                    className={`hidden md:flex px-4 py-2 rounded-lg text-sm font-medium transition-colors items-center gap-2 ${activeTab === 'consumers'
                         ? 'bg-emerald-500/10 text-emerald-400 shadow-sm border border-emerald-500/30'
                         : 'bg-slate-800/50 text-slate-400 hover:text-emerald-300 border border-slate-700/50'}`}
                 >
@@ -336,7 +348,7 @@ export default function UsersPage() {
                 </button>
                 <button
                     onClick={() => { setActiveTab('merchants'); setSelectedUser(null) }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'merchants'
+                    className={`hidden md:flex px-4 py-2 rounded-lg text-sm font-medium transition-colors items-center gap-2 ${activeTab === 'merchants'
                         ? 'bg-blue-500/10 text-blue-400 shadow-sm border border-blue-500/30'
                         : 'bg-slate-800/50 text-slate-400 hover:text-blue-300 border border-slate-700/50'}`}
                 >
