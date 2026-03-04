@@ -123,16 +123,129 @@ export default function MerchantSettings() {
 
     // Team Management
     const [teamMembers, setTeamMembers] = useState([]);
+    const [isLoadingTeam, setIsLoadingTeam] = useState(false);
 
     useEffect(() => {
-        if (user) {
-            setTeamMembers([
-                { id: user.id, email: user.email || user.profile_email || '', role: 'Owner', access: 'All Businesses' }
-            ]);
-        }
-    }, [user]);
+        if (!supabase || !myBusiness || accountTier === 'Free') return;
+        const fetchTeam = async () => {
+            setIsLoadingTeam(true);
+            try {
+                const { data, error } = await supabase
+                    .from('business_team_members')
+                    .select('id, role, created_at, profile_id, profiles(full_name, email, phone)')
+                    .eq('business_id', myBusiness.id);
+
+                if (error) throw error;
+
+                const members = [
+                    { id: user.id, email: user.email || user.profile_email || '', name: user.full_name || '', role: 'Owner', access: 'All Businesses', isOwner: true },
+                    ...(data || []).map(m => ({
+                        id: m.id,
+                        profileId: m.profile_id,
+                        email: m.profiles?.email || '',
+                        name: m.profiles?.full_name || '',
+                        role: m.role === 'manager' ? 'Manager' : 'Cashier',
+                        access: myBusiness?.name || 'Business',
+                        isOwner: false
+                    }))
+                ];
+                setTeamMembers(members);
+            } catch (err) {
+                console.error('Failed to fetch team:', err);
+                // Fallback to owner-only
+                setTeamMembers([
+                    { id: user.id, email: user.email || user.profile_email || '', name: user.full_name || '', role: 'Owner', access: 'All Businesses', isOwner: true }
+                ]);
+            } finally {
+                setIsLoadingTeam(false);
+            }
+        };
+        fetchTeam();
+    }, [supabase, myBusiness, accountTier, user]);
 
     const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteRole, setInviteRole] = useState('cashier');
+    const [isInviting, setIsInviting] = useState(false);
+
+    const handleInviteMember = async () => {
+        if (!inviteEmail.trim() || !supabase || !myBusiness) return;
+        setIsInviting(true);
+        try {
+            // 1. Look up the profile by email
+            const { data: profile, error: lookupErr } = await supabase
+                .from('profiles')
+                .select('id, full_name, email')
+                .eq('email', inviteEmail.trim().toLowerCase())
+                .single();
+
+            if (lookupErr || !profile) {
+                showToast('No Tagdeer account found with that email. Ask them to sign up first.');
+                return;
+            }
+
+            if (profile.id === user.id) {
+                showToast('You cannot invite yourself!');
+                return;
+            }
+
+            // 2. Insert into business_team_members
+            const { error: insertErr } = await supabase
+                .from('business_team_members')
+                .insert([{
+                    business_id: myBusiness.id,
+                    profile_id: profile.id,
+                    role: inviteRole,
+                    invited_by: user.id
+                }]);
+
+            if (insertErr) {
+                if (insertErr.code === '23505') {
+                    showToast('This person is already on your team!');
+                } else {
+                    throw insertErr;
+                }
+                return;
+            }
+
+            // 3. Add to local state
+            setTeamMembers(prev => [...prev, {
+                id: Date.now().toString(),
+                profileId: profile.id,
+                email: profile.email,
+                name: profile.full_name || '',
+                role: inviteRole === 'manager' ? 'Manager' : 'Cashier',
+                access: myBusiness?.name || 'Business',
+                isOwner: false
+            }]);
+
+            setInviteEmail('');
+            showToast(`${profile.full_name || profile.email} added to your team!`);
+        } catch (err) {
+            console.error('Invite error:', err);
+            showToast('Failed to invite team member.');
+        } finally {
+            setIsInviting(false);
+        }
+    };
+
+    const handleRemoveMember = async (member) => {
+        if (!supabase || !member.profileId) return;
+        try {
+            const { error } = await supabase
+                .from('business_team_members')
+                .delete()
+                .eq('business_id', myBusiness.id)
+                .eq('profile_id', member.profileId);
+
+            if (error) throw error;
+
+            setTeamMembers(prev => prev.filter(m => m.profileId !== member.profileId));
+            showToast(`${member.name || member.email} removed from your team.`);
+        } catch (err) {
+            console.error('Remove error:', err);
+            showToast('Failed to remove team member.');
+        }
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 xl:p-8">
@@ -447,15 +560,33 @@ export default function MerchantSettings() {
                                                     <Label>Email Address</Label>
                                                     <Input placeholder="manager@company.ly" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
                                                 </div>
-                                                <div className="sm:w-1/3 space-y-2">
-                                                    <Label>Access Scope</Label>
-                                                    <select className="flex h-10 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:ring-offset-slate-950 dark:placeholder:text-slate-400 dark:focus:ring-slate-300">
+                                                <div className="sm:w-1/4 space-y-2">
+                                                    <Label>Role</Label>
+                                                    <select
+                                                        value={inviteRole}
+                                                        onChange={(e) => setInviteRole(e.target.value)}
+                                                        className="flex h-10 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:ring-offset-slate-950 dark:placeholder:text-slate-400 dark:focus:ring-slate-300"
+                                                    >
+                                                        <option value="cashier">Cashier</option>
+                                                        <option value="manager">Manager</option>
+                                                    </select>
+                                                </div>
+                                                <div className="sm:w-1/4 space-y-2">
+                                                    <Label>Scope</Label>
+                                                    <select className="flex h-10 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 dark:border-slate-800 dark:bg-slate-950 dark:ring-offset-slate-950 dark:placeholder:text-slate-400 dark:focus:ring-slate-300">
                                                         <option>{myBusiness?.name || 'Your Business'}</option>
                                                         <option>All Businesses</option>
                                                     </select>
                                                 </div>
                                                 <div className="flex items-end">
-                                                    <Button className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white">Send Invite</Button>
+                                                    <Button
+                                                        className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
+                                                        onClick={handleInviteMember}
+                                                        disabled={isInviting || !inviteEmail.trim()}
+                                                    >
+                                                        {isInviting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                                                        Send Invite
+                                                    </Button>
                                                 </div>
                                             </div>
                                         </CardContent>
@@ -471,18 +602,24 @@ export default function MerchantSettings() {
                                                     <div key={member.id} className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-slate-950">
                                                         <div className="flex items-center gap-3">
                                                             <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 flex items-center justify-center font-bold text-sm">
-                                                                {member.email.charAt(0).toUpperCase()}
+                                                                {(member.name || member.email).charAt(0).toUpperCase()}
                                                             </div>
                                                             <div>
-                                                                <p className="font-semibold text-sm">{member.email}</p>
+                                                                <p className="font-semibold text-sm">{member.name || member.email}</p>
+                                                                {member.name && <p className="text-xs text-slate-500">{member.email}</p>}
                                                                 <div className="flex items-center gap-2 mt-0.5">
                                                                     <Badge variant="outline" className="text-[10px] h-5">{member.role}</Badge>
                                                                     <span className="text-xs text-slate-500 flex items-center gap-1"><Store className="w-3 h-3" /> {member.access}</span>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        {member.role !== 'Owner' && (
-                                                            <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30">
+                                                        {!member.isOwner && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                                                onClick={() => handleRemoveMember(member)}
+                                                            >
                                                                 <Trash2 className="w-4 h-4" />
                                                             </Button>
                                                         )}

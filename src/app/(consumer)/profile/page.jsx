@@ -313,7 +313,11 @@ export default function ProfilePage() {
                 )}
 
                 <button
-                    onClick={() => router.push('/wallet')}
+                    onClick={() => {
+                        setActiveTab('coupons');
+                        // Scroll down to the tabs area
+                        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                    }}
                     className="w-full max-w-xs py-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:from-amber-500 hover:to-orange-600 transition-all flex justify-center items-center gap-2"
                 >
                     💳 {lang === 'ar' ? 'محفظة المكافآت' : 'My Wallet'}

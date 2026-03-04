@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { AlertCircle, Clock, Gift, Loader2, Store, Ticket, Zap } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
-export default function ConsumerWallet() {
+export function WalletTab() {
     const { user, supabase, loading, lang, t, isRTL } = useTagdeer();
     const router = useRouter();
 
@@ -60,7 +60,7 @@ export default function ConsumerWallet() {
 
     if (loading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+            <div className="min-h-[400px] flex items-center justify-center bg-slate-50/50 rounded-2xl border border-slate-100 mt-2">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
             </div>
         );
@@ -68,7 +68,7 @@ export default function ConsumerWallet() {
 
     if (!isEligible) {
         return (
-            <div className="min-h-[80vh] flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
+            <div className="min-h-[400px] flex items-center justify-center p-6 bg-slate-50/50 rounded-2xl border border-slate-100 mt-2">
                 <div className="max-w-md w-full text-center space-y-4">
                     <div className="w-20 h-20 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6">
                         <Lock className="w-10 h-10 text-slate-400" />
@@ -156,8 +156,8 @@ export default function ConsumerWallet() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-10 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-4xl mx-auto">
+        <div className="w-full max-w-4xl mx-auto pt-4">
+            <div>
                 <div className="flex items-center gap-3 mb-8">
                     <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 rounded-2xl flex items-center justify-center shadow-inner">
                         <Gift className="w-6 h-6" />
