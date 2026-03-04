@@ -36,6 +36,7 @@ export default function TopNav() {
     // Store Selection State
     const [selectedStoreId, setSelectedStoreId] = useState(null);
     const [pendingClaim, setPendingClaim] = useState(null);
+    const [claimStatuses, setClaimStatuses] = useState({}); // { businessId: 'pending' | 'approved' | 'missing_docs' }
 
     // Default select the first business when loaded
     useEffect(() => {
@@ -44,37 +45,49 @@ export default function TopNav() {
         }
     }, [myBusinesses, selectedStoreId]);
 
-    // Fetch pending claim if they have no active businesses yet
+    // Fetch claim statuses for all user businesses
     useEffect(() => {
-        if (!supabase || !user || myBusinesses.length > 0) return;
+        if (!supabase || !user) return;
 
-        const fetchPendingClaim = async () => {
+        const fetchClaimStatuses = async () => {
             try {
-                // Fetch claim with business details
                 const { data } = await supabase
                     .from('business_claims')
-                    .select('status, claim_status, business_id')
+                    .select('business_id, status, claim_status')
                     .eq('user_id', user.id)
-                    .in('status', ['pending', 'missing_docs'])
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .single();
+                    .order('created_at', { ascending: false });
 
-                if (data && data.business_id) {
-                    // Get business name if possible from local businesses list or fetch
-                    const bInfo = businesses?.find(b => b.id === data.business_id);
-                    setPendingClaim({
-                        name: bInfo?.name || 'Pending Business',
-                        region: bInfo?.region || 'In Review',
-                        status: data.status || data.claim_status
+                if (data) {
+                    const statusMap = {};
+                    data.forEach(c => {
+                        // Only store the first (most recent) claim per business
+                        if (!statusMap[c.business_id]) {
+                            statusMap[c.business_id] = c.status || c.claim_status || 'pending';
+                        }
                     });
+                    setClaimStatuses(statusMap);
+
+                    // Set pendingClaim if no approved businesses
+                    const approvedBusinessIds = Object.entries(statusMap)
+                        .filter(([, s]) => s === 'approved')
+                        .map(([id]) => id);
+
+                    if (approvedBusinessIds.length === 0 && data.length > 0) {
+                        const firstClaim = data[0];
+                        const bInfo = businesses?.find(b => b.id === firstClaim.business_id);
+                        setPendingClaim({
+                            name: bInfo?.name || 'Pending Business',
+                            region: bInfo?.region || 'In Review',
+                            status: firstClaim.status || firstClaim.claim_status
+                        });
+                    }
                 }
             } catch (err) {
                 // Not found or error
             }
         };
-        fetchPendingClaim();
-    }, [supabase, user, myBusinesses.length, businesses]);
+        fetchClaimStatuses();
+    }, [supabase, user, businesses]);
 
     const activeStore = myBusinesses?.find(b => b.id === selectedStoreId) || myBusinesses?.[0];
 
@@ -165,25 +178,41 @@ export default function TopNav() {
                     >
                         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isStoreMenuOpen ? 'rotate-180' : ''}`} />
                         <div className="flex flex-col items-start leading-none">
-                            {myBusinesses.length > 0 ? (
-                                <>
-                                    <span className="text-sm font-bold text-white mb-1">{activeStore?.name || 'Select Business'}</span>
-                                    <span className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium">
-                                        Open <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden sm:block"></span>
-                                    </span>
-                                </>
-                            ) : pendingClaim ? (
-                                <>
-                                    <span className="text-sm font-bold text-white mb-1">{pendingClaim.name}</span>
-                                    <span className="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
-                                        {pendingClaim.status === 'missing_docs' ? 'Action Required' : 'Approval Pending'}
-                                    </span>
-                                </>
+                            {myBusinesses.length > 0 ? (() => {
+                                const activeClaimStatus = claimStatuses[activeStore?.id];
+                                const isApproved = activeClaimStatus === 'approved' || !activeClaimStatus;
+                                const isPending = activeClaimStatus === 'pending';
+                                const isMissingDocs = activeClaimStatus === 'missing_docs';
+                                return (
+                                    <>
+                                        <span className="text-sm font-bold text-white mb-1">{activeStore?.name || 'Select Business'}</span>
+                                        {isPending ? (
+                                            <span className="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
+                                                Pending <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse hidden sm:block"></span>
+                                            </span>
+                                        ) : isMissingDocs ? (
+                                            <span className="text-[11px] text-red-400 flex items-center gap-1.5 font-medium">
+                                                Action Required <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse hidden sm:block"></span>
+                                            </span>
+                                        ) : (
+                                            <span className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium">
+                                                Open <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden sm:block"></span>
+                                            </span>
+                                        )}
+                                    </>
+                                );
+                            })()) : pendingClaim ? (
+                            <>
+                                <span className="text-sm font-bold text-white mb-1">{pendingClaim.name}</span>
+                                <span className="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
+                                    {pendingClaim.status === 'missing_docs' ? 'Action Required' : 'Approval Pending'}
+                                </span>
+                            </>
                             ) : (
-                                <>
-                                    <span className="text-sm font-bold text-slate-400 mb-1">No Business</span>
-                                    <span className="text-[11px] text-slate-500 font-medium">Claim your business</span>
-                                </>
+                            <>
+                                <span className="text-sm font-bold text-slate-400 mb-1">No Business</span>
+                                <span className="text-[11px] text-slate-500 font-medium">Claim your business</span>
+                            </>
                             )}
                         </div>
                         <div className="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center ml-2 border border-blue-500/30">
@@ -202,6 +231,9 @@ export default function TopNav() {
                                     {myBusinesses.length > 0 ? (
                                         myBusinesses.map(store => {
                                             const isActive = store.id === selectedStoreId;
+                                            const storeClaimStatus = claimStatuses[store.id];
+                                            const storeIsPending = storeClaimStatus === 'pending';
+                                            const storeIsMissingDocs = storeClaimStatus === 'missing_docs';
                                             return (
                                                 <button
                                                     key={store.id}
@@ -213,7 +245,9 @@ export default function TopNav() {
                                                 >
                                                     <div className="flex flex-col items-start w-full">
                                                         <p className={`text-lg font-bold ${isActive ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>{store.name}</p>
-                                                        <p className="text-sm text-slate-500 mt-1">{store.region || 'Libya'}</p>
+                                                        <p className={`text-sm mt-1 ${storeIsPending ? 'text-amber-500' : storeIsMissingDocs ? 'text-red-500' : 'text-slate-500'}`}>
+                                                            {storeIsPending ? 'Pending Approval' : storeIsMissingDocs ? 'Action Required' : (store.region || 'Libya')}
+                                                        </p>
                                                     </div>
                                                     {isActive && (
                                                         <div className="w-6 h-6 rounded-full border-2 border-indigo-500 flex items-center justify-center shrink-0">
