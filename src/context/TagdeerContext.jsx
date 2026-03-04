@@ -428,34 +428,32 @@ export function TagdeerProvider({ children }) {
 
     /**
      * Set a password for the currently authenticated merchant.
-     * Called after first OTP login to enable password-based login going forward.
+     * Uses the admin API route to bypass the need for an active Supabase Auth session.
+     * This is necessary because WhatsApp OTP login doesn't create a Supabase Auth session.
      */
     const setMerchantPassword = async (password) => {
-        if (!supabase) throw new Error('No database connection');
+        if (!user?.email && !user?.profile_email) {
+            throw new Error('No email found for this user. Please set an email first.');
+        }
+
+        const email = user.email || user.profile_email;
 
         try {
-            // 1. Set password on the Supabase Auth user
-            const { error: authError } = await supabase.auth.updateUser({
-                password,
+            const res = await fetch('/api/merchant/set-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
             });
-            if (authError) throw authError;
 
-            // 2. Mark has_password = true in profiles
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (authUser) {
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .update({ has_password: true })
-                    .eq('id', authUser.id);
+            const data = await res.json();
 
-                if (profileError) {
-                    console.error('Failed to update has_password flag:', profileError);
-                    // Don't throw — password was set successfully in Auth
-                }
-
-                // Update local user state
-                setUser(prev => prev ? { ...prev, has_password: true } : prev);
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to set password');
             }
+
+            // Update local user state
+            setUser(prev => prev ? { ...prev, has_password: true } : prev);
+            showToast(lang === 'ar' ? 'تم تعيين كلمة المرور بنجاح' : 'Password set successfully!');
         } catch (err) {
             console.error('Set password error:', err);
             throw err;

@@ -178,41 +178,35 @@ export default function TopNav() {
                     >
                         <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isStoreMenuOpen ? 'rotate-180' : ''}`} />
                         <div className="flex flex-col items-start leading-none">
-                            {myBusinesses.length > 0 ? (() => {
-                                const activeClaimStatus = claimStatuses[activeStore?.id];
-                                const isApproved = activeClaimStatus === 'approved' || !activeClaimStatus;
-                                const isPending = activeClaimStatus === 'pending';
-                                const isMissingDocs = activeClaimStatus === 'missing_docs';
-                                return (
-                                    <>
-                                        <span className="text-sm font-bold text-white mb-1">{activeStore?.name || 'Select Business'}</span>
-                                        {isPending ? (
-                                            <span className="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
-                                                Pending <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse hidden sm:block"></span>
-                                            </span>
-                                        ) : isMissingDocs ? (
-                                            <span className="text-[11px] text-red-400 flex items-center gap-1.5 font-medium">
-                                                Action Required <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse hidden sm:block"></span>
-                                            </span>
-                                        ) : (
-                                            <span className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium">
-                                                Open <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden sm:block"></span>
-                                            </span>
-                                        )}
-                                    </>
-                                );
-                            })()) : pendingClaim ? (
-                            <>
-                                <span className="text-sm font-bold text-white mb-1">{pendingClaim.name}</span>
-                                <span className="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
-                                    {pendingClaim.status === 'missing_docs' ? 'Action Required' : 'Approval Pending'}
-                                </span>
-                            </>
+                            {myBusinesses.length > 0 ? (
+                                <>
+                                    <span className="text-sm font-bold text-white mb-1">{activeStore?.name || 'Select Business'}</span>
+                                    {claimStatuses[activeStore?.id] === 'pending' ? (
+                                        <span className="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
+                                            Pending <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse hidden sm:block"></span>
+                                        </span>
+                                    ) : claimStatuses[activeStore?.id] === 'missing_docs' ? (
+                                        <span className="text-[11px] text-red-400 flex items-center gap-1.5 font-medium">
+                                            Action Required <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse hidden sm:block"></span>
+                                        </span>
+                                    ) : (
+                                        <span className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium">
+                                            Open <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse hidden sm:block"></span>
+                                        </span>
+                                    )}
+                                </>
+                            ) : pendingClaim ? (
+                                <>
+                                    <span className="text-sm font-bold text-white mb-1">{pendingClaim.name}</span>
+                                    <span className="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
+                                        {pendingClaim.status === 'missing_docs' ? 'Action Required' : 'Approval Pending'}
+                                    </span>
+                                </>
                             ) : (
-                            <>
-                                <span className="text-sm font-bold text-slate-400 mb-1">No Business</span>
-                                <span className="text-[11px] text-slate-500 font-medium">Claim your business</span>
-                            </>
+                                <>
+                                    <span className="text-sm font-bold text-slate-400 mb-1">No Business</span>
+                                    <span className="text-[11px] text-slate-500 font-medium">Claim your business</span>
+                                </>
                             )}
                         </div>
                         <div className="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center ml-2 border border-blue-500/30">
