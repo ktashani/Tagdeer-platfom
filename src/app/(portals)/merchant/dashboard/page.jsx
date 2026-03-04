@@ -82,16 +82,22 @@ export default function MerchantDashboard() {
     // FETCH REAL DATA
     // ==========================================
     useEffect(() => {
-        if (!supabase || !myBusiness || !user) return;
+        if (!supabase || !user) return;
 
         const fetchDashboardData = async () => {
             try {
-                // Fetch claim status to check if admin approval is pending
-                const { data: claimData } = await supabase
+                // 1. Fetch claim status to check if admin approval is pending
+                // If myBusiness exists, we can filter by it, otherwise just look for the user's pending claims
+                const claimQuery = supabase
                     .from('business_claims')
                     .select('status, claim_status')
-                    .eq('business_id', myBusiness.id)
-                    .eq('user_id', user.id)
+                    .eq('user_id', user.id);
+
+                if (myBusiness) {
+                    claimQuery.eq('business_id', myBusiness.id);
+                }
+
+                const { data: claimData } = await claimQuery
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .single();
@@ -102,6 +108,8 @@ export default function MerchantDashboard() {
                         setPendingClaim(status);
                     }
                 }
+
+                if (!myBusiness) return; // Only fetch campaigns/disputes if business is approved/linked
 
                 // Fetch pending disputes
                 const { data: disputes } = await supabase
@@ -152,10 +160,13 @@ export default function MerchantDashboard() {
     // DYNAMIC STATES
     // ==========================================
     let currentMockState = MOCK_STATES.ACTIVE;
-    if (!myBusiness) {
-        currentMockState = MOCK_STATES.NO_BUSINESS;
-    } else if (pendingClaim === 'pending' || pendingClaim === 'missing_docs') {
+
+    // Prioritize pending claim over "no business", because if they just submitted a claim, 
+    // myBusiness won't exist yet since it's not approved and linked to their owner_id
+    if (pendingClaim === 'pending' || pendingClaim === 'missing_docs') {
         currentMockState = MOCK_STATES.PENDING_APPROVAL;
+    } else if (!myBusiness) {
+        currentMockState = MOCK_STATES.NO_BUSINESS;
     } else if (myBusiness.status === 'restricted') {
         currentMockState = MOCK_STATES.RESTRICTED;
     } else if (myBusiness.status === 'pending_review') {

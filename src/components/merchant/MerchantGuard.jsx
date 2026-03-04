@@ -24,20 +24,39 @@ export default function MerchantGuard({ children }) {
 
             if (!user) {
                 router.push('/merchant/login?redirect=' + encodeURIComponent(pathname))
-            } else if (user?.role === 'admin') {
+                return;
+            }
+
+            if (user?.role === 'admin') {
                 // Admin accounts must use a separate merchant account
                 router.push('/merchant/login?reason=merchant_required')
-            } else if (user?.role !== 'merchant') {
-                // Consumer/user accounts need to complete onboarding to become a merchant
-                router.push('/merchant/onboarding')
-            } else if (user?.status === 'Banned' || user?.status === 'Restricted') {
-                // Banned/Restricted merchants are blocked — handled in render below
-                setIsAuthorized(true) // Let them render, but show block screen
-            } else {
-                setIsAuthorized(true)
+                return;
             }
+
+            // Check if user has a pending claim (even if still 'consumer' role)
+            const checkPendingStatus = async () => {
+                const { data: claims } = await supabase
+                    .from('business_claims')
+                    .select('status, claim_status')
+                    .eq('user_id', user.id)
+                    .in('status', ['pending', 'missing_docs']); // Check both legacy and new status enums
+
+                const hasPendingClaim = claims && claims.length > 0;
+
+                if (user?.role !== 'merchant' && !hasPendingClaim) {
+                    // Consumer/user accounts need to complete onboarding to become a merchant
+                    router.push('/merchant/onboarding')
+                } else if (user?.status === 'Banned' || user?.status === 'Restricted') {
+                    // Banned/Restricted merchants are blocked — handled in render below
+                    setIsAuthorized(true) // Let them render, but show block screen
+                } else {
+                    setIsAuthorized(true)
+                }
+            };
+
+            checkPendingStatus();
         }
-    }, [user, loading, router, pathname])
+    }, [user, loading, router, pathname, supabase])
 
     useEffect(() => {
         if (isAuthorized && user) {
