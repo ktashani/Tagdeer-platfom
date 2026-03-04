@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Clock, Gift, Loader2, Store, Ticket, Zap } from 'lucide-react';
+import { AlertCircle, Clock, Gift, Loader2, Lock, Store, Ticket, Zap } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
 export function WalletTab() {

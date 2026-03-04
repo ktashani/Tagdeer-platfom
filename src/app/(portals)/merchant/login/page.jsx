@@ -40,7 +40,12 @@ export default function MerchantLogin() {
 
     /**
      * Step 1: Email submit → check if merchant has a password set
+     * If yes: show password step
+     * If no: show password step anyway (user can try or use "Forgot password?" for magic link)
+     * This prevents immediately sending a magic link and hitting rate limits
      */
+    const [hasExistingPassword, setHasExistingPassword] = useState(false);
+
     const handleEmailSubmit = async (e) => {
         e.preventDefault();
         if (!email.includes('@')) {
@@ -57,26 +62,19 @@ export default function MerchantLogin() {
                 body: JSON.stringify({ email: email.trim().toLowerCase() }),
             });
             const { hasPassword } = await res.json();
+            setHasExistingPassword(hasPassword);
 
             if (hasPassword) {
+                // Has password → go straight to password step
                 setStep('password');
             } else {
-                // No password → go to OTP flow
-                setIsLoading(true);
-                await loginWithEmail(email, 'merchant');
-                setStep('otp');
+                // No password detected → still show password step but also offer magic link
+                setStep('password');
             }
         } catch (err) {
-            // If check fails, fall back to OTP
-            try {
-                setIsLoading(true);
-                await loginWithEmail(email, 'merchant');
-                setStep('otp');
-            } catch {
-                // Error handled by context toast
-            }
+            // If check fails, still go to password step (user can try or request magic link)
+            setStep('password');
         } finally {
-            setIsLoading(false);
             setIsCheckingPassword(false);
         }
     };
@@ -333,7 +331,7 @@ export default function MerchantLogin() {
                                     disabled={isLoading}
                                     id="forgot-password"
                                 >
-                                    Forgot password?
+                                    Forgot password? Use Magic Link
                                 </Button>
                                 <Button
                                     type="button"
