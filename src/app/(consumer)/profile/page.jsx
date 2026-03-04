@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Mail, User, ShieldCheck, Phone, AlertTriangle } from 'lucide-react';
+import { Mail, User, ShieldCheck, Phone, AlertTriangle, Target } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Toast } from '@/components/Toast';

@@ -456,7 +456,7 @@ export function TagdeerProvider({ children }) {
                 }
 
                 const { data, error } = await query;
-                const { data: coupons } = await supabase.from('merchant_coupons').eq('status', 'active');
+                const { data: coupons } = await supabase.from('merchant_coupons').select('*').eq('status', 'active');
 
                 if (error) {
                     console.warn('Supabase fetch failed, falling back to mock data.', error);
