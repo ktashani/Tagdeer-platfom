@@ -245,8 +245,8 @@ export default function BusinessRegistry() {
 
                 {/* Main Table Area */}
                 <div className={`transition-all duration-300 ${isMergeMode ? 'w-2/3' : 'w-full'}`}>
-                    <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden">
-                        <table className="w-full text-left text-sm text-slate-400">
+                    <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-x-auto">
+                        <table className="w-full text-left text-sm text-slate-400 min-w-[700px]">
                             <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50">
                                 <tr>
                                     {isMergeMode && <th scope="col" className="px-6 py-4 font-medium text-slate-300 w-16">Select</th>}

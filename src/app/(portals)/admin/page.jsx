@@ -201,7 +201,7 @@ export default function AdminDashboard() {
                     <Link href="/admin/businesses" className="text-sm text-emerald-400 hover:text-emerald-300 font-medium transition-colors">View All Directory</Link>
                 </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-slate-400">
+                    <table className="w-full text-left text-sm text-slate-400 min-w-[600px]">
                         <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50">
                             <tr>
                                 <th scope="col" className="px-6 py-4 font-medium text-slate-300">Business Name</th>

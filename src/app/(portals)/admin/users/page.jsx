@@ -279,7 +279,7 @@ export default function UsersPage() {
     }
 
     return (
-        <div className="animate-in fade-in duration-500 flex flex-col h-[calc(100vh-8rem)]">
+        <div className="animate-in fade-in duration-500 flex flex-col h-[calc(100vh-5rem)] md:h-[calc(100vh-8rem)]">
 
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6 shrink-0">
@@ -301,21 +301,21 @@ export default function UsersPage() {
                         <option value="Banned">Banned ({bannedCount})</option>
                     </select>
 
-                    <div className="relative">
+                    <div className="relative w-full sm:w-auto">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                         <input
                             type="text"
                             placeholder="Search by name, email, phone..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors w-72"
+                            className="bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors w-full sm:w-72"
                         />
                     </div>
                 </div>
             </div>
 
             {/* Role Tabs */}
-            <div className="flex gap-2 mb-4 shrink-0">
+            <div className="flex gap-2 mb-4 shrink-0 overflow-x-auto pb-2">
                 <button
                     onClick={() => { setActiveTab('all'); setSelectedUser(null) }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === 'all'
@@ -364,10 +364,10 @@ export default function UsersPage() {
             <div className="flex gap-6 flex-1 min-h-0 overflow-hidden">
 
                 {/* User List */}
-                <div className={`transition-all duration-300 flex flex-col min-h-0 ${selectedUser ? 'w-1/2' : 'w-full'}`}>
+                <div className={`transition-all duration-300 flex flex-col min-h-0 ${selectedUser ? 'hidden md:flex md:w-1/2' : 'w-full'}`}>
                     <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden flex flex-col flex-1">
                         <div className="overflow-x-auto flex-1">
-                            <table className="w-full text-left text-sm text-slate-400">
+                            <table className="w-full text-left text-sm text-slate-400 min-w-[600px]">
                                 <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50 sticky top-0 z-10">
                                     <tr>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300">User Details</th>
@@ -431,7 +431,7 @@ export default function UsersPage() {
 
                 {/* User Profile View Sidebar */}
                 {selectedUser && (
-                    <div className="w-1/2 bg-slate-800/80 border border-slate-700 rounded-2xl flex flex-col overflow-hidden animate-in slide-in-from-right-8 duration-300">
+                    <div className="w-full md:w-1/2 bg-slate-800/80 border border-slate-700 rounded-2xl flex flex-col overflow-hidden animate-in slide-in-from-right-8 duration-300 fixed md:relative inset-0 md:inset-auto z-40 md:z-auto">
                         {/* Profile Header */}
                         <div className="p-6 border-b border-slate-700/50 bg-slate-800 shrink-0">
                             <div className="flex justify-between items-start">

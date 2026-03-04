@@ -248,7 +248,7 @@ export default function FinancialsPage() {
                             </div>
                         </div>
                         <div className="flex-1 overflow-auto">
-                            <table className="w-full text-left text-sm text-slate-400">
+                            <table className="w-full text-left text-sm text-slate-400 min-w-[600px]">
                                 <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50 sticky top-0 z-10">
                                     <tr>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300">Business Name</th>
