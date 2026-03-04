@@ -4,12 +4,15 @@ import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useTagdeer } from '@/context/TagdeerContext'
 import { Loader2, Ban, AlertTriangle, Mail } from 'lucide-react'
+import LockedFeatureOverlay from './LockedFeatureOverlay'
 
 export default function MerchantGuard({ children }) {
-    const { user, loading } = useTagdeer()
+    const { user, loading, supabase } = useTagdeer()
     const router = useRouter()
     const pathname = usePathname()
     const [isAuthorized, setIsAuthorized] = useState(false)
+    const [subTier, setSubTier] = useState(null)
+    const [checkingSub, setCheckingSub] = useState(true)
 
     useEffect(() => {
         if (!loading) {
@@ -36,10 +39,35 @@ export default function MerchantGuard({ children }) {
         }
     }, [user, loading, router, pathname])
 
-    if (loading || !isAuthorized) {
+    useEffect(() => {
+        if (isAuthorized && user) {
+            const checkSub = async () => {
+                const { data } = await supabase.from('subscriptions').select('tier').eq('profile_id', user.id).eq('status', 'active').single()
+                setSubTier(data?.tier || 'Free')
+                setCheckingSub(false)
+            }
+            checkSub()
+        } else if (!isAuthorized && !loading) {
+            setCheckingSub(false)
+        }
+    }, [isAuthorized, user, supabase])
+
+    if (loading || checkingSub || !isAuthorized) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FB]">
                 <Loader2 className="h-8 w-8 animate-spin border-blue-600" />
+            </div>
+        )
+    }
+
+    // Tier Gating Logic
+    if (subTier === 'Free' && pathname === '/merchant/coupons') {
+        return (
+            <div className="flex h-screen w-full relative bg-[#F8F9FB] p-8">
+                <LockedFeatureOverlay
+                    title="Unlock Campaigns & Coupons"
+                    description="Loyalty distribution is only available for Pro and Enterprise merchants."
+                />
             </div>
         )
     }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Gift, QrCode, Sparkles, MessageCircle, MoreVertical, Play, Pause, Trash2 } from "lucide-react";
+import { Plus, Gift, QrCode, Sparkles, MessageCircle, Play, Pause, Trash2, Edit } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useEffect } from 'react';
@@ -14,19 +14,36 @@ import { useEffect } from 'react';
 export default function CouponCommandCenter() {
     const { user, businesses, supabase, showToast, lang } = useTagdeer();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [isEditOpen, setIsEditOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-    const [newCoupon, setNewCoupon] = useState({
+
+    // Support multi-business
+    const myBusinesses = businesses ? businesses.filter(b => b.owner_id === user?.id || b.claimed_by === user?.id) : [];
+    const [selectedBusinessId, setSelectedBusinessId] = useState('');
+
+    useEffect(() => {
+        if (myBusinesses.length > 0 && !selectedBusinessId) {
+            setSelectedBusinessId(myBusinesses[0].id);
+        }
+    }, [myBusinesses, selectedBusinessId]);
+
+    const myBusiness = myBusinesses.find(b => b.id === selectedBusinessId) || myBusinesses[0];
+
+    const initialCouponState = {
+        title: '',
+        targetTier: 'ALL',
         offerType: 'percentage', // percentage, fixed, free_item
         value: '',
         itemName: '',
         quantity: '50',
-        distributionRule: 'quota_pool', // quota_pool, physical_scan, resolution_only
-        expiryDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0] // Default to 1 month from now
-    });
+        distributionRule: 'PUBLIC_POOL', // PUBLIC_POOL, VIP_SCAN, RESOLUTION_ONLY
+        expiryDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0]
+    };
+
+    const [newCoupon, setNewCoupon] = useState(initialCouponState);
+    const [editingCampaign, setEditingCampaign] = useState(null);
 
     const [campaigns, setCampaigns] = useState([]);
-
-    const myBusiness = user && businesses ? businesses.find(b => b.owner_id === user?.id) : null;
 
     useEffect(() => {
         if (!user || !supabase || !myBusiness) {
@@ -45,12 +62,15 @@ export default function CouponCommandCenter() {
             if (data) {
                 const mapped = data.map(c => ({
                     id: c.id,
+                    businessId: c.business_id,
+                    title: c.title,
+                    targetTier: c.target_tier,
                     type: c.offer_type,
                     value: c.discount_value,
                     itemName: c.item_name,
                     rule: c.distribution_rule,
                     total: c.initial_quantity,
-                    remaining: c.remaining_quantity,
+                    claimed: c.claimed_count || 0,
                     status: c.status,
                     expiry: new Date(c.expiry_date).toISOString().split('T')[0]
                 }));
@@ -73,23 +93,24 @@ export default function CouponCommandCenter() {
 
     const getRuleIcon = (rule) => {
         switch (rule) {
-            case 'quota_pool': return <Sparkles className="w-4 h-4 text-indigo-500" />;
-            case 'physical_scan': return <QrCode className="w-4 h-4 text-blue-500" />;
-            case 'resolution_only': return <MessageCircle className="w-4 h-4 text-emerald-500" />;
+            case 'PUBLIC_POOL': return <Sparkles className="w-4 h-4 text-indigo-500" />;
+            case 'VIP_SCAN': return <QrCode className="w-4 h-4 text-blue-500" />;
+            case 'RESOLUTION_ONLY': return <MessageCircle className="w-4 h-4 text-emerald-500" />;
             default: return <Gift className="w-4 h-4" />;
         }
     };
 
     const getRuleName = (rule) => {
         switch (rule) {
-            case 'quota_pool': return "Platform Quota Pool";
-            case 'physical_scan': return "Physical VIP Scan";
-            case 'resolution_only': return "Resolution Only (Hidden)";
+            case 'PUBLIC_POOL': return "Platform Quota Pool";
+            case 'VIP_SCAN': return "Physical VIP Scan";
+            case 'RESOLUTION_ONLY': return "Resolution Only (Hidden)";
             default: return rule;
         }
     };
 
     const formatOfferTitle = (campaign) => {
+        if (campaign.title) return campaign.title;
         if (campaign.type === 'percentage') return `${campaign.value}% OFF`;
         if (campaign.type === 'fixed') return `${campaign.value} LYD OFF`;
         if (campaign.type === 'free_item') return `FREE: ${campaign.itemName}`;
@@ -104,36 +125,58 @@ export default function CouponCommandCenter() {
             return;
         }
 
+        // Tier Checks via RPC
+        const { data: tierCheck, error: tierError } = await supabase.rpc('enforce_subscription_campaign_limits', {
+            p_business_id: myBusiness.id
+        });
+
+        if (tierError) {
+            console.error("Tier Check Failed:", tierError);
+            showToast("Error checking subscription limits.");
+            return;
+        }
+
+        if (tierCheck && !tierCheck.success) {
+            showToast(tierCheck.error);
+            return;
+        }
+
         const qty = parseInt(newCoupon.quantity) || 50;
         const discountVal = parseFloat(newCoupon.value) || null;
 
         const { data, error } = await supabase.from('merchant_coupons').insert([{
             business_id: myBusiness.id,
             created_by: user.id,
+            title: newCoupon.title || null,
+            target_tier: newCoupon.targetTier,
             offer_type: newCoupon.offerType,
             discount_value: discountVal,
             item_name: newCoupon.itemName || null,
             initial_quantity: qty,
-            remaining_quantity: qty,
+            remaining_quantity: qty, // Keep for backward compatibility if needed, or deprecate
+            claimed_count: 0,
             distribution_rule: newCoupon.distributionRule,
             expiry_date: new Date(newCoupon.expiryDate).toISOString()
         }]).select().single();
 
         if (error) {
             console.error("Failed to create coupon:", error);
-            showToast("Failed to create coupon");
+            showToast("Failed to create campaign");
             return;
         }
 
         if (data) {
             const newCampaign = {
                 id: data.id,
+                businessId: data.business_id,
+                title: data.title,
+                targetTier: data.target_tier,
                 type: data.offer_type,
                 value: data.discount_value,
                 itemName: data.item_name,
                 rule: data.distribution_rule,
                 total: data.initial_quantity,
-                remaining: data.remaining_quantity,
+                claimed: data.claimed_count || 0,
                 status: data.status,
                 expiry: new Date(data.expiry_date).toISOString().split('T')[0]
             };
@@ -142,7 +185,51 @@ export default function CouponCommandCenter() {
         }
 
         setIsCreateOpen(false);
+        setNewCoupon(initialCouponState);
     };
+
+    const handleEditCampaignSubmit = async (e) => {
+        e.preventDefault();
+
+        const qty = parseInt(editingCampaign.total) || 50;
+        const discountVal = parseFloat(editingCampaign.value) || null;
+
+        // Ensure initial_quantity is not decreased below claimed_count
+        if (qty < editingCampaign.claimed) {
+            showToast("Cannot decrease quantity below already claimed count.");
+            return;
+        }
+
+        const updates = {
+            title: editingCampaign.title || null,
+            target_tier: editingCampaign.targetTier,
+            initial_quantity: qty,
+            distribution_rule: editingCampaign.rule,
+            expiry_date: new Date(editingCampaign.expiry).toISOString()
+        };
+
+        // If inactive, allow modifying offer details. Trigger enforces this too.
+        if (editingCampaign.status !== 'active') {
+            updates.offer_type = editingCampaign.type;
+            updates.discount_value = discountVal;
+            updates.item_name = editingCampaign.itemName || null;
+        }
+
+        const { error } = await supabase.from('merchant_coupons')
+            .update(updates)
+            .eq('id', editingCampaign.id);
+
+        if (error) {
+            console.error("Failed to update campaign:", error);
+            showToast(error.message || "Failed to update campaign");
+            return;
+        }
+
+        // Optimistic update
+        setCampaigns(prev => prev.map(c => c.id === editingCampaign.id ? { ...c, ...editingCampaign } : c));
+        showToast("Campaign updated!");
+        setIsEditOpen(false);
+    }
 
     const toggleStatus = async (id, currentStatus) => {
         if (!supabase) return;
@@ -169,7 +256,7 @@ export default function CouponCommandCenter() {
         return <div className="min-h-screen flex items-center justify-center">Loading Campaigns...</div>;
     }
 
-    if (!myBusiness) {
+    if (!myBusiness && myBusinesses.length === 0) {
         return <div className="min-h-screen flex items-center justify-center text-slate-500">You must claim a business to create campaigns.</div>;
     }
 
@@ -188,7 +275,18 @@ export default function CouponCommandCenter() {
                         </p>
                     </div>
 
-                    <div className="flex gap-3 w-full sm:w-auto">
+                    <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto items-center">
+                        {myBusinesses.length > 1 && (
+                            <select
+                                value={selectedBusinessId}
+                                onChange={(e) => setSelectedBusinessId(e.target.value)}
+                                className="h-10 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-sm"
+                            >
+                                {myBusinesses.map(b => (
+                                    <option key={b.id} value={b.id}>{b.name || 'Unnamed Business'}</option>
+                                ))}
+                            </select>
+                        )}
                         {/* Create Coupon Modal */}
                         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                             <DialogTrigger asChild>
@@ -197,16 +295,37 @@ export default function CouponCommandCenter() {
                                     Create Campaign
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent className="sm:max-w-[600px] bg-white dark:bg-slate-950">
+                            <DialogContent className="sm:max-w-[700px] bg-white dark:bg-slate-950 max-h-[90vh] overflow-y-auto">
                                 <DialogHeader>
                                     <DialogTitle>Create New Coupon Campaign</DialogTitle>
                                     <DialogDescription>Define your offer, quantity, and how it gets distributed.</DialogDescription>
                                 </DialogHeader>
 
                                 <form onSubmit={handleCreateCoupon} className="space-y-6 mt-4">
-                                    {/* Step 1: Offer Type */}
+                                    {/* Basics */}
                                     <div className="space-y-3">
-                                        <Label className="text-base font-semibold">1. Offer Type</Label>
+                                        <Label className="text-base font-semibold">1. Campaign Details</Label>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2 col-span-2 sm:col-span-1">
+                                                <Label>Campaign Title (Internal)</Label>
+                                                <Input placeholder="e.g. Summer VIP Promo" value={newCoupon.title} onChange={(e) => setNewCoupon({ ...newCoupon, title: e.target.value })} />
+                                            </div>
+                                            <div className="space-y-2 col-span-2 sm:col-span-1">
+                                                <Label>Target User Tier</Label>
+                                                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background" value={newCoupon.targetTier} onChange={(e) => setNewCoupon({ ...newCoupon, targetTier: e.target.value })}>
+                                                    <option value="ALL">All Gader Tiers</option>
+                                                    <option value="BRONZE_ONLY">Bronze Only</option>
+                                                    <option value="SILVER_ONLY">Silver Only</option>
+                                                    <option value="GOLD_ONLY">Gold Only</option>
+                                                    <option value="VIP_ONLY">VIP Platinum Only</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Offer Type */}
+                                    <div className="space-y-3">
+                                        <Label className="text-base font-semibold">2. Offer Details</Label>
                                         <div className="grid grid-cols-3 gap-3">
                                             <div
                                                 onClick={() => setNewCoupon({ ...newCoupon, offerType: 'percentage' })}
@@ -251,10 +370,10 @@ export default function CouponCommandCenter() {
                                         )}
                                     </div>
 
-                                    {/* Step 2: Quantity & Expiry */}
+                                    {/* Step 3: Quantity & Expiry */}
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label>Total Quantity</Label>
+                                            <Label>Initial Quantity</Label>
                                             <Input type="number" placeholder="50" value={newCoupon.quantity} onChange={(e) => setNewCoupon({ ...newCoupon, quantity: e.target.value })} />
                                             <p className="text-xs text-slate-500">How many to give away?</p>
                                         </div>
@@ -265,16 +384,16 @@ export default function CouponCommandCenter() {
                                         </div>
                                     </div>
 
-                                    {/* Step 3: Distribution Rule */}
+                                    {/* Step 4: Distribution Rule */}
                                     <div className="space-y-3">
-                                        <Label className="text-base font-semibold">3. Distribution Rule</Label>
+                                        <Label className="text-base font-semibold">3. Distribution Channel</Label>
                                         <div className="space-y-3">
 
                                             <div
-                                                onClick={() => setNewCoupon({ ...newCoupon, distributionRule: 'quota_pool' })}
-                                                className={`flex gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${newCoupon.distributionRule === 'quota_pool' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300'}`}
+                                                onClick={() => setNewCoupon({ ...newCoupon, distributionRule: 'PUBLIC_POOL' })}
+                                                className={`flex gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${newCoupon.distributionRule === 'PUBLIC_POOL' ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300'}`}
                                             >
-                                                <div className={`p-2 rounded-full shrink-0 ${newCoupon.distributionRule === 'quota_pool' ? 'bg-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                                                <div className={`p-2 rounded-full shrink-0 ${newCoupon.distributionRule === 'PUBLIC_POOL' ? 'bg-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>
                                                     <Sparkles className="w-6 h-6" />
                                                 </div>
                                                 <div>
@@ -284,10 +403,10 @@ export default function CouponCommandCenter() {
                                             </div>
 
                                             <div
-                                                onClick={() => setNewCoupon({ ...newCoupon, distributionRule: 'physical_scan' })}
-                                                className={`flex gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${newCoupon.distributionRule === 'physical_scan' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-slate-200 dark:border-slate-800 hover:border-blue-300'}`}
+                                                onClick={() => setNewCoupon({ ...newCoupon, distributionRule: 'VIP_SCAN' })}
+                                                className={`flex gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${newCoupon.distributionRule === 'VIP_SCAN' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-slate-200 dark:border-slate-800 hover:border-blue-300'}`}
                                             >
-                                                <div className={`p-2 rounded-full shrink-0 ${newCoupon.distributionRule === 'physical_scan' ? 'bg-blue-500 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                                                <div className={`p-2 rounded-full shrink-0 ${newCoupon.distributionRule === 'VIP_SCAN' ? 'bg-blue-500 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>
                                                     <QrCode className="w-6 h-6" />
                                                 </div>
                                                 <div>
@@ -297,10 +416,10 @@ export default function CouponCommandCenter() {
                                             </div>
 
                                             <div
-                                                onClick={() => setNewCoupon({ ...newCoupon, distributionRule: 'resolution_only' })}
-                                                className={`flex gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${newCoupon.distributionRule === 'resolution_only' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-slate-200 dark:border-slate-800 hover:border-emerald-300'}`}
+                                                onClick={() => setNewCoupon({ ...newCoupon, distributionRule: 'RESOLUTION_ONLY' })}
+                                                className={`flex gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${newCoupon.distributionRule === 'RESOLUTION_ONLY' ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-slate-200 dark:border-slate-800 hover:border-emerald-300'}`}
                                             >
-                                                <div className={`p-2 rounded-full shrink-0 ${newCoupon.distributionRule === 'resolution_only' ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>
+                                                <div className={`p-2 rounded-full shrink-0 ${newCoupon.distributionRule === 'RESOLUTION_ONLY' ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>
                                                     <MessageCircle className="w-6 h-6" />
                                                 </div>
                                                 <div>
@@ -350,41 +469,45 @@ export default function CouponCommandCenter() {
                                 <div className="p-6 py-5">
                                     <div className="flex justify-between text-sm mb-2">
                                         <span className="text-slate-500">Claimed</span>
-                                        <span className="font-bold">{campaign.total - campaign.remaining} / {campaign.total}</span>
+                                        <span className="font-bold">{campaign.claimed} / {campaign.total}</span>
                                     </div>
 
                                     <div className="w-full bg-slate-200 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
                                         <div
                                             className={`h-full rounded-full transition-all ${campaign.status === 'exhausted' ? 'bg-red-500' :
-                                                campaign.rule === 'quota_pool' ? 'bg-indigo-500' :
-                                                    campaign.rule === 'physical_scan' ? 'bg-blue-500' : 'bg-emerald-500'
+                                                campaign.rule === 'PUBLIC_POOL' ? 'bg-indigo-500' :
+                                                    campaign.rule === 'VIP_SCAN' ? 'bg-blue-500' : 'bg-emerald-500'
                                                 }`}
-                                            style={{ width: `${((campaign.total - campaign.remaining) / campaign.total) * 100}%` }}
+                                            style={{ width: `${(campaign.claimed / campaign.total) * 100}%` }}
                                         />
                                     </div>
 
-                                    <p className="text-xs text-slate-400 mt-4 flex items-center gap-1">
-                                        Expires: {campaign.expiry}
+                                    <p className="text-xs text-slate-400 mt-4 flex items-center justify-between">
+                                        <span>Expires: {campaign.expiry}</span>
+                                        <Badge variant="outline" className="text-[10px] uppercase">{campaign.targetTier}</Badge>
                                     </p>
                                 </div>
 
-                                <div className="grid grid-cols-2 border-t border-slate-100 dark:border-slate-800">
+                                <div className="grid grid-cols-3 border-t border-slate-100 dark:border-slate-800">
+                                    <button onClick={() => { setEditingCampaign(campaign); setIsEditOpen(true); }} className="flex items-center justify-center py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors border-r border-slate-100 dark:border-slate-800">
+                                        <Edit className="w-4 h-4 mr-2" /> Edit
+                                    </button>
                                     <button onClick={() => toggleStatus(campaign.id, campaign.status)} disabled={campaign.status === 'exhausted' || campaign.status === 'expired'} className="flex items-center justify-center py-3 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors border-r border-slate-100 dark:border-slate-800 disabled:opacity-50">
                                         {campaign.status === 'paused' || campaign.status === 'exhausted' ? (
-                                            <><Play className="w-4 h-4 mr-2" /> Resume</>
+                                            <><Play className="w-4 h-4 mr-1" /> Resume</>
                                         ) : (
-                                            <><Pause className="w-4 h-4 mr-2" /> Pause</>
+                                            <><Pause className="w-4 h-4 mr-1" /> Pause</>
                                         )}
                                     </button>
                                     <button onClick={() => deleteCampaign(campaign.id)} className="flex items-center justify-center py-3 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors">
-                                        <Trash2 className="w-4 h-4 mr-2" /> Delete
+                                        <Trash2 className="w-4 h-4 mr-1" /> Del
                                     </button>
                                 </div>
                             </CardContent>
                         </Card>
                     ))}
 
-                    {/* Empty State Card (if they need more) */}
+                    {/* Empty State Card */}
                     <button
                         onClick={() => setIsCreateOpen(true)}
                         className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center text-slate-500 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-all min-h-[300px]"
@@ -398,6 +521,102 @@ export default function CouponCommandCenter() {
 
                 </div>
             </div>
+
+            {/* Edit Modal (Immutability UX handled by disabling fields when active) */}
+            <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+                <DialogContent className="sm:max-w-[700px] bg-white dark:bg-slate-950 max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Edit Campaign</DialogTitle>
+                        <DialogDescription>
+                            {editingCampaign?.status === 'active'
+                                ? "Active campaigns are locked. Pause the campaign to edit Offer Type and Value."
+                                : "Modify your campaign details."}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {editingCampaign && (
+                        <form onSubmit={handleEditCampaignSubmit} className="space-y-6 mt-4">
+                            <div className="space-y-3">
+                                <Label className="text-base font-semibold">1. Campaign Details</Label>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2 col-span-2 sm:col-span-1">
+                                        <Label>Campaign Title (Internal)</Label>
+                                        <Input value={editingCampaign.title || ''} onChange={(e) => setEditingCampaign({ ...editingCampaign, title: e.target.value })} />
+                                    </div>
+                                    <div className="space-y-2 col-span-2 sm:col-span-1">
+                                        <Label>Target User Tier</Label>
+                                        <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background" value={editingCampaign.targetTier} onChange={(e) => setEditingCampaign({ ...editingCampaign, targetTier: e.target.value })}>
+                                            <option value="ALL">All Gader Tiers</option>
+                                            <option value="BRONZE_ONLY">Bronze Only</option>
+                                            <option value="SILVER_ONLY">Silver Only</option>
+                                            <option value="GOLD_ONLY">Gold Only</option>
+                                            <option value="VIP_ONLY">VIP Platinum Only</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3 opacity-80 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                                <div className="flex justify-between items-center">
+                                    <Label className="text-base font-semibold">2. Offer Details</Label>
+                                    {editingCampaign.status === 'active' && <Badge variant="secondary">Locked due to Active Status</Badge>}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 mt-2">
+                                    <div className="space-y-2 col-span-2 sm:col-span-1">
+                                        <Label>Offer Type</Label>
+                                        <select
+                                            disabled={editingCampaign.status === 'active'}
+                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                                            value={editingCampaign.type}
+                                            onChange={(e) => setEditingCampaign({ ...editingCampaign, type: e.target.value })}
+                                        >
+                                            <option value="percentage">% Discount</option>
+                                            <option value="fixed">Fixed Amount</option>
+                                            <option value="free_item">Free Item</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-2 col-span-2 sm:col-span-1">
+                                        <Label>{editingCampaign.type === 'free_item' ? 'Item Name' : 'Value'}</Label>
+                                        <Input
+                                            disabled={editingCampaign.status === 'active'}
+                                            value={editingCampaign.type === 'free_item' ? (editingCampaign.itemName || '') : (editingCampaign.value || '')}
+                                            onChange={(e) => {
+                                                if (editingCampaign.type === 'free_item') setEditingCampaign({ ...editingCampaign, itemName: e.target.value });
+                                                else setEditingCampaign({ ...editingCampaign, value: e.target.value });
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Initial Quantity (Current: {editingCampaign.total})</Label>
+                                    <Input type="number" min={editingCampaign.claimed} value={editingCampaign.total} onChange={(e) => setEditingCampaign({ ...editingCampaign, total: e.target.value })} />
+                                    <p className="text-xs text-slate-500">Cannot be lower than claimed ({editingCampaign.claimed})</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Expiry Date</Label>
+                                    <Input type="date" value={editingCampaign.expiry} onChange={(e) => setEditingCampaign({ ...editingCampaign, expiry: e.target.value })} />
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Distribution Channel</Label>
+                                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={editingCampaign.rule} onChange={(e) => setEditingCampaign({ ...editingCampaign, rule: e.target.value })}>
+                                    <option value="PUBLIC_POOL">Platform Quota Pool</option>
+                                    <option value="VIP_SCAN">Physical VIP Scan</option>
+                                    <option value="RESOLUTION_ONLY">Resolution Only</option>
+                                </select>
+                            </div>
+
+                            <Button type="submit" className="w-full">Save Changes</Button>
+                        </form>
+                    )}
+                </DialogContent>
+            </Dialog>
+
         </div>
     );
 }

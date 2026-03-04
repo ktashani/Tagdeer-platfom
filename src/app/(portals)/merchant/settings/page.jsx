@@ -18,7 +18,8 @@ export default function MerchantSettings() {
     const myBusiness = businesses?.find(b => b.claimed_by === user?.id) || businesses?.[0] || null;
 
     // Account Level
-    const [accountTier, setAccountTier] = useState(1); // 1 = Single Business, 2 = Multi-Business & Team
+    const [accountTier, setAccountTier] = useState('Free'); // 'Free', 'Pro', 'Enterprise'
+    const [subscription, setSubscription] = useState(null);
     const [personalInfo, setPersonalInfo] = useState({
         name: '',
         email: '',
@@ -27,16 +28,31 @@ export default function MerchantSettings() {
     const [isSavingProfile, setIsSavingProfile] = useState(false);
 
     useEffect(() => {
-        if (user) {
+        if (user && supabase) {
             setPersonalInfo({
                 name: user.full_name || '',
                 email: user.email || user.profile_email || '',
                 phone: user.phone || ''
             });
-            // Assume tier 2 if they have a certain VIP level or flag (mocking logic here for demonstration)
-            setAccountTier(user.vipTier === 'VIP' ? 2 : 1);
+            // Fetch actual subscription
+            const fetchSub = async () => {
+                const { data } = await supabase
+                    .from('subscriptions')
+                    .select('*')
+                    .eq('profile_id', user.id)
+                    .eq('status', 'active')
+                    .single();
+
+                if (data && data.tier) {
+                    setSubscription(data);
+                    setAccountTier(data.tier);
+                } else {
+                    setAccountTier('Free');
+                }
+            };
+            fetchSub();
         }
-    }, [user]);
+    }, [user, supabase]);
 
     const handleSaveProfile = async () => {
         if (!supabase || !user) return;
@@ -118,9 +134,6 @@ export default function MerchantSettings() {
 
     const [inviteEmail, setInviteEmail] = useState('');
 
-    const handleUpgradeTier = () => setAccountTier(2);
-    const handleDowngradeTier = () => setAccountTier(1);
-
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 xl:p-8">
             <div className="max-w-6xl mx-auto">
@@ -130,11 +143,9 @@ export default function MerchantSettings() {
                     <div>
                         <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent flex items-center gap-3">
                             Platform Settings
-                            {accountTier === 1 ? (
-                                <Badge variant="secondary" className="bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Tier 1 Account</Badge>
-                            ) : (
-                                <Badge className="bg-gradient-to-r from-purple-600 to-indigo-600 border-none shadow-md shadow-purple-500/20"><Crown className="w-3 h-3 mr-1" /> Tier 2 Account</Badge>
-                            )}
+                            {accountTier === 'Free' && <Badge variant="secondary" className="bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Free Tier</Badge>}
+                            {accountTier === 'Pro' && <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border-none shadow-sm"><CheckCircle2 className="w-3 h-3 mr-1" /> Pro Tier</Badge>}
+                            {accountTier === 'Enterprise' && <Badge className="bg-gradient-to-r from-purple-600 to-indigo-600 border-none text-white shadow-md shadow-purple-500/20"><Crown className="w-3 h-3 mr-1" /> Enterprise Tier</Badge>}
                         </h1>
                         <p className="text-slate-500 mt-1">Manage your personal account, business features, and team access.</p>
                     </div>
@@ -162,7 +173,7 @@ export default function MerchantSettings() {
                             className="w-full justify-start py-3 px-4 rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm border border-transparent data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800 transition-all font-medium relative"
                         >
                             <UserPlus className="w-4 h-4 mr-3 opacity-70" /> Team Management
-                            {accountTier === 1 && <Lock className="w-3 h-3 absolute right-4 text-slate-400" />}
+                            {accountTier === 'Free' && <Lock className="w-3 h-3 absolute right-4 text-slate-400" />}
                         </TabsTrigger>
                     </TabsList>
 
@@ -175,51 +186,76 @@ export default function MerchantSettings() {
                         <TabsContent value="account" className="space-y-6 m-0 animate-in fade-in duration-300 outline-none">
 
                             {/* Tier Subscription Card */}
-                            <Card className={`overflow-hidden transition-colors ${accountTier === 2 ? 'border-purple-500/50 bg-purple-50/30 dark:bg-purple-950/20' : ''}`}>
-                                <div className={`h-1.5 w-full ${accountTier === 1 ? 'bg-slate-200 dark:bg-slate-800' : 'bg-gradient-to-r from-purple-500 to-indigo-500'}`} />
+                            <Card className={`overflow-hidden transition-colors ${accountTier === 'Enterprise' ? 'border-purple-500/50 bg-purple-50/30 dark:bg-purple-950/20' : ''}`}>
+                                <div className={`h-1.5 w-full ${accountTier === 'Free' ? 'bg-slate-200 dark:bg-slate-800' : accountTier === 'Pro' ? 'bg-blue-500' : 'bg-gradient-to-r from-purple-500 to-indigo-500'}`} />
                                 <CardHeader className="pb-4">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <CardTitle className="flex items-center gap-2 text-xl">
-                                                Merchant Account Tier
-                                                {accountTier === 2 && <Crown className="w-5 h-5 text-purple-500" />}
-                                            </CardTitle>
-                                            <CardDescription className="mt-1">
-                                                Determines your global platform capabilities.
-                                            </CardDescription>
-                                        </div>
+                                    <div>
+                                        <CardTitle className="flex items-center gap-2 text-xl">
+                                            Merchant Subscription Tier
+                                            {accountTier === 'Enterprise' && <Crown className="w-5 h-5 text-purple-500" />}
+                                        </CardTitle>
+                                        <CardDescription className="mt-1">
+                                            Determines your global platform capabilities, loyalty campaigns, and team size.
+                                        </CardDescription>
                                     </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className={`p-4 rounded-xl border-2 transition-all ${accountTier === 1 ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/10' : 'border-slate-200 dark:border-slate-800 opacity-60'}`}>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <h3 className="font-bold">Tier 1 (Base)</h3>
-                                                {accountTier === 1 && <CheckCircle2 className="w-5 h-5 text-blue-600" />}
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {/* FREE TIER */}
+                                        <div className={`p-4 rounded-xl border-2 transition-all ${accountTier === 'Free' ? 'border-slate-400 bg-slate-50 dark:bg-slate-900/50' : 'border-slate-200 dark:border-slate-800 opacity-60'}`}>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <h3 className="font-bold">Free</h3>
+                                                    <p className="text-sm font-semibold text-slate-500">0 LYD / month</p>
+                                                </div>
+                                                {accountTier === 'Free' && <CheckCircle2 className="w-5 h-5 text-slate-600" />}
                                             </div>
-                                            <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-1 mt-3">
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Manage 1 Business Location</li>
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Accept Reviews & Interactions</li>
+                                            <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-2 mt-4">
+                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> 1 Business Location</li>
+                                                <li className="flex items-center gap-2 opacity-50"><Lock className="w-3 h-3" /> No Loyalty Campaigns</li>
                                                 <li className="flex items-center gap-2 opacity-50"><Lock className="w-3 h-3" /> No Team Management</li>
+                                                <li className="flex items-center gap-2 opacity-50"><Lock className="w-3 h-3" /> No Resolution / Shield</li>
                                             </ul>
-                                            {accountTier === 2 && (
-                                                <Button variant="outline" size="sm" className="w-full mt-4" onClick={handleDowngradeTier}>Downgrade to Tier 1</Button>
+                                        </div>
+
+                                        {/* PRO TIER */}
+                                        <div className={`p-4 rounded-xl border-2 transition-all ${accountTier === 'Pro' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/10' : 'border-slate-200 dark:border-slate-800 hover:border-blue-300'}`}>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <h3 className="font-bold flex items-center gap-2">Pro</h3>
+                                                    <p className="text-sm font-semibold text-blue-600">~150 LYD / month</p>
+                                                </div>
+                                                {accountTier === 'Pro' && <CheckCircle2 className="w-5 h-5 text-blue-600" />}
+                                            </div>
+                                            <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-2 mt-4">
+                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Unlimited Locations</li>
+                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> 1 Active Campaign (5 Coupons)</li>
+                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Team Management</li>
+                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Discovery Ribbon Ad</li>
+                                            </ul>
+                                            {accountTier === 'Free' && (
+                                                <Button variant="outline" size="sm" className="w-full mt-4 border-blue-200 text-blue-700 hover:bg-blue-50">Upgrade to Pro</Button>
                                             )}
                                         </div>
 
-                                        <div className={`p-4 rounded-xl border-2 transition-all ${accountTier === 2 ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : 'border-slate-200 dark:border-slate-800 hover:border-purple-300'}`}>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <h3 className="font-bold flex items-center gap-2"><Crown className="w-4 h-4 text-purple-500" /> Tier 2 (Pro)</h3>
-                                                {accountTier === 2 && <CheckCircle2 className="w-5 h-5 text-purple-600" />}
+                                        {/* ENTERPRISE TIER */}
+                                        <div className={`p-4 rounded-xl border-2 transition-all ${accountTier === 'Enterprise' ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : 'border-slate-200 dark:border-slate-800 hover:border-purple-300'}`}>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <h3 className="font-bold flex items-center gap-2"><Crown className="w-4 h-4 text-purple-500" /> Enterprise</h3>
+                                                    <p className="text-sm font-semibold text-purple-600 bg-clip-text">~350 LYD / month</p>
+                                                </div>
+                                                {accountTier === 'Enterprise' && <CheckCircle2 className="w-5 h-5 text-purple-600" />}
                                             </div>
-                                            <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-1 mt-3">
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Manage Unlimited Locations</li>
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Unlock Team Management</li>
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Dedicated Account Manager</li>
+                                            <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-2 mt-4">
+                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Unlimited Campaigns & Coupons</li>
+                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> 30 Scan Points (Highest)</li>
+                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Trust Shields Included</li>
+                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Resolution & Disputes Included</li>
                                             </ul>
-                                            {accountTier === 1 && (
-                                                <Button className="w-full mt-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0 shadow-lg shadow-purple-500/20 hover:from-purple-700 hover:to-indigo-700" onClick={handleUpgradeTier}>
-                                                    Upgrade to Tier 2
+                                            {accountTier !== 'Enterprise' && (
+                                                <Button size="sm" className="w-full mt-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0 shadow-lg shadow-purple-500/20 hover:from-purple-700 hover:to-indigo-700">
+                                                    Upgrade to Enterprise
                                                 </Button>
                                             )}
                                         </div>
@@ -381,20 +417,20 @@ export default function MerchantSettings() {
                         ========================================== */}
                         <TabsContent value="team" className="space-y-6 m-0 animate-in fade-in duration-300 outline-none">
 
-                            {accountTier === 1 ? (
+                            {accountTier === 'Free' ? (
                                 <Card className="border-dashed border-2 bg-slate-50/50 dark:bg-slate-900/20 text-center py-12">
                                     <CardContent className="flex flex-col items-center justify-center space-y-4">
-                                        <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/50 text-purple-600 rounded-full flex items-center justify-center">
+                                        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/50 text-blue-600 rounded-full flex items-center justify-center">
                                             <Users className="w-8 h-8" />
                                         </div>
                                         <div>
                                             <h3 className="text-xl font-bold">Team Management Locked</h3>
                                             <p className="text-slate-500 mt-2 max-w-md mx-auto">
-                                                Upgrade your account to Tier 2 (Pro) to invite managers and staff to help run your businesses.
+                                                Upgrade your account to Pro or Enterprise to invite cashiers, managers, and staff to run your businesses.
                                             </p>
                                         </div>
-                                        <Button className="mt-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0 shadow-lg hover:from-purple-700 hover:to-indigo-700" onClick={handleUpgradeTier}>
-                                            Unlock with Tier 2
+                                        <Button className="mt-4 bg-blue-600 text-white hover:bg-blue-700">
+                                            Unlock with Pro
                                         </Button>
                                     </CardContent>
                                 </Card>

@@ -60,10 +60,17 @@ export default function ScannerModal({ isOpen, onClose, businessId }) {
         setScanStatus('processing');
 
         try {
-            // Extract the UUID from the URL or handle direct code
             let targetUserId;
-            if (decodedText.includes('tagdeer.app/verify-user/t=')) {
-                // New logic: Base64 Short-lived token
+            let couponSerial;
+
+            // Check if it's a Coupon Code scan
+            if (decodedText.includes('tagdeer.app/redeem/')) {
+                couponSerial = decodedText.split('redeem/')[1];
+            } else if (decodedText.trim().startsWith('TAG-')) {
+                couponSerial = decodedText.trim();
+            }
+            // Otherwise check if it's a Passport User ID scan
+            else if (decodedText.includes('tagdeer.app/verify-user/t=')) {
                 const token = decodedText.split('verify-user/t=')[1];
                 try {
                     const payload = JSON.parse(atob(token));
@@ -75,42 +82,52 @@ export default function ScannerModal({ isOpen, onClose, businessId }) {
                     throw new Error(e.message.includes('expired') ? e.message : 'Invalid Tagdeer Token Format.');
                 }
             } else if (decodedText.includes('tagdeer.app/verify-user/')) {
-                // Legacy URL format
                 targetUserId = decodedText.split('verify-user/')[1];
             } else if (decodedText.trim().length === 36) {
-                // Raw UUID
                 targetUserId = decodedText.trim();
             } else {
                 throw new Error('Invalid Tagdeer QR Code format.');
             }
 
-            setScannedUserId(targetUserId);
-
             const isDevEnv = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
 
-            if (isDevEnv && targetUserId === 'mock-user-id') {
-                // UI testing mock bypass
-            } else {
-                // 1. Log the interaction in the database
-                const { error: logError } = await supabase
-                    .from('business_interactions')
-                    .insert({
-                        business_id: businessId,
-                        profile_id: targetUserId,
-                        interaction_type: 'scan'
+            if (couponSerial) {
+                // 1. Redeem the coupon using the new RPC
+                const { data, error } = await supabase.rpc('redeem_coupon', {
+                    p_serial_code: couponSerial,
+                    p_merchant_id: businessId
+                });
+
+                if (error) throw error;
+                if (!data.success) throw new Error(data.message);
+
+                toast.success(`🎉 Coupon Redeemed! ${data.coupon_details.item_name || 'Discount Applied'}`);
+                setScanStatus('success');
+
+            } else if (targetUserId) {
+                setScannedUserId(targetUserId);
+
+                if (isDevEnv && targetUserId === 'mock-user-id') {
+                    // UI testing mock bypass
+                } else {
+                    // 2. Award Scan Points and register interaction via new RPC
+                    const { data, error } = await supabase.rpc('award_scan_points', {
+                        p_user_id: targetUserId,
+                        p_business_id: businessId
                     });
 
-                if (logError) {
-                    if (logError.code === '23505') {
-                        // Unique violation (already scanned recently)
-                        throw new Error('User has already been scanned here today.');
+                    if (error) {
+                        if (error.message.includes('Wait 24 hours')) {
+                            throw new Error('User has already been scanned here today.');
+                        }
+                        throw error;
                     }
-                    throw logError;
+                    if (!data.success) throw new Error(data.error);
                 }
-            }
 
-            setScanStatus('success');
-            toast.success('Interaction logged successfully!');
+                setScanStatus('success');
+                toast.success('Interaction logged and Gader Points awarded!');
+            }
 
         } catch (err) {
             console.error('Scan error:', err);
