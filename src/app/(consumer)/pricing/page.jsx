@@ -18,8 +18,11 @@ import {
 import { Button } from '@/components/ui/button';
 
 export default function PricingPage() {
-    const { t, lang, isRTL } = useTagdeer();
+    const { t, lang, isRTL, shieldPricing = { trust: 20, fatora: 50 }, tierPricing = [] } = useTagdeer();
     const [openFaqIndex, setOpenFaqIndex] = useState(null);
+
+    const priceTier1 = tierPricing[0]?.price ?? 49;
+    const priceTier2 = tierPricing[1]?.price ?? 99;
 
     const toggleFaq = (index) => {
         setOpenFaqIndex(openFaqIndex === index ? null : index);
@@ -125,7 +128,7 @@ export default function PricingPage() {
                             <p className="text-slate-500 dark:text-slate-400 text-sm">Perfect for single-location businesses.</p>
                         </div>
                         <div className="mb-8 pb-8 border-b border-slate-100 dark:border-slate-800">
-                            <span className="text-5xl font-black text-slate-900 dark:text-white">49 <span className="text-2xl font-bold">LYD</span></span>
+                            <span className="text-5xl font-black text-slate-900 dark:text-white">{priceTier1} <span className="text-2xl font-bold">LYD</span></span>
                             <span className="text-slate-500"> / mo</span>
                         </div>
                         <ul className="space-y-5 mb-10 flex-1">
@@ -163,7 +166,7 @@ export default function PricingPage() {
                             <p className="text-indigo-200 text-sm">For growing brands and multiple branches.</p>
                         </div>
                         <div className="mb-8 pb-8 border-b border-indigo-500/30">
-                            <span className="text-5xl font-black text-white">99 <span className="text-2xl font-bold">LYD</span></span>
+                            <span className="text-5xl font-black text-white">{priceTier2} <span className="text-2xl font-bold">LYD</span></span>
                             <span className="text-indigo-200"> / mo</span>
                         </div>
                         <ul className="space-y-5 mb-10 flex-1">
@@ -210,7 +213,7 @@ export default function PricingPage() {
                                     <ShieldCheck className="w-8 h-8" />
                                 </div>
                                 <div className="text-right">
-                                    <div className="text-2xl font-black text-slate-900 dark:text-white">20 LYD</div>
+                                    <div className="text-2xl font-black text-slate-900 dark:text-white">{shieldPricing.trust} LYD</div>
                                     <div className="text-sm font-medium text-slate-500">/mo per branch</div>
                                 </div>
                             </div>
@@ -228,7 +231,7 @@ export default function PricingPage() {
                                     <ShieldAlert className="w-8 h-8" />
                                 </div>
                                 <div className="text-right">
-                                    <div className="text-2xl font-black text-blue-600">50 LYD</div>
+                                    <div className="text-2xl font-black text-blue-600">{shieldPricing.fatora} LYD</div>
                                     <div className="text-sm font-medium text-slate-500">/mo per branch</div>
                                 </div>
                             </div>

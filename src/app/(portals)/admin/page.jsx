@@ -5,7 +5,10 @@ import { AlertTriangle, AlertCircle, ArrowRight, TrendingUp, Users, DollarSign, 
 import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function AdminDashboard() {
-    const { supabase, businesses } = useTagdeer()
+    const {
+        supabase, businesses,
+        shieldPricing = { trust: 20, fatora: 50 }
+    } = useTagdeer()
     const [stats, setStats] = useState({
         mrr: 0,
         vipUsers: 0,
@@ -40,13 +43,13 @@ export default function AdminDashboard() {
                     .select('*', { count: 'exact', head: true })
                     .eq('status', 'pending_admin_review')
 
-                // MRR Approximation based on Shield Levels (1 = 20 LYD, 2 = 50 LYD)
+                // MRR Approximation based on Shield Config Prices
                 let calculatedMrr = 0;
                 let topApprovals = [];
                 if (businesses) {
                     calculatedMrr = businesses.reduce((acc, curr) => {
-                        if (curr.shield_level === 2) return acc + 50;
-                        if (curr.shield_level === 1) return acc + 20;
+                        if (curr.shield_level === 2) return acc + shieldPricing.fatora;
+                        if (curr.shield_level === 1) return acc + shieldPricing.trust;
                         return acc;
                     }, 0);
 

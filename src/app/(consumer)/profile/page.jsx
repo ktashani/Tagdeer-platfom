@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
+import { usePlatformConfig } from '@/hooks/usePlatformConfig';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Mail, User, ShieldCheck, Phone, AlertTriangle, Target } from 'lucide-react';
@@ -17,6 +18,7 @@ import { GaderPassModal } from '@/components/profile/GaderPassModal';
 
 export default function ProfilePage() {
     const { user, logout, t, isRTL, setShowLoginModal, lang, supabase } = useTagdeer();
+    const platformConfig = usePlatformConfig();
 
     // Check if we are in a dev/localhost environment for safe bypasses
     const isDevEnv = process.env.NODE_ENV === 'development' ||
@@ -162,26 +164,27 @@ export default function ProfilePage() {
         return Math.abs(ageDate.getUTCFullYear() - 1970);
     };
 
-    // Helper: Gamification Progress matching /about thresholds
+    // Helper: Gamification Progress matching dynamic thresholds
     const getProgressInfo = (points) => {
+        const th = platformConfig?.vipThresholds || { guest: 20, bronze: 1000, silver: 5000, gold: 20000 };
         let currentTier = "Guest";
         let nextTier = "Bronze";
-        let maxPoints = 20;
+        let maxPoints = th.guest;
         let p = points || 0;
 
-        if (p >= 20 && p < 1000) {
+        if (p >= th.guest && p < th.bronze) {
             currentTier = "Bronze";
             nextTier = "Silver";
-            maxPoints = 1000;
-        } else if (p >= 1000 && p < 5000) {
+            maxPoints = th.bronze;
+        } else if (p >= th.bronze && p < th.silver) {
             currentTier = "Silver";
             nextTier = "Gold";
-            maxPoints = 5000;
-        } else if (p >= 5000 && p < 20000) {
+            maxPoints = th.silver;
+        } else if (p >= th.silver && p < th.gold) {
             currentTier = "Gold";
             nextTier = "VIP";
-            maxPoints = 20000;
-        } else if (p >= 20000) {
+            maxPoints = th.gold;
+        } else if (p >= th.gold) {
             currentTier = "VIP";
             nextTier = "Max";
             maxPoints = p; // already at max
@@ -190,7 +193,7 @@ export default function ProfilePage() {
         const percentage = currentTier === "VIP" ? 100 : Math.min(((p) / maxPoints) * 100, 100);
         const pointsNeeded = maxPoints - p;
 
-        return { percentage, pointsNeeded: pointsNeeded > 0 ? pointsNeeded : 0, nextTier };
+        return { percentage, pointsNeeded: pointsNeeded > 0 ? pointsNeeded : 0, nextTier, thresholds: th };
     };
 
     const progressInfo = getProgressInfo(user.gader);

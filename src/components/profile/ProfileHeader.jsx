@@ -36,9 +36,15 @@ export function ProfileHeader({ user, displayLogs, progressInfo, isRTL, t, lang,
                     <div className="bg-white/20 backdrop-blur-sm w-24 h-24 rounded-full flex items-center justify-center text-5xl shrink-0 overflow-hidden border-2 border-white/30 shadow-lg relative">
                         {user.avatarUrl ? (
                             <img src={user.avatarUrl} alt="User Avatar" className="w-full h-full object-cover" />
-                        ) : (
-                            <span>{(user.gader || 0) >= 20000 ? '💎' : (user.gader || 0) >= 5000 ? '🥇' : (user.gader || 0) >= 1000 ? '🥈' : (user.gader || 0) >= 20 ? '🥉' : '👤'}</span>
-                        )}
+                        ) : (() => {
+                            const pts = user.gader || 0;
+                            const th = progressInfo?.thresholds || { guest: 20, bronze: 1000, silver: 5000, gold: 20000 };
+                            if (pts >= th.gold) return <span>💎</span>;
+                            if (pts >= th.silver) return <span>🥇</span>;
+                            if (pts >= th.bronze) return <span>🥈</span>;
+                            if (pts >= th.guest) return <span>🥉</span>;
+                            return <span>👤</span>;
+                        })()}
                     </div>
 
                     <div className="flex flex-col items-center sm:items-start flex-grow text-center sm:text-start">

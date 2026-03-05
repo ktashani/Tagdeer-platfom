@@ -13,17 +13,12 @@ import { Store, UploadCloud, AlertCircle, Clock, Check, Crown, ShieldAlert, Shie
 import { toast } from 'sonner';
 import { getPresignedUploadUrl } from '@/app/actions/storage';
 
-const CATEGORIES = [
-    "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery",
-    "Healthcare", "Electronics", "Tech & Telecommunication", "Construction",
-    "Home Maintenance", "Automotive", "Beauty & Salon", "Real Estate",
-    "Education", "Travel", "Fashion & Retail", "Services", "Food & Beverage", "Delivery & Shipping"
-];
-const REGIONS = ["Tripoli", "Benghazi"];
-
 export default function MerchantOnboarding() {
     const router = useRouter();
-    const { supabase, user, showToast, t, lang, isRTL, loading } = useTagdeer();
+    const {
+        supabase, user, showToast, t, lang, isRTL, loading,
+        categories = [], regions = [], shieldPricing = { trust: 20, fatora: 50 }
+    } = useTagdeer();
 
     // Block admin accounts from onboarding — they should never claim via this flow
     if (!loading && user && user.role === 'admin') {
@@ -47,9 +42,18 @@ export default function MerchantOnboarding() {
     const [step, setStep] = useState(1);
 
     // Step 1: Business Details
-    const [businessData, setBusinessData] = useState({ name: '', category: '', region: 'Tripoli' });
+    const [businessData, setBusinessData] = useState({ name: '', category: '', region: '' });
     const [documents, setDocuments] = useState(null);
     const [selectedExisting, setSelectedExisting] = useState(null); // existing business to claim
+
+    useEffect(() => {
+        if (regions.length > 0 && !businessData.region) {
+            setBusinessData(prev => ({ ...prev, region: regions[0] }));
+        }
+        if (categories.length > 0 && !businessData.category) {
+            setBusinessData(prev => ({ ...prev, category: categories[0] }));
+        }
+    }, [regions, categories, businessData.region, businessData.category]);
 
     // Business Search
     const [businessSearch, setBusinessSearch] = useState('');
@@ -64,7 +68,7 @@ export default function MerchantOnboarding() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Pricing Math
-    const shieldPrice = shieldLevel === 1 ? 20 : (shieldLevel === 2 ? 50 : 0);
+    const shieldPrice = shieldLevel === 1 ? shieldPricing.trust : (shieldLevel === 2 ? shieldPricing.fatora : 0);
     const total = shieldPrice;
 
     // Business search with debounce
@@ -103,8 +107,8 @@ export default function MerchantOnboarding() {
         setSelectedExisting(business);
         setBusinessData({
             name: business.name,
-            category: business.category || '',
-            region: business.region || 'Tripoli'
+            category: business.category || (categories.length > 0 ? categories[0] : ''),
+            region: business.region || (regions.length > 0 ? regions[0] : '')
         });
         setBusinessSearch('');
         setSearchResults([]);
@@ -112,7 +116,7 @@ export default function MerchantOnboarding() {
 
     const clearSelection = () => {
         setSelectedExisting(null);
-        setBusinessData({ name: '', category: '', region: 'Tripoli' });
+        setBusinessData({ name: '', category: categories[0] || '', region: regions[0] || '' });
     };
 
     const handleFileChange = (e) => {
@@ -220,7 +224,7 @@ export default function MerchantOnboarding() {
 
             // 4. Record the requested Financial Upgrade (if applicable)
             if (shieldLevel > 0) {
-                const amount = shieldLevel === 1 ? 20 : 50;
+                const amount = shieldLevel === 1 ? shieldPricing.trust : shieldPricing.fatora;
                 await supabase.from('transactions').insert([{
                     business_id: businessId,
                     user_id: activeUser.id,
@@ -391,7 +395,7 @@ export default function MerchantOnboarding() {
                                                         style={{ backgroundPosition: isRTL ? 'left 12px center' : 'right 12px center' }}
                                                     >
                                                         <option value="">{lang === 'ar' ? 'اختر...' : 'Select...'}</option>
-                                                        {CATEGORIES.map(c => <option key={c} value={c}>{t(c)}</option>)}
+                                                        {categories.map(c => <option key={c} value={c}>{t(c)}</option>)}
                                                     </select>
                                                 </div>
                                                 <div className="space-y-2">
@@ -402,7 +406,7 @@ export default function MerchantOnboarding() {
                                                         onChange={(e) => setBusinessData({ ...businessData, region: e.target.value })}
                                                         style={{ backgroundPosition: isRTL ? 'left 12px center' : 'right 12px center' }}
                                                     >
-                                                        {REGIONS.map(r => <option key={r} value={r}>{t(r)}</option>)}
+                                                        {regions.map(r => <option key={r} value={r}>{t(r)}</option>)}
                                                     </select>
                                                 </div>
                                             </div>
@@ -450,7 +454,7 @@ export default function MerchantOnboarding() {
                                     </div>
                                     <div className="flex items-center gap-6 w-full sm:w-auto justify-between border-t border-amber-100 sm:border-0 pt-4 sm:pt-0">
                                         <div className={isRTL ? 'text-left' : 'text-right'}>
-                                            <div className="font-black text-xl text-slate-900 dark:text-white">{t('price_per_month').replace('{price}', '20')}</div>
+                                            <div className="font-black text-xl text-slate-900 dark:text-white">{t('price_per_month').replace('{price}', shieldPricing.trust)}</div>
                                         </div>
                                         <Switch checked={shieldLevel >= 1} onCheckedChange={(c) => setShieldLevel(c ? (shieldLevel === 2 ? 2 : 1) : 0)} className="data-[state=checked]:bg-amber-500 scale-110" />
                                     </div>
@@ -466,7 +470,7 @@ export default function MerchantOnboarding() {
                                     </div>
                                     <div className="flex items-center gap-6 w-full sm:w-auto justify-between border-t border-blue-100 sm:border-0 pt-4 sm:pt-0">
                                         <div className={isRTL ? 'text-left' : 'text-right'}>
-                                            <div className="font-black text-xl text-slate-900 dark:text-white">{t('price_per_month').replace('{price}', '50')}</div>
+                                            <div className="font-black text-xl text-slate-900 dark:text-white">{t('price_per_month').replace('{price}', shieldPricing.fatora)}</div>
                                         </div>
                                         <Switch checked={shieldLevel === 2} onCheckedChange={(c) => setShieldLevel(c ? 2 : 1)} disabled={shieldLevel === 0} className="data-[state=checked]:bg-blue-600 scale-110" />
                                     </div>

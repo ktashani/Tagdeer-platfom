@@ -6,16 +6,16 @@ import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp,
 import { calculateBusinessScore } from '@/lib/mathEngine';
 import { getDeviceFingerprint } from '@/lib/fingerprint';
 
-const CATEGORIES = [
-    "All", "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery",
-    "Healthcare", "Electronics", "Tech & Telecommunication", "Construction",
-    "Home Maintenance", "Automotive", "Beauty & Salon", "Real Estate",
-    "Education", "Travel", "Fashion & Retail", "Services", "Food & Beverage", "Delivery & Shipping"
-];
-const REGIONS = ["All", "Tripoli", "Benghazi"];
-
 function DiscoverContent() {
-    const { t, lang, isRTL, businesses, anonInteractions, refreshAnonInteractions, showToast, setShowLimitModal, setVoteModal, setVoteReason, user } = useTagdeer();
+    const {
+        t, lang, isRTL, businesses, anonInteractions, refreshAnonInteractions,
+        showToast, setShowLimitModal, setVoteModal, setVoteReason, user,
+        categories = [], regions = []
+    } = useTagdeer();
+
+    const displayCategories = ["All", ...categories];
+    const displayRegions = ["All", ...regions];
+
     const searchParams = useSearchParams();
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -93,10 +93,10 @@ function DiscoverContent() {
                 </div>
                 <div className="flex gap-4">
                     <select className="px-4 py-3 rounded-xl border border-slate-300 bg-white" value={selectedRegion} onChange={(e) => setSelectedRegion(e.target.value)}>
-                        {REGIONS.map(r => <option key={r} value={r}>{t(r)}</option>)}
+                        {displayRegions.map(r => <option key={r} value={r}>{t(r)}</option>)}
                     </select>
                     <select className="px-4 py-3 rounded-xl border border-slate-300 bg-white" value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
-                        {CATEGORIES.map(c => <option key={c} value={c}>{t(c)}</option>)}
+                        {displayCategories.map(c => <option key={c} value={c}>{t(c)}</option>)}
                     </select>
                 </div>
             </div>

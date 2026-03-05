@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react'
 import { Search, UserX, UserMinus, ShieldAlert, Award, AlertCircle, TrendingUp, TrendingDown, History, Loader2, Settings, UserCheck, Edit3, Store, Users, User, AlertTriangle, Ban } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
+import { usePlatformConfig } from '@/hooks/usePlatformConfig'
 import { formatDistanceToNow } from 'date-fns'
 
 export default function UsersPage() {
     const { supabase, showToast } = useTagdeer()
+    const platformConfig = usePlatformConfig()
     const [users, setUsers] = useState([])
     const [isLoading, setIsLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('all') // 'all', 'consumers', 'merchants'
@@ -32,18 +34,32 @@ export default function UsersPage() {
             setIsLoading(true)
             const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
             if (!error && data) {
-                const mapped = data.map(dbUser => ({
-                    id: dbUser.id,
-                    name: dbUser.full_name || 'Anonymous User',
-                    email: dbUser.email || '-',
-                    phone: dbUser.phone || '-',
-                    trustPoints: dbUser.gader_points || 0,
-                    tier: (dbUser.gader_points || 0) > 5000 ? 'Gold' : (dbUser.gader_points || 0) > 1000 ? 'Silver' : 'Bronze',
-                    flags: 0,
-                    status: dbUser.status || 'Active',
-                    role: dbUser.role || 'user',
-                    created_at: dbUser.created_at
-                }))
+                const th = platformConfig?.vipThresholds || { guest: 20, bronze: 1000, silver: 5000, gold: 20000 };
+
+                const mapped = data.map(dbUser => {
+                    const pts = dbUser.gader_points || 0;
+                    let tier = 'Bronze';
+                    if (pts >= th.gold) tier = 'VIP'; // Wait, standard logic calls > 20k VIP. Let's use 'Gold'/'VIP' mapping correctly based on prev logic.
+                    // Previous logic: > 5000 ? 'Gold' : > 1000 ? 'Silver' : 'Bronze'
+                    // New logic derived from calculateTier:
+                    if (pts >= th.gold) tier = 'VIP';
+                    else if (pts >= th.silver) tier = 'Gold';
+                    else if (pts >= th.bronze) tier = 'Silver';
+                    else tier = 'Bronze';
+
+                    return {
+                        id: dbUser.id,
+                        name: dbUser.full_name || 'Anonymous User',
+                        email: dbUser.email || '-',
+                        phone: dbUser.phone || '-',
+                        trustPoints: pts,
+                        tier: tier,
+                        flags: 0,
+                        status: dbUser.status || 'Active',
+                        role: dbUser.role || 'user',
+                        created_at: dbUser.created_at
+                    };
+                })
                 setUsers(mapped)
             }
             setIsLoading(false)

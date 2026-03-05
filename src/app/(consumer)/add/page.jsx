@@ -5,19 +5,20 @@ import { useTagdeer } from '@/context/TagdeerContext';
 import { Globe } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-const CATEGORIES = [
-    "All", "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery",
-    "Healthcare", "Electronics", "Tech & Telecommunication", "Construction",
-    "Home Maintenance", "Automotive", "Beauty & Salon", "Real Estate",
-    "Education", "Travel", "Fashion & Retail", "Services", "Food & Beverage", "Delivery & Shipping"
-];
-const REGIONS = ["All", "Tripoli", "Benghazi"];
-
 export default function AddBusinessRoute() {
-    const { t, lang, supabase, businesses, setBusinesses, showToast } = useTagdeer();
+    const {
+        t, lang, supabase, businesses, setBusinesses,
+        showToast, categories = [], regions = []
+    } = useTagdeer();
+
     const [newBizInput, setNewBizInput] = useState('');
-    const [newBizRegion, setNewBizRegion] = useState('Tripoli');
-    const [newBizCategory, setNewBizCategory] = useState('Electronics');
+    const [newBizRegion, setNewBizRegion] = useState('');
+    const [newBizCategory, setNewBizCategory] = useState('');
+
+    React.useEffect(() => {
+        if (regions.length > 0 && !newBizRegion) setNewBizRegion(regions[0]);
+        if (categories.length > 0 && !newBizCategory) setNewBizCategory(categories[0]);
+    }, [regions, categories, newBizRegion, newBizCategory]);
 
     const router = useRouter();
 
@@ -57,10 +58,10 @@ export default function AddBusinessRoute() {
                     />
                     <div className="grid grid-cols-2 gap-4">
                         <select value={newBizRegion} onChange={(e) => setNewBizRegion(e.target.value)} className="w-full px-4 py-4 rounded-xl border border-slate-300">
-                            {REGIONS.filter(r => r !== 'All').map(r => <option key={r} value={r}>{t(r)}</option>)}
+                            {regions.map(r => <option key={r} value={r}>{t(r)}</option>)}
                         </select>
                         <select value={newBizCategory} onChange={(e) => setNewBizCategory(e.target.value)} className="w-full px-4 py-4 rounded-xl border border-slate-300">
-                            {CATEGORIES.filter(c => c !== "All").map(c => <option key={c} value={c}>{t(c)}</option>)}
+                            {categories.map(c => <option key={c} value={c}>{t(c)}</option>)}
                         </select>
                     </div>
                     <button onClick={handleSubmit} className="w-full bg-blue-700 text-white py-4 rounded-xl font-bold">{t('generate_profile')}</button>

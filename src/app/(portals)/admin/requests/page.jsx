@@ -19,19 +19,42 @@ export default function RequestsPage() {
         }
 
         const loadClaims = async () => {
-            const { data, error } = await supabase
+            // Fetch claims without embedded join (no direct FK from business_claims to profiles)
+            const { data: claims, error } = await supabase
                 .from('business_claims')
-                .select('*, profiles(phone, email, full_name)')
+                .select('*')
 
-            if (data) {
-                const mapped = data.map(c => {
+            if (error) {
+                console.error('Error fetching claims:', error)
+                setIsLoading(false)
+                return
+            }
+
+            if (claims && claims.length > 0) {
+                // Fetch profiles separately by user_ids
+                const userIds = [...new Set(claims.map(c => c.user_id).filter(Boolean))]
+                let profilesMap = {}
+
+                if (userIds.length > 0) {
+                    const { data: profiles } = await supabase
+                        .from('profiles')
+                        .select('id, phone, email, full_name')
+                        .in('id', userIds)
+
+                    if (profiles) {
+                        profilesMap = Object.fromEntries(profiles.map(p => [p.id, p]))
+                    }
+                }
+
+                const mapped = claims.map(c => {
                     const business = businesses.find(b => b.id === c.business_id)
+                    const profile = profilesMap[c.user_id]
                     return {
                         id: c.id,
                         businessName: business?.name || 'Unknown Business',
-                        requester: c.profiles?.full_name || 'Anonymous',
-                        phone: c.profiles?.phone || 'No Phone',
-                        email: c.profiles?.email || 'No Email',
+                        requester: profile?.full_name || 'Anonymous',
+                        phone: profile?.phone || 'No Phone',
+                        email: profile?.email || 'No Email',
                         status: c.status || c.claim_status || 'pending',
                         date: new Date(c.created_at).toLocaleDateString(),
                         licenseUrl: '/placeholder-license.jpg',

@@ -2,14 +2,18 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useSupabase } from '../hooks/useSupabase';
+import { usePlatformConfig } from '../hooks/usePlatformConfig';
 import { translations } from '../i18n/translations';
 
 // --- Gamification Helpers ---
-export const calculateTier = (points, lang) => {
-    if (!points || points < 20) return { name: lang === 'ar' ? 'ضيف' : 'Guest', emoji: '👤', color: 'text-slate-600', max: 20 };
-    if (points < 1000) return { name: lang === 'ar' ? 'برونزي' : 'Bronze', emoji: '🥉', color: 'text-amber-700', max: 1000 };
-    if (points < 5000) return { name: lang === 'ar' ? 'فضي' : 'Silver', emoji: '🥈', color: 'text-slate-600', max: 5000 };
-    if (points < 20000) return { name: lang === 'ar' ? 'ذهبي' : 'Gold', emoji: '🥇', color: 'text-yellow-700', max: 20000 };
+export const calculateTier = (points, lang, vipThresholds) => {
+    // Fallbacks to default if dynamic config not loaded
+    const thresholds = vipThresholds || { guest: 20, bronze: 1000, silver: 5000, gold: 20000 };
+
+    if (!points || points < thresholds.guest) return { name: lang === 'ar' ? 'ضيف' : 'Guest', emoji: '👤', color: 'text-slate-600', max: thresholds.guest };
+    if (points < thresholds.bronze) return { name: lang === 'ar' ? 'برونزي' : 'Bronze', emoji: '🥉', color: 'text-amber-700', max: thresholds.bronze };
+    if (points < thresholds.silver) return { name: lang === 'ar' ? 'فضي' : 'Silver', emoji: '🥈', color: 'text-slate-600', max: thresholds.silver };
+    if (points < thresholds.gold) return { name: lang === 'ar' ? 'ذهبي' : 'Gold', emoji: '🥇', color: 'text-yellow-700', max: thresholds.gold };
     return { name: 'VIP', emoji: '💎', color: 'text-indigo-700', max: Infinity };
 };
 
@@ -65,6 +69,9 @@ export function TagdeerProvider({ children }) {
         process.env.NODE_ENV === 'development' ? INITIAL_BUSINESSES : []
     );
     const { supabase } = useSupabase();
+
+    // Fetch global config
+    const platformConfig = usePlatformConfig();
 
     // Fix: Initialize directly from localStorage to prevent 0-reset race condition
     const [anonInteractions, setAnonInteractions] = useState(() => {
@@ -197,7 +204,7 @@ export function TagdeerProvider({ children }) {
                 phone,
                 userId: 'VIP-E2ETST',
                 gader: 20,
-                vipTier: calculateTier(20, lang).name,
+                vipTier: calculateTier(20, lang, platformConfig?.vipThresholds).name,
                 full_name: getRandomCommunityTitle(lang),
                 avatarUrl: '/avatars/default.png',
                 id: 'mock-e2e-uuid',
@@ -290,7 +297,7 @@ export function TagdeerProvider({ children }) {
                 phone,
                 userId: `VIP-${randomAlphanumeric}`,
                 gader: 20,
-                vipTier: calculateTier(20, lang).name,
+                vipTier: calculateTier(20, lang, platformConfig?.vipThresholds).name,
                 full_name: getRandomCommunityTitle(lang),
                 avatarUrl: '/avatars/default.png',
                 id: 'mock-uuid'
