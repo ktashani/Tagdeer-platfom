@@ -1,17 +1,18 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Search, ThumbsUp, ThumbsDown, Activity, Ticket, ArrowUpRight, ArrowDownRight, QrCode, MessageSquare, Flag, Play, Pause, AlertCircle, Clock, ShieldAlert, Store, AlertTriangle, Crown, Check } from 'lucide-react';
+import { Search, ThumbsUp, ThumbsDown, Activity, Ticket, ArrowUpRight, ArrowDownRight, QrCode, MessageSquare, Flag, Play, Pause, AlertCircle, Clock, ShieldAlert, Store, AlertTriangle, Crown, Check, UploadCloud, File as FileIcon, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { DisputeButtonLocked, MessageUserButtonLocked } from '@/components/merchant/LockedFeatureOverlay';
 import ScannerModal from '@/components/merchant/ScannerModal';
 import Link from 'next/link';
 import { useTagdeer } from '@/context/TagdeerContext';
+import { getPresignedUploadUrl } from '@/app/actions/storage';
 import {
     Dialog,
     DialogContent,
@@ -63,6 +64,9 @@ function deriveVotingReasons(logs) {
 export default function MerchantDashboard() {
     const { user, businesses, supabase, showToast } = useTagdeer();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const trialCampaign = searchParams.get('trial_campaign');
+
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -71,6 +75,14 @@ export default function MerchantDashboard() {
     const [activeCampaigns, setActiveCampaigns] = useState([]);
     const [couponsRedeemed, setCouponsRedeemed] = useState(0);
     const [pendingClaim, setPendingClaim] = useState(null);
+    const [pendingClaimId, setPendingClaimId] = useState(null); // Keep track of the claim ID for updates
+
+    // File upload state for missing_docs re-upload
+    const [selectedDoc, setSelectedDoc] = useState(null);
+    const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+
+    // Feature State
+    const [activeFeatures, setActiveFeatures] = useState([]);
 
     // Only render once user loading finishes
     if (user === undefined) return <div className="min-h-screen flex items-center justify-center">Loading Dashboard...</div>;
@@ -78,6 +90,13 @@ export default function MerchantDashboard() {
     // Find the currently authenticated merchant's business
     // Note: TagdeerContext maps claimed_by → owner_id
     const myBusiness = businesses.find(b => b.owner_id === user?.id);
+
+    // Auto-redirect to settings if arriving via trial campaign link and already has a business
+    useEffect(() => {
+        if (trialCampaign && myBusiness) {
+            router.replace(`/merchant/settings?trial_campaign=${trialCampaign}`);
+        }
+    }, [trialCampaign, myBusiness, router]);
 
     // ==========================================
     // FETCH REAL DATA
@@ -88,25 +107,24 @@ export default function MerchantDashboard() {
         const fetchDashboardData = async () => {
             try {
                 // 1. Fetch claim status to check if admin approval is pending
-                // If myBusiness exists, we can filter by it, otherwise just look for the user's pending claims
-                const claimQuery = supabase
+                // Always fetch the user's latest claim regardless of business linkage
+                const { data: claimData, error: claimQueryError } = await supabase
                     .from('business_claims')
-                    .select('status, claim_status')
-                    .eq('user_id', user.id);
-
-                if (myBusiness) {
-                    claimQuery.eq('business_id', myBusiness.id);
-                }
-
-                const { data: claimData } = await claimQuery
+                    .select('id, status, claim_status')
+                    .eq('user_id', user.id)
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .single();
+
+                if (claimQueryError && claimQueryError.code !== 'PGRST116') {
+                    console.error("Error fetching claim status:", claimQueryError);
+                }
 
                 if (claimData) {
                     const status = claimData.status || claimData.claim_status || 'pending';
                     if (status === 'pending' || status === 'missing_docs') {
                         setPendingClaim(status);
+                        setPendingClaimId(claimData.id); // store ID to update later
                     }
                 }
 
@@ -128,6 +146,17 @@ export default function MerchantDashboard() {
                         status: d.status === 'pending_admin_review' ? 'Pending Admin' : 'In Review',
                         time: getRelativeTime(d.created_at)
                     })));
+                }
+
+                // Fetch active features for this specific branch
+                const { data: allocations } = await supabase
+                    .from('feature_allocations')
+                    .select('feature_type')
+                    .eq('business_id', myBusiness.id)
+                    .eq('status', 'active');
+
+                if (allocations) {
+                    setActiveFeatures(allocations.map(a => a.feature_type));
                 }
 
                 // Fetch active campaigns
@@ -223,6 +252,74 @@ export default function MerchantDashboard() {
     // Derive voting reasons from actual log data
     const votingReasons = deriveVotingReasons(myBusiness?.logs || []);
 
+    const handleReuploadDocument = async (e) => {
+        e.preventDefault();
+        if (!selectedDoc) {
+            showToast("Please select a document.", "error");
+            return;
+        }
+
+        setIsUploadingDoc(true);
+        try {
+            // 1. Get secure upload URL
+            const uploadInit = await getPresignedUploadUrl({
+                folder: 'merchant_documents',
+                filename: selectedDoc.name,
+                contentType: selectedDoc.type || 'application/octet-stream'
+            });
+
+            if (!uploadInit?.success || !uploadInit.uploadUrl) {
+                throw new Error("Failed to initialize secure upload");
+            }
+
+            // 2. Upload file to R2
+            const response = await fetch(uploadInit.uploadUrl, {
+                method: 'PUT',
+                body: selectedDoc,
+                headers: {
+                    'Content-Type': selectedDoc.type || 'application/octet-stream'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to upload document to R2 storage");
+            }
+
+            // 3. Update the claim in the database
+            // Fallback to update by user_id if pendingClaimId is somehow missing
+            let dbQuery = supabase
+                .from('business_claims')
+                .update({
+                    status: 'pending',
+                    document_url: uploadInit.objectKey,
+                    file_size: selectedDoc.size,
+                    mime_type: selectedDoc.type || 'application/octet-stream'
+                });
+
+            if (pendingClaimId) {
+                dbQuery = dbQuery.eq('id', pendingClaimId);
+            } else {
+                dbQuery = dbQuery.eq('user_id', user.id).eq('status', 'missing_docs');
+            }
+
+            const { error: updateError } = await dbQuery;
+
+            if (updateError) {
+                throw new Error("Failed to update claim record. " + updateError.message);
+            }
+
+            // Success! Update local state
+            setPendingClaim('pending');
+            setSelectedDoc(null);
+            showToast("Document submitted successfully. Claim is back under review.");
+        } catch (error) {
+            console.error("Re-upload error:", error);
+            showToast(error.message || "Failed to submit document. Please try again.", "error");
+        } finally {
+            setIsUploadingDoc(false);
+        }
+    };
+
     // ==========================================
     // RENDER: PENDING APPROVAL STATE
     // ==========================================
@@ -238,7 +335,7 @@ export default function MerchantDashboard() {
                         ? 'Your submission is missing required documents or they were unreadable. Please check your email for details from the admin team on how to provide them.'
                         : 'Your business profile is currently being reviewed by our admin team. You will regain access to the platform once your profile meets our directory standards and is approved.'}
                 </p>
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl w-full max-w-md shadow-sm text-left">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl w-full max-w-md shadow-sm text-left mb-6">
                     <h3 className="font-bold mb-4 flex items-center gap-2"><Activity className="w-5 h-5 text-indigo-500" /> Account Status</h3>
                     <div className="space-y-4">
                         <div className="flex justify-between items-center text-sm">
@@ -253,6 +350,71 @@ export default function MerchantDashboard() {
                         </div>
                     </div>
                 </div>
+
+                {/* Upload Form for Missing Docs */}
+                {pendingClaim === 'missing_docs' && (
+                    <form onSubmit={handleReuploadDocument} className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 p-6 rounded-2xl w-full max-w-md shadow-sm text-left animate-in slide-in-from-bottom-4">
+                        <h3 className="font-bold mb-3 flex items-center gap-2 text-red-800 dark:text-red-400">
+                            <UploadCloud className="w-5 h-5" /> Submit New Document
+                        </h3>
+                        <p className="text-sm text-red-600/80 dark:text-red-400/80 mb-4">
+                            Please upload a clear, legible copy of your commercial license. Supported formats: JPG, PNG, PDF. Max size: 10MB.
+                        </p>
+
+                        <div className="mb-4">
+                            <div className="flex items-center justify-center w-full">
+                                <label htmlFor="reupload-file" className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${selectedDoc ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' : 'border-red-300 dark:border-red-700 bg-white dark:bg-slate-800 hover:bg-red-50/50 dark:hover:bg-red-900/10'}`}>
+                                    <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
+                                        {selectedDoc ? (
+                                            <>
+                                                <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-indigo-600 mb-2">
+                                                    <FileIcon className="w-5 h-5" />
+                                                </div>
+                                                <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 line-clamp-1">{selectedDoc.name}</p>
+                                                <p className="text-xs text-indigo-500/80 mt-1">{(selectedDoc.size / (1024 * 1024)).toFixed(2)} MB</p>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <UploadCloud className="w-8 h-8 mb-2 text-red-400" />
+                                                <p className="mb-1 text-sm text-slate-500 dark:text-slate-400"><span className="font-semibold text-indigo-600 dark:text-indigo-400">Click to upload</span> or drag and drop</p>
+                                            </>
+                                        )}
+                                    </div>
+                                    <input
+                                        id="reupload-file"
+                                        type="file"
+                                        className="hidden"
+                                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                                        onChange={(e) => {
+                                            if (e.target.files && e.target.files[0]) {
+                                                if (e.target.files[0].size > 10 * 1024 * 1024) {
+                                                    showToast("File is too large. Maximum size is 10MB.", "error");
+                                                    return;
+                                                }
+                                                setSelectedDoc(e.target.files[0]);
+                                            }
+                                        }}
+                                    />
+                                </label>
+                            </div>
+                        </div>
+
+                        <Button
+                            type="submit"
+                            disabled={!selectedDoc || isUploadingDoc}
+                            className="w-full bg-red-600 hover:bg-red-700 text-white shadow-sm h-11"
+                        >
+                            {isUploadingDoc ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Uploading & Submitting...
+                                </>
+                            ) : (
+                                'Submit Document for Review'
+                            )}
+                        </Button>
+                    </form>
+                )}
             </div>
         );
     }
@@ -358,7 +520,7 @@ export default function MerchantDashboard() {
                 <p className="text-xl text-slate-500 dark:text-slate-400 max-w-lg mx-auto mb-10">
                     You don't have a business on the platform yet. Claim or register your business to unlock the full merchant dashboard.
                 </p>
-                <Link href="/merchant/onboarding">
+                <Link href={trialCampaign ? `/merchant/onboarding?trial_campaign=${trialCampaign}` : '/merchant/onboarding'}>
                     <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white rounded-full h-14 px-10 text-lg shadow-lg shadow-blue-600/20 font-bold">
                         Start Your Business Claim Process <ArrowUpRight className="w-5 h-5 ml-2" />
                     </Button>
@@ -379,10 +541,15 @@ export default function MerchantDashboard() {
             {/* 1. Welcome & Search Bar */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <div className="w-full md:w-1/3">
-                    <h1 className="text-2xl font-bold text-slate-800">
-                        Good Morning, <span className="text-blue-600">{myBusiness ? myBusiness.name : 'Merchant'}</span>
+                    <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        Good Morning, <span className="text-blue-600 truncate max-w-[200px]">{myBusiness ? myBusiness.name : 'Merchant'}</span>
                     </h1>
-                    <p className="text-slate-500 text-sm mt-1">Here's what's happening with your store today.</p>
+                    <div className="flex items-center gap-2 mt-2">
+                        {activeFeatures.includes('shield') && (
+                            <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0 shadow-sm"><ShieldCheck className="w-3 h-3 mr-1" /> Shield Active</Badge>
+                        )}
+                        <p className="text-slate-500 text-sm">Here's what's happening today.</p>
+                    </div>
                 </div>
 
                 <div className="w-full md:w-1/3 relative">

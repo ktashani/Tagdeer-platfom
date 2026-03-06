@@ -44,7 +44,7 @@ export async function middleware(request) {
         // Exclude system paths, static files, and api from auth check
         if (!pathname.startsWith('/_next') && !pathname.includes('api')) {
             const authCookie = request.cookies.get('admin_auth');
-            const isAuthenticated = authCookie && authCookie.value === 'true';
+            const isAuthenticated = authCookie && authCookie.value && authCookie.value !== 'true';
 
             // Redirect to login if not authenticated and trying to access protected route
             if (!isAuthenticated && pathname !== '/login') {

@@ -26,10 +26,39 @@ export default function UsersPage() {
     const [editForm, setEditForm] = useState({ name: '', email: '', phone: '' })
     const [showBanCascadeWarning, setShowBanCascadeWarning] = useState(false)
     const [pendingStatus, setPendingStatus] = useState(null)
+    const [isChangingRole, setIsChangingRole] = useState(false)
 
-    // Fetch all users
+    // Track active admin from the cookie API
+    const [activeAdmin, setActiveAdmin] = useState(null)
+
+    // Check if current user is super admin
+    const { user } = useTagdeer() // Fallback
+    const currentUserProfile = activeAdmin || users.find(u => u.id === user?.id)
+    const currentRole = currentUserProfile?.role
+    const isSuperAdmin = currentRole === 'super_admin'
+    const isAdmin = currentRole === 'admin'
+    const ADMIN_ROLES = ['super_admin', 'admin', 'assistant_admin', 'support_agent']
+    const canManageRoles = isSuperAdmin || isAdmin
+
+    // Fetch all users and active admin identity
     useEffect(() => {
         if (!supabase) return;
+
+        const checkActiveAdmin = async () => {
+            try {
+                const res = await fetch('/api/admin/check-auth', { credentials: 'include' })
+                if (res.ok) {
+                    const data = await res.json()
+                    if (data.authenticated && data.user) {
+                        setActiveAdmin(data.user)
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch active admin", err)
+            }
+        }
+        checkActiveAdmin()
+
         const fetchUsers = async () => {
             setIsLoading(true)
             const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
@@ -254,6 +283,27 @@ export default function UsersPage() {
         setIsSaving(false);
     }
 
+    const handleRoleChange = async (newRole) => {
+        if (!supabase || !selectedUser) return;
+        if (!confirm(`Are you sure you want to change ${selectedUser.name}'s role to "${newRole.replace('_', ' ')}"?`)) return;
+
+        setIsChangingRole(true);
+        const { data, error } = await supabase.rpc('admin_update_user_role', {
+            p_user_id: selectedUser.id,
+            p_new_role: newRole
+        });
+
+        if (error || !data?.success) {
+            showToast(error?.message || data?.error || "Failed to update role", "error");
+        } else {
+            showToast(`Role updated to ${newRole.replace('_', ' ')}`);
+            const updated = { ...selectedUser, role: newRole };
+            setSelectedUser(updated);
+            setUsers(users.map(u => u.id === selectedUser.id ? { ...u, role: newRole } : u));
+        }
+        setIsChangingRole(false);
+    }
+
     const startEditing = () => {
         setEditForm({ name: selectedUser.name, email: selectedUser.email, phone: selectedUser.phone });
         setIsEditingInfo(true);
@@ -263,8 +313,14 @@ export default function UsersPage() {
         switch (role) {
             case 'merchant':
                 return <span className="bg-blue-500/10 text-blue-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-blue-500/20">Merchant</span>
+            case 'super_admin':
+                return <span className="bg-rose-500/10 text-rose-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-rose-500/20">Super Admin</span>
             case 'admin':
                 return <span className="bg-purple-500/10 text-purple-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-purple-500/20">Admin</span>
+            case 'assistant_admin':
+                return <span className="bg-indigo-500/10 text-indigo-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-indigo-500/20">Asst Admin</span>
+            case 'support_agent':
+                return <span className="bg-cyan-500/10 text-cyan-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-cyan-500/20">Support</span>
             default:
                 return <span className="bg-slate-500/10 text-slate-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold border border-slate-500/20">Consumer</span>
         }
@@ -642,6 +698,37 @@ export default function UsersPage() {
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Role Management - Admins & Super Admins Only */}
+                            {canManageRoles && selectedUser.id !== user?.id && (
+                                <div className="mb-8">
+                                    <h3 className="font-semibold text-white mb-4 border-b border-slate-700 pb-2 flex items-center gap-2">
+                                        <Users className="w-4 h-4 text-purple-400" /> Role Management
+                                    </h3>
+                                    <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 shadow-inner">
+                                        <label className="block text-xs font-medium text-slate-400 mb-2">Assign Platform Role</label>
+                                        <div className="flex gap-3">
+                                            <select
+                                                value={selectedUser.role}
+                                                onChange={(e) => handleRoleChange(e.target.value)}
+                                                disabled={isChangingRole}
+                                                className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-purple-500 disabled:opacity-50 appearance-none"
+                                            >
+                                                <option value="user">Consumer (User)</option>
+                                                <option value="merchant">Merchant</option>
+                                                <option value="support_agent">Support Agent</option>
+                                                <option value="assistant_admin">Assistant Admin</option>
+                                                <option value="admin">Admin</option>
+                                                {isSuperAdmin && <option value="super_admin">Super Admin</option>}
+                                            </select>
+                                        </div>
+                                        <p className="text-xs text-slate-500 mt-2 flex items-center gap-1.5">
+                                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                                            Admin-level roles immediately grant access to the Admin Portal.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Merchant Businesses Section */}
                             {selectedUser.role === 'merchant' && (

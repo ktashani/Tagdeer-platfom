@@ -13,8 +13,8 @@ function DiscoverContent() {
         categories = [], regions = []
     } = useTagdeer();
 
-    const displayCategories = ["All", ...categories];
-    const displayRegions = ["All", ...regions];
+    const displayCategories = ["All", ...categories.map(c => typeof c === 'string' ? c : c.name)];
+    const displayRegions = ["All", ...regions.map(r => typeof r === 'string' ? r : r.name)];
 
     const searchParams = useSearchParams();
 

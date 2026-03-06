@@ -23,20 +23,30 @@ export default function MerchantLogin() {
     const searchParams = useSearchParams();
     const {
         loginWithEmail, verifyEmailOtp, loginWithPassword,
-        setMerchantPassword, user, loading, logout
+        setMerchantPassword, user, loading, logout, supabase, setUser
     } = useTagdeer();
 
     // Detect if user was redirected here because they need a merchant account
     const merchantRequired = searchParams.get('reason') === 'merchant_required';
+    // Capture any trial campaign parameter to persist it through the onboarding flow
+    const trialCampaign = searchParams.get('trial_campaign');
+
+    const navigateForward = (path) => {
+        if (trialCampaign) {
+            router.push(`${path}?trial_campaign=${trialCampaign}`);
+        } else {
+            router.push(path);
+        }
+    };
 
     // Auto-redirect if already logged in as merchant (only merchant — not admin or consumer)
     useEffect(() => {
         if (!loading && user && user.role === 'merchant') {
             // If they just verified via OTP and don't have a password, show set-password prompt
             if (step === 'set-password') return;
-            router.push('/merchant/dashboard');
+            navigateForward('/merchant/dashboard');
         }
-    }, [user, loading, router, step]);
+    }, [user, loading, router, step, trialCampaign]);
 
     /**
      * Step 1: Email submit → check if merchant has a password set
@@ -55,21 +65,27 @@ export default function MerchantLogin() {
 
         setIsCheckingPassword(true);
         try {
-            // Check if this email has a password set
+            // Check if this email has a password set AND if user exists
             const res = await fetch('/api/merchant/check-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: email.trim().toLowerCase() }),
             });
-            const { hasPassword } = await res.json();
+            const { hasPassword, userExists } = await res.json();
             setHasExistingPassword(hasPassword);
 
             if (hasPassword) {
-                // Has password → go straight to password step
+                // Has password → go to password step
                 setStep('password');
             } else {
-                // No password detected → still show password step but also offer magic link
-                setStep('password');
+                // New user OR existing user without password → auto-send OTP
+                try {
+                    await loginWithEmail(email, 'merchant', trialCampaign);
+                    setStep('otp');
+                } catch (otpErr) {
+                    // If OTP fails (e.g. rate limit), fall back to password step
+                    toast.error("Could not send verification code. Please try again.");
+                }
             }
         } catch (err) {
             // If check fails, still go to password step (user can try or request magic link)
@@ -92,7 +108,7 @@ export default function MerchantLogin() {
         setIsLoading(true);
         try {
             await loginWithPassword(email, password);
-            router.push('/merchant/dashboard');
+            navigateForward('/merchant/dashboard');
         } catch (err) {
             // Error handled by context toast
         } finally {
@@ -106,7 +122,7 @@ export default function MerchantLogin() {
     const handleForgotPassword = async () => {
         setIsLoading(true);
         try {
-            await loginWithEmail(email, 'merchant');
+            await loginWithEmail(email, 'merchant', trialCampaign);
             setStep('otp');
             toast.info("Verification code sent. After verifying, you can reset your password.");
         } catch (err) {
@@ -152,6 +168,27 @@ export default function MerchantLogin() {
         setIsLoading(true);
         try {
             await verifyEmailOtp(email, code);
+            // Ensure the user gets merchant role after OTP verification
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.access_token) {
+                    await fetch('/api/merchant/init-role', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${session.access_token}` }
+                    });
+                    // Re-sync user profile to pick up the new role
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('role')
+                        .eq('id', session.user.id)
+                        .single();
+                    if (profile) {
+                        setUser(prev => prev ? { ...prev, role: profile.role } : prev);
+                    }
+                }
+            } catch (roleErr) {
+                console.error('Failed to init merchant role after OTP:', roleErr);
+            }
             // After OTP verification, show set-password prompt
             setStep('set-password');
         } catch (err) {
@@ -166,11 +203,11 @@ export default function MerchantLogin() {
      */
     const handleSetPassword = async (newPassword) => {
         await setMerchantPassword(newPassword);
-        router.push('/merchant/dashboard');
+        navigateForward('/merchant/dashboard');
     };
 
     const handleSkipPassword = () => {
-        router.push('/merchant/dashboard');
+        navigateForward('/merchant/dashboard');
     };
 
     // --- Step 3: Set Password Prompt (full-screen component) ---

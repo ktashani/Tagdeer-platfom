@@ -13,55 +13,49 @@ export default function RequestsPage() {
     const [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
-        if (!supabase || businesses.length === 0) {
-            if (!supabase) setIsLoading(false)
+        if (!supabase) {
+            setIsLoading(false)
             return
         }
 
         const loadClaims = async () => {
-            // Fetch claims without embedded join (no direct FK from business_claims to profiles)
-            const { data: claims, error } = await supabase
-                .from('business_claims')
-                .select('*')
-
-            if (error) {
-                console.error('Error fetching claims:', error)
-                setIsLoading(false)
-                return
-            }
-
-            if (claims && claims.length > 0) {
-                // Fetch profiles separately by user_ids
-                const userIds = [...new Set(claims.map(c => c.user_id).filter(Boolean))]
-                let profilesMap = {}
-
-                if (userIds.length > 0) {
-                    const { data: profiles } = await supabase
-                        .from('profiles')
-                        .select('id, phone, email, full_name')
-                        .in('id', userIds)
-
-                    if (profiles) {
-                        profilesMap = Object.fromEntries(profiles.map(p => [p.id, p]))
-                    }
+            try {
+                // Use the admin API route which bypasses RLS with the service role key
+                // (The admin portal uses cookie-based auth, so auth.uid() is NULL and RLS blocks direct Supabase queries)
+                const resp = await fetch('/api/admin/claims');
+                if (!resp.ok) {
+                    console.error('Error fetching claims:', resp.status);
+                    setIsLoading(false);
+                    return;
                 }
 
-                const mapped = claims.map(c => {
-                    const business = businesses.find(b => b.id === c.business_id)
-                    const profile = profilesMap[c.user_id]
-                    return {
-                        id: c.id,
-                        businessName: business?.name || 'Unknown Business',
-                        requester: profile?.full_name || 'Anonymous',
-                        phone: profile?.phone || 'No Phone',
-                        email: profile?.email || 'No Email',
-                        status: c.status || c.claim_status || 'pending',
-                        date: new Date(c.created_at).toLocaleDateString(),
-                        licenseUrl: '/placeholder-license.jpg',
-                        notes: (c.status === 'missing_docs' || c.claim_status === 'missing_docs') ? 'License is unreadable' : ''
-                    }
-                })
-                setRequests(mapped)
+                const { claims, profiles: profilesList } = await resp.json();
+
+                if (claims && claims.length > 0) {
+                    const profilesMap = Object.fromEntries(
+                        (profilesList || []).map(p => [p.id, p])
+                    );
+
+                    const mapped = claims.map(c => {
+                        const business = businesses.find(b => b.id === c.business_id)
+                        const profile = profilesMap[c.user_id]
+                        return {
+                            id: c.id,
+                            businessName: business?.name || c.business_name || 'Unknown Business',
+                            requester: profile?.full_name || 'Anonymous',
+                            phone: profile?.phone || 'No Phone',
+                            email: profile?.email || 'No Email',
+                            status: c.status || c.claim_status || 'pending',
+                            date: new Date(c.created_at).toLocaleDateString(),
+                            documentUrl: c.document_url || null,
+                            mimeType: c.mime_type || '',
+                            notes: (c.status === 'missing_docs' || c.claim_status === 'missing_docs') ? 'License is unreadable' : ''
+                        }
+                    })
+                    setRequests(mapped)
+                }
+            } catch (err) {
+                console.error('Error loading claims:', err);
             }
             setIsLoading(false)
         }
@@ -78,35 +72,27 @@ export default function RequestsPage() {
     const approved = filteredRequests.filter(r => r.status === 'approved')
 
     const updateStatus = async (id, newStatus) => {
-        if (!supabase) return;
-
         try {
-            const { error } = await supabase.rpc('admin_resolve_claim', {
-                p_claim_id: id,
-                p_status: newStatus
-            })
+            const res = await fetch('/api/admin/claims/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ claimId: id, status: newStatus })
+            });
 
-            if (error) {
-                // If RPC fails because it's missing on remote, fallback to direct update
-                const { error: directErr } = await supabase
-                    .from('business_claims')
-                    .update({ status: newStatus })
-                    .eq('id', id)
-
-                if (directErr) {
-                    console.error("Direct update failed:", directErr)
-                    showToast("Failed to update status. Migrations needed.")
-                    return
-                }
+            if (!res.ok) {
+                const data = await res.json();
+                console.error("Update failed:", data.error);
+                showToast(data.error || "Failed to update status. Migrations needed?", "error");
+                return;
             }
 
-            setRequests(requests.map(r => r.id === id ? { ...r, status: newStatus } : r))
-            if (selectedRequest?.id === id) setSelectedRequest(null)
-            showToast(`Claim marked as ${newStatus}`)
+            setRequests(requests.map(r => r.id === id ? { ...r, status: newStatus } : r));
+            if (selectedRequest?.id === id) setSelectedRequest(null);
+            showToast(`Claim marked as ${newStatus}`);
 
         } catch (err) {
-            console.error(err)
-            showToast("An unexpected error occurred.")
+            console.error(err);
+            showToast("An unexpected error occurred.", "error");
         }
     }
 
@@ -206,6 +192,7 @@ export default function RequestsPage() {
                                 <h2 className="text-2xl font-bold text-white mb-2">{selectedRequest.businessName}</h2>
                                 <div className="flex flex-col gap-1 text-sm text-slate-400">
                                     <p>Requested by: <span className="text-slate-300">{selectedRequest.requester}</span></p>
+                                    <p>Email: <span className="text-slate-300">{selectedRequest.email}</span></p>
                                     <p>Phone: <span className="text-slate-300">{selectedRequest.phone}</span></p>
                                     <p>Submitted: <span className="text-slate-300">{selectedRequest.date}</span></p>
                                 </div>
@@ -215,16 +202,37 @@ export default function RequestsPage() {
                                 <h4 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
                                     <FileImage className="w-4 h-4" /> Commercial License
                                 </h4>
-                                <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 aspect-video flex items-center justify-center relative overflow-hidden group">
-                                    {/* Mock License Document */}
-                                    <div className="absolute inset-0 bg-slate-800 flex flex-col items-center justify-center opacity-50 group-hover:opacity-100 transition-opacity">
-                                        <FileImage className="w-12 h-12 text-slate-600 mb-2" />
-                                        <span className="text-sm text-slate-500">Commercial_License_Scan.pdf</span>
-                                        <button className="mt-4 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-xs font-medium text-white transition-colors">
-                                            View Full Screen
-                                        </button>
+                                {selectedRequest.documentUrl ? (
+                                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 overflow-hidden">
+                                        {selectedRequest.mimeType?.startsWith('image/') || selectedRequest.documentUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                            <a href={selectedRequest.documentUrl} target="_blank" rel="noopener noreferrer">
+                                                <img
+                                                    src={selectedRequest.documentUrl}
+                                                    alt="Commercial License"
+                                                    className="w-full rounded-md object-contain max-h-[400px] hover:opacity-90 transition-opacity cursor-zoom-in"
+                                                />
+                                            </a>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center py-8">
+                                                <FileImage className="w-12 h-12 text-slate-500 mb-3" />
+                                                <p className="text-sm text-slate-400 mb-3">Document uploaded</p>
+                                                <a
+                                                    href={selectedRequest.documentUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-md text-xs font-medium text-white transition-colors"
+                                                >
+                                                    View / Download Document
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-6 flex flex-col items-center justify-center text-center">
+                                        <FileImage className="w-12 h-12 text-slate-600 mb-2" />
+                                        <span className="text-sm text-slate-500">No document uploaded</span>
+                                    </div>
+                                )}
                             </div>
 
                             {selectedRequest.status === 'missing_docs' && (

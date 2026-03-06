@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSupabase } from './useSupabase';
 
 export function usePlatformConfig() {
-    const supabase = useSupabase();
+    const { supabase } = useSupabase();
     const [config, setConfig] = useState({
         categories: [],
         regions: [],

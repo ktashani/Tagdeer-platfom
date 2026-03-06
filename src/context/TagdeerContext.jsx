@@ -358,18 +358,23 @@ export function TagdeerProvider({ children }) {
 
     };
 
-    const loginWithEmail = async (email, redirectFrom) => {
+    const loginWithEmail = async (email, redirectFrom, trialCampaign) => {
         if (!supabase) {
             showToast(lang === 'ar' ? 'فشل الاتصال بقاعدة البيانات' : 'Database connection failed');
             return;
         }
 
         try {
-            const redirectUrl = window.location.origin + '/auth/callback' + (redirectFrom ? `?from=${redirectFrom}` : '');
+            let callbackUrl = window.location.origin + '/auth/callback';
+            const params = new URLSearchParams();
+            if (redirectFrom) params.set('from', redirectFrom);
+            if (trialCampaign) params.set('trial_campaign', trialCampaign);
+            if (params.toString()) callbackUrl += '?' + params.toString();
+
             const { error } = await supabase.auth.signInWithOtp({
                 email,
                 options: {
-                    emailRedirectTo: redirectUrl,
+                    emailRedirectTo: callbackUrl,
                 },
             });
 
@@ -480,7 +485,8 @@ export function TagdeerProvider({ children }) {
             if (!supabase) return;
             try {
                 // If user is an admin or mock admin bypass, fetch everything. Otherwise only fetch published ones.
-                const isAdmin = user?.role === 'admin' || user?.userId === 'ADMIN-MOCK' || user?.isDevBypass;
+                const ADMIN_ROLES = ['super_admin', 'admin', 'assistant_admin', 'support_agent'];
+                const isAdmin = ADMIN_ROLES.includes(user?.role) || user?.userId === 'ADMIN-MOCK' || user?.isDevBypass;
 
                 let query = supabase.from('businesses').select('*, logs(*)');
 
@@ -671,7 +677,8 @@ export function TagdeerProvider({ children }) {
             voteReason, setVoteReason,
             showVerifySoonModal, setShowVerifySoonModal,
             showPreRegModal, setShowPreRegModal,
-            user, setUser, loading, showLoginModal, setShowLoginModal, login, loginWithOtp, loginWithEmail, verifyEmailOtp, loginWithPassword, setMerchantPassword, logout
+            user, setUser, loading, showLoginModal, setShowLoginModal, login, loginWithOtp, loginWithEmail, verifyEmailOtp, loginWithPassword, setMerchantPassword, logout,
+            ...platformConfig
         }}>
             {children}
         </TagdeerContext.Provider>

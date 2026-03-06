@@ -27,10 +27,32 @@ export default function MerchantGuard({ children }) {
                 return;
             }
 
-            // Only allow merchant role (and dev bypass users)
+            // If user has a non-merchant role, re-check the DB in case init-role
+            // just ran but React state hasn't caught up yet (race condition from callback)
             if (user?.role && user.role !== 'merchant' && !user?.isDevBypass) {
-                // Admin and consumer accounts must use their own portals
-                router.push('/merchant/login?reason=merchant_required')
+                if (!supabase) {
+                    router.push('/merchant/login?reason=merchant_required')
+                    return;
+                }
+                // Fresh DB check to see if role was updated by init-role
+                const recheckRole = async () => {
+                    try {
+                        const { data: profile } = await supabase
+                            .from('profiles')
+                            .select('role')
+                            .eq('id', user.id)
+                            .single();
+                        if (profile?.role === 'merchant') {
+                            // Role was updated — allow through
+                            setIsAuthorized(true)
+                        } else {
+                            router.push('/merchant/login?reason=merchant_required')
+                        }
+                    } catch {
+                        router.push('/merchant/login?reason=merchant_required')
+                    }
+                }
+                recheckRole()
                 return;
             }
 
@@ -52,7 +74,7 @@ export default function MerchantGuard({ children }) {
                         .from('subscriptions')
                         .select('tier')
                         .eq('profile_id', user.id)
-                        .eq('status', 'active')
+                        .eq('status', 'Active')
                         .maybeSingle();
 
                     setSubTier(data?.tier || 'Free');
@@ -64,10 +86,13 @@ export default function MerchantGuard({ children }) {
                 }
             }
             checkSub()
+        } else if (isAuthorized && !user) {
+            // Login/onboarding page with no user — skip subscription check
+            setCheckingSub(false)
         } else if (!isAuthorized && !loading) {
             setCheckingSub(false)
         }
-    }, [isAuthorized, user, supabase])
+    }, [isAuthorized, user, supabase, loading])
 
     if (loading || checkingSub || !isAuthorized) {
         return (

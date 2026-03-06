@@ -8,18 +8,24 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Crown, Building, Trash2, CheckCircle2, ArrowUpRight, Loader2 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Crown, Building, Trash2, CheckCircle2, ArrowUpRight, Loader2, Sparkles } from "lucide-react";
 import { useTagdeer } from '@/context/TagdeerContext';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function MerchantSettings() {
-    const { user, businesses, supabase, showToast, setUser } = useTagdeer();
+    const { user, businesses, supabase, showToast, setUser, tierPricing = [] } = useTagdeer();
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const trialCampaignId = searchParams.get('trial_campaign');
 
     // Dynamic Business Context Search
-    const myBusiness = businesses?.find(b => b.claimed_by === user?.id) || businesses?.[0] || null;
+    const myBusiness = businesses?.find(b => b.owner_id === user?.id) || null;
 
     // Account Level
     const [accountTier, setAccountTier] = useState('Free'); // 'Free', 'Pro', 'Enterprise'
     const [subscription, setSubscription] = useState(null);
+    const [quotaUsage, setQuotaUsage] = useState({ locationsUsed: 0, shieldsAssigned: 0 });
     const [personalInfo, setPersonalInfo] = useState({
         name: '',
         email: '',
@@ -34,18 +40,42 @@ export default function MerchantSettings() {
                 email: user.email || user.profile_email || '',
                 phone: user.phone || ''
             });
-            // Fetch actual subscription
+            // Fetch actual subscription and quota usage
             const fetchSub = async () => {
+                // Fetch subscription by Merchant Profile
                 const { data } = await supabase
                     .from('subscriptions')
                     .select('*')
                     .eq('profile_id', user.id)
-                    .eq('status', 'active')
+                    .eq('status', 'Active')
                     .single();
+
+                // Calculate Quota Usage
+                const [bizCountRes, shieldCountRes] = await Promise.all([
+                    supabase.from('businesses').select('id', { count: 'exact', head: true }).eq('claimed_by', user.id),
+                    supabase.from('feature_allocations').select('id', { count: 'exact', head: true }).eq('profile_id', user.id).eq('feature_type', 'shield').eq('status', 'active')
+                ]);
+
+                setQuotaUsage({
+                    locationsUsed: bizCountRes.count || 0,
+                    shieldsAssigned: shieldCountRes.count || 0
+                });
 
                 if (data && data.tier) {
                     setSubscription(data);
-                    setAccountTier(data.tier);
+
+                    // Client-side expiry fallback
+                    const expiresAt = new Date(data.expires_at)
+                    if (expiresAt < new Date() && data.status === 'Active') {
+                        await supabase
+                            .from('subscriptions')
+                            .update({ status: 'Expired' })
+                            .eq('id', data.id)
+                        setAccountTier('Free')
+                        data.status = 'Expired' // Update local ref
+                    } else {
+                        setAccountTier(data.tier);
+                    }
                 } else {
                     setAccountTier('Free');
                 }
@@ -81,28 +111,135 @@ export default function MerchantSettings() {
         }
     };
 
+    // --- Trial Campaign Logic ---
+    const [campaignData, setCampaignData] = useState(null);
+    const [isClaiming, setIsClaiming] = useState(false);
+
+    useEffect(() => {
+        if (trialCampaignId && supabase && myBusiness && accountTier === 'Free') {
+            const fetchCampaign = async () => {
+                const { data, error } = await supabase
+                    .from('trial_campaigns')
+                    .select('*')
+                    .eq('id', trialCampaignId)
+                    .single();
+
+                if (!error && data && data.is_active && data.current_redemptions < data.max_redemptions) {
+                    setCampaignData(data);
+                }
+            };
+            fetchCampaign();
+        }
+    }, [trialCampaignId, supabase, myBusiness, accountTier]);
+
+    const handleClaimTrial = async () => {
+        if (!campaignData || !myBusiness || !user) return;
+        setIsClaiming(true);
+        try {
+            const res = await fetch('/api/merchant/trial/claim', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    businessId: myBusiness.id,
+                    campaignId: campaignData.id,
+                    userId: user.id
+                })
+            });
+            const data = await res.json();
+
+            // The API returns { success, error, message }
+            if (!res.ok || (data && !data.success)) {
+                const errorMessage = data?.error || 'Failed to claim trial';
+
+                if (errorMessage.includes('already claimed') || errorMessage.includes('already redeemed')) {
+                    showToast("You have already claimed this trial campaign.", "error");
+                } else if (errorMessage.includes('not active') || errorMessage.includes('limit') || errorMessage.includes('expired')) {
+                    showToast("This campaign has expired or reached its limit.", "error");
+                } else if (errorMessage.includes('paid subscriptions')) {
+                    showToast("You already have an active paid subscription.", "error");
+                } else {
+                    showToast(errorMessage, "error");
+                }
+            } else {
+                showToast("Trial claimed successfully! Welcome to Premium!");
+                // Remove the URL parameter cleanly
+                router.replace('/merchant/settings');
+                // Force a page reload to resync context and subscriptions
+                setTimeout(() => window.location.reload(), 1500);
+            }
+        } catch (err) {
+            console.error(err);
+            showToast("Failed to claim trial.", "error");
+        } finally {
+            setIsClaiming(false);
+        }
+    };
+    // ----------------------------
+
     // Business Level (Contextual)
     const [businessShield, setBusinessShield] = useState(0); // 0 = None, 1 = Trust, 2 = Fatora
     const [storefrontEnabled, setStorefrontEnabled] = useState(true);
 
     useEffect(() => {
-        if (myBusiness) {
-            setBusinessShield(myBusiness.is_shielded ? 1 : 0); // Simplified for now since we just have a boolean in db
+        if (myBusiness && user) {
+            const fetchShieldState = async () => {
+                const { data } = await supabase
+                    .from('feature_allocations')
+                    .select('id')
+                    .eq('business_id', myBusiness.id)
+                    .eq('profile_id', user.id)
+                    .eq('feature_type', 'shield')
+                    .eq('status', 'active')
+                    .maybeSingle();
+
+                setBusinessShield(data ? 1 : 0);
+            };
+            fetchShieldState();
         }
-    }, [myBusiness]);
+    }, [myBusiness, user]);
 
     const handleShieldToggle = async (level) => {
-        if (!myBusiness || !supabase) return;
+        if (!myBusiness || !supabase || !user) return;
         try {
-            const newStatus = level > 0;
-            const { error } = await supabase
-                .from('businesses')
-                .update({ is_shielded: newStatus })
-                .eq('id', myBusiness.id);
+            const activating = level > 0;
 
-            if (error) throw error;
-            setBusinessShield(level);
-            if (showToast) showToast(`Shield level updated successfully!`);
+            if (activating) {
+                // Check quota
+                const maxShields = subscription?.quotas?.max_shields || 0;
+                if (quotaUsage.shieldsAssigned >= maxShields) {
+                    if (showToast) showToast(`You have reached your allocation limit of ${maxShields} Shields. Upgrade your Tier.`, 'error');
+                    return;
+                }
+
+                const { error } = await supabase
+                    .from('feature_allocations')
+                    .insert({
+                        profile_id: user.id,
+                        business_id: myBusiness.id,
+                        feature_type: 'shield',
+                        status: 'active'
+                    });
+                if (error) {
+                    if (error.code === '23505') {
+                        // Already exists, just make sure it's active
+                        await supabase.from('feature_allocations').update({ status: 'active' }).eq('business_id', myBusiness.id).eq('profile_id', user.id).eq('feature_type', 'shield');
+                    } else throw error;
+                }
+                setQuotaUsage(prev => ({ ...prev, shieldsAssigned: prev.shieldsAssigned + 1 }));
+            } else {
+                // Revoke
+                const { error } = await supabase
+                    .from('feature_allocations')
+                    .update({ status: 'revoked' })
+                    .eq('profile_id', user.id)
+                    .eq('business_id', myBusiness.id)
+                    .eq('feature_type', 'shield');
+                if (error) throw error;
+                setQuotaUsage(prev => ({ ...prev, shieldsAssigned: Math.max(0, prev.shieldsAssigned - 1) }));
+            }
+
+            setBusinessShield(level ? 1 : 0);
+            if (showToast) showToast(activating ? 'Trust Shield Allocated to this branch!' : 'Trust Shield Revoked.');
         } catch (err) {
             console.error(err);
             if (showToast) showToast('Failed to update shield settings.', 'error');
@@ -135,7 +272,7 @@ export default function MerchantSettings() {
             try {
                 const { data, error } = await supabase
                     .from('business_team_members')
-                    .select('id, role, created_at, profile_id, profiles(full_name, email, phone)')
+                    .select('id, role, created_at, profile_id, profiles:profiles!business_team_members_profile_id_fkey(full_name, email, phone)')
                     .eq('business_id', myBusiness.id);
 
                 if (error) throw error;
@@ -301,6 +438,35 @@ export default function MerchantSettings() {
                         ========================================== */}
                         <TabsContent value="account" className="space-y-6 m-0 animate-in fade-in duration-300 outline-none">
 
+                            {/* Trial Campaign Banner */}
+                            {campaignData && accountTier === 'Free' && (
+                                <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-1 shadow-xl animate-in zoom-in-95 duration-500">
+                                    <div className="bg-white dark:bg-slate-900 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+                                        <div className="relative z-10 flex-1">
+                                            <div className="flex items-center gap-2 text-indigo-500 font-bold mb-2">
+                                                <Sparkles className="w-5 h-5" /> Special Invitation
+                                            </div>
+                                            <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">
+                                                Claim your {campaignData.trial_months}-Month {campaignData.tier} Trial
+                                            </h2>
+                                            <p className="text-slate-500 dark:text-slate-400">
+                                                You've been invited via <strong>{campaignData.name}</strong> to experience the Tagdeer Platform risk-free. Hurry, only {campaignData.max_redemptions - campaignData.current_redemptions} spots left!
+                                            </p>
+                                        </div>
+                                        <Button
+                                            onClick={handleClaimTrial}
+                                            disabled={isClaiming}
+                                            size="lg"
+                                            className="w-full md:w-auto shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-14 px-8 rounded-xl shadow-lg shadow-indigo-500/30"
+                                        >
+                                            {isClaiming ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
+                                            Claim {campaignData.tier} Trial Now
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Tier Subscription Card */}
                             <Card className={`overflow-hidden transition-colors ${accountTier === 'Enterprise' ? 'border-purple-500/50 bg-purple-50/30 dark:bg-purple-950/20' : ''}`}>
                                 <div className={`h-1.5 w-full ${accountTier === 'Free' ? 'bg-slate-200 dark:bg-slate-800' : accountTier === 'Pro' ? 'bg-blue-500' : 'bg-gradient-to-r from-purple-500 to-indigo-500'}`} />
@@ -316,65 +482,95 @@ export default function MerchantSettings() {
                                     </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {/* FREE TIER */}
-                                        <div className={`p-4 rounded-xl border-2 transition-all ${accountTier === 'Free' ? 'border-slate-400 bg-slate-50 dark:bg-slate-900/50' : 'border-slate-200 dark:border-slate-800 opacity-60'}`}>
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div>
-                                                    <h3 className="font-bold">Free</h3>
-                                                    <p className="text-sm font-semibold text-slate-500">0 LYD / month</p>
+                                    <div className={`grid grid-cols-1 ${tierPricing.length === 1 ? 'max-w-md' : tierPricing.length === 2 ? 'max-w-2xl' : 'grid-cols-1 lg:grid-cols-3'} gap-4`}>
+                                        {tierPricing.map((tier) => {
+                                            const isActiveTier = accountTier?.toLowerCase() === tier.id?.toLowerCase() || accountTier?.toLowerCase() === tier.name?.toLowerCase();
+                                            const isEnterprise = tier.id?.toLowerCase().includes('enterprise');
+                                            const isPro = tier.id?.toLowerCase().includes('pro');
+
+                                            return (
+                                                <div
+                                                    key={tier.id}
+                                                    className={`p-4 rounded-xl border-2 transition-all flex flex-col ${isActiveTier
+                                                        ? (isEnterprise ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : isPro ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/10' : 'border-slate-400 bg-slate-50 dark:bg-slate-900/50')
+                                                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                                                        }`}
+                                                >
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div>
+                                                            <h3 className="font-bold flex items-center gap-2">
+                                                                {isEnterprise && <Crown className="w-4 h-4 text-purple-500" />}
+                                                                {tier.name}
+                                                            </h3>
+                                                            <p className={`text-sm font-semibold ${isEnterprise ? 'text-purple-600' : isPro ? 'text-blue-600' : 'text-slate-500'}`}>
+                                                                {tier.price} LYD / month
+                                                            </p>
+                                                        </div>
+                                                        {isActiveTier && <CheckCircle2 className={`w-5 h-5 ${isEnterprise ? 'text-purple-600' : isPro ? 'text-blue-600' : 'text-slate-600'}`} />}
+                                                    </div>
+                                                    <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-2 mt-4 flex-1">
+                                                        {tier.features?.map((feature, fIdx) => (
+                                                            <li key={fIdx} className="flex items-center gap-2">
+                                                                <CheckCircle2 className="w-3 h-3 text-emerald-500" /> {feature}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                    {!isActiveTier && (
+                                                        <Button
+                                                            variant={isPro ? "default" : "outline"}
+                                                            size="sm"
+                                                            className={`w-full mt-4 ${isEnterprise
+                                                                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0 shadow-lg shadow-purple-500/20 hover:from-purple-700 hover:to-indigo-700'
+                                                                : isPro ? 'bg-blue-600 hover:bg-blue-700 text-white border-0' : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                                                                }`}
+                                                        >
+                                                            Upgrade to {tier.name}
+                                                        </Button>
+                                                    )}
                                                 </div>
-                                                {accountTier === 'Free' && <CheckCircle2 className="w-5 h-5 text-slate-600" />}
+                                            );
+                                        })}
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Merchant Quota Usage Dashboard */}
+                            <Card className="border-indigo-100 dark:border-indigo-900 shadow-sm">
+                                <CardHeader className="bg-indigo-50/50 dark:bg-indigo-950/20 border-b border-indigo-100 dark:border-indigo-900 pb-4">
+                                    <CardTitle>My Plan & Allocations</CardTitle>
+                                    <CardDescription>Track the features and resources available across all your businesses.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="pt-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                                        {/* Locations Quota */}
+                                        <div className="space-y-3 p-5 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-2 font-semibold">
+                                                    <Store className="w-5 h-5 text-indigo-500" /> Managed Locations
+                                                </div>
+                                                <span className="text-sm font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">
+                                                    {quotaUsage.locationsUsed} / {subscription?.quotas?.max_locations || 1}
+                                                </span>
                                             </div>
-                                            <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-2 mt-4">
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> 1 Business Location</li>
-                                                <li className="flex items-center gap-2 opacity-50"><Lock className="w-3 h-3" /> No Loyalty Campaigns</li>
-                                                <li className="flex items-center gap-2 opacity-50"><Lock className="w-3 h-3" /> No Team Management</li>
-                                                <li className="flex items-center gap-2 opacity-50"><Lock className="w-3 h-3" /> No Resolution / Shield</li>
-                                            </ul>
+                                            <Progress value={(quotaUsage.locationsUsed / (subscription?.quotas?.max_locations || 1)) * 100} className="h-2 bg-slate-100" indicatorClassName={quotaUsage.locationsUsed >= (subscription?.quotas?.max_locations || 1) ? 'bg-amber-500' : 'bg-indigo-500'} />
+                                            <p className="text-xs text-slate-500">Upgrade your tier to manage more business branches.</p>
                                         </div>
 
-                                        {/* PRO TIER */}
-                                        <div className={`p-4 rounded-xl border-2 transition-all ${accountTier === 'Pro' ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/10' : 'border-slate-200 dark:border-slate-800 hover:border-blue-300'}`}>
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div>
-                                                    <h3 className="font-bold flex items-center gap-2">Pro</h3>
-                                                    <p className="text-sm font-semibold text-blue-600">~150 LYD / month</p>
+                                        {/* Shields Quota */}
+                                        <div className="space-y-3 p-5 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-2 font-semibold">
+                                                    <ShieldCheck className="w-5 h-5 text-emerald-500" /> Trust Shields
                                                 </div>
-                                                {accountTier === 'Pro' && <CheckCircle2 className="w-5 h-5 text-blue-600" />}
+                                                <span className="text-sm font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">
+                                                    {quotaUsage.shieldsAssigned} / {subscription?.quotas?.max_shields || 0}
+                                                </span>
                                             </div>
-                                            <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-2 mt-4">
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Unlimited Locations</li>
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> 1 Active Campaign (5 Coupons)</li>
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Team Management</li>
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Discovery Ribbon Ad</li>
-                                            </ul>
-                                            {accountTier === 'Free' && (
-                                                <Button variant="outline" size="sm" className="w-full mt-4 border-blue-200 text-blue-700 hover:bg-blue-50">Upgrade to Pro</Button>
-                                            )}
+                                            <Progress value={subscription?.quotas?.max_shields ? (quotaUsage.shieldsAssigned / subscription.quotas.max_shields) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName={quotaUsage.shieldsAssigned >= (subscription?.quotas?.max_shields || 0) ? 'bg-amber-500' : 'bg-emerald-500'} />
+                                            <p className="text-xs text-slate-500">Allocate shields to your branches globally.</p>
                                         </div>
 
-                                        {/* ENTERPRISE TIER */}
-                                        <div className={`p-4 rounded-xl border-2 transition-all ${accountTier === 'Enterprise' ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20' : 'border-slate-200 dark:border-slate-800 hover:border-purple-300'}`}>
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div>
-                                                    <h3 className="font-bold flex items-center gap-2"><Crown className="w-4 h-4 text-purple-500" /> Enterprise</h3>
-                                                    <p className="text-sm font-semibold text-purple-600 bg-clip-text">~350 LYD / month</p>
-                                                </div>
-                                                {accountTier === 'Enterprise' && <CheckCircle2 className="w-5 h-5 text-purple-600" />}
-                                            </div>
-                                            <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-2 mt-4">
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Unlimited Campaigns & Coupons</li>
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> 30 Scan Points (Highest)</li>
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Trust Shields Included</li>
-                                                <li className="flex items-center gap-2"><CheckCircle2 className="w-3 h-3 text-emerald-500" /> Resolution & Disputes Included</li>
-                                            </ul>
-                                            {accountTier !== 'Enterprise' && (
-                                                <Button size="sm" className="w-full mt-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0 shadow-lg shadow-purple-500/20 hover:from-purple-700 hover:to-indigo-700">
-                                                    Upgrade to Enterprise
-                                                </Button>
-                                            )}
-                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>

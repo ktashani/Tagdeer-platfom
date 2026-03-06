@@ -1,13 +1,17 @@
 -- ==========================================
 -- Prevent admin role demotion via profile update
 -- Safety net: even if frontend guards are bypassed, the DB blocks
--- any attempt to overwrite an admin's role to merchant/user.
+-- any attempt to demote an admin-level role to a non-admin role.
+-- Allows lateral moves between admin roles (e.g. admin -> super_admin).
 -- ==========================================
 
 CREATE OR REPLACE FUNCTION prevent_admin_role_demotion()
 RETURNS TRIGGER AS $$
+DECLARE
+    admin_roles TEXT[] := ARRAY['super_admin', 'admin', 'assistant_admin', 'support_agent'];
 BEGIN
-    IF OLD.role = 'admin' AND NEW.role != 'admin' THEN
+    -- Block demotion: if old role was admin-level and new role is NOT admin-level
+    IF OLD.role = ANY(admin_roles) AND NOT (NEW.role = ANY(admin_roles)) THEN
         RAISE EXCEPTION 'Cannot demote admin role via profile update';
     END IF;
     RETURN NEW;

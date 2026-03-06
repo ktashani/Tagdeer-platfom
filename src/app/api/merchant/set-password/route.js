@@ -31,7 +31,10 @@ export async function POST(req) {
             auth: { autoRefreshToken: false, persistSession: false }
         });
 
-        // 1. Find the user by email
+        let authUser = null;
+        let userId = null;
+
+        // 1. Try to find the user in Supabase Auth
         const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
 
         if (listError) {
@@ -39,13 +42,14 @@ export async function POST(req) {
             return NextResponse.json({ error: 'Failed to look up user' }, { status: 500 });
         }
 
-        const authUser = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        authUser = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        userId = authUser?.id;
 
+        // 2. If auth user doesn't exist, create them
         if (!authUser) {
-            // User doesn't exist in Auth yet — create them
             const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-                email: email.toLowerCase(),
-                password,
+                email: email.toLowerCase().trim(),
+                password, // Set password directly during creation
                 email_confirm: true, // Auto-confirm since they're already verified via OTP
             });
 
@@ -53,12 +57,17 @@ export async function POST(req) {
                 console.error('Create user error:', createError);
                 return NextResponse.json({ error: createError.message }, { status: 500 });
             }
+            userId = newUser.user.id;
+            authUser = newUser.user; // Assign the newly created user
 
-            // Link the new auth user to the existing profile
+            // Wait a moment for trigger to create the plain profile
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Explicitly set role to merchant for these newly created accounts
             const { error: profileError } = await supabaseAdmin
                 .from('profiles')
-                .update({ has_password: true })
-                .eq('email', email.toLowerCase());
+                .update({ role: 'merchant', has_password: true })
+                .eq('id', userId);
 
             if (profileError) {
                 console.error('Profile update error:', profileError);

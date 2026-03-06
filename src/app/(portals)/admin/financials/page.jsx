@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, DollarSign, ExternalLink, ShieldCheck, Loader2 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useTagdeer } from '@/context/TagdeerContext'
+import { Copy } from 'lucide-react'
 
 export default function FinancialsPage() {
     const { supabase, showToast } = useTagdeer()
@@ -14,11 +15,17 @@ export default function FinancialsPage() {
     const [isLoading, setIsLoading] = useState(true)
 
     const [showTrialModal, setShowTrialModal] = useState(false)
-    const [trialForm, setTrialForm] = useState({ businessId: '', tier: 'Pro', months: 1 })
+    const [trialForm, setTrialForm] = useState({ profileId: '', tier: 'Pro', months: 1 })
     const [isGrantingTrial, setIsGrantingTrial] = useState(false)
 
+    // New Trial Campaigns state
+    const [trialCampaigns, setTrialCampaigns] = useState([])
+    const [showCreateCampaignModal, setShowCreateCampaignModal] = useState(false)
+    const [campaignForm, setCampaignForm] = useState({ name: '', tier: 'Pro', months: 3, maxRedemptions: 50, addons: [] })
+    const [isCreatingCampaign, setIsCreatingCampaign] = useState(false)
+
     const [selectedTxn, setSelectedTxn] = useState(null)
-    const [activeTab, setActiveTab] = useState('queue') // queue, subs, reports
+    const [activeTab, setActiveTab] = useState('queue') // queue, subs, reports, trial_campaigns
     const [isConfirming, setIsConfirming] = useState(false)
 
     useEffect(() => {
@@ -26,10 +33,12 @@ export default function FinancialsPage() {
 
         const fetchData = async () => {
             setIsLoading(true)
-            const [txnData, subData, bizData] = await Promise.all([
+            const [txnData, profilesData, bizData, subsData, campaignsData] = await Promise.all([
                 supabase.from('transactions').select('*, businesses(name), profiles(email)').eq('status', 'pending').order('created_at', { ascending: false }),
-                supabase.from('subscriptions').select('*, businesses(name)').order('expires_at', { ascending: true }),
-                supabase.from('businesses').select('id, name').order('name', { ascending: true })
+                supabase.from('profiles').select('id, full_name, email').eq('role', 'merchant'),
+                supabase.from('businesses').select('id, name, claimed_by').not('claimed_by', 'is', null).order('name', { ascending: true }),
+                supabase.from('subscriptions').select('*'),
+                supabase.from('trial_campaigns').select('*').order('created_at', { ascending: false })
             ])
 
             if (txnData.data) {
@@ -46,20 +55,62 @@ export default function FinancialsPage() {
                     status: t.status
                 })))
             }
-            if (subData.data) {
-                setSubscriptions(subData.data.map(s => ({
-                    id: s.id,
-                    business: s.businesses?.name || 'Unknown',
-                    tier: s.tier === 'Tier 1' ? 'Pro' : s.tier === 'Tier 2' ? 'Enterprise' : s.tier,
-                    expires: new Date(s.expires_at).toLocaleDateString(),
-                    status: s.status,
-                    isTrial: s.is_trial,
-                    trialMonths: s.trial_months,
-                    autoRenew: s.auto_renew
-                })))
-            }
-            if (bizData.data) {
+            if (profilesData.data && bizData.data) {
+                // BizData contains claimed businesses. Group them by owner.
                 setBusinesses(bizData.data)
+
+                // Build a map of subscriptions by profile_id
+                const subsMap = {};
+                (subsData.data || []).forEach(sub => {
+                    subsMap[sub.profile_id] = sub;
+                });
+
+                // Group businesses by profile_id
+                const bizMap = {};
+                bizData.data.forEach(b => {
+                    if (!bizMap[b.claimed_by]) bizMap[b.claimed_by] = [];
+                    bizMap[b.claimed_by].push(b.name);
+                });
+
+                // Map ALL merchants into the list
+                const allSubsAndFree = profilesData.data.map(profile => {
+                    const sub = subsMap[profile.id];
+                    const ownedBusinesses = bizMap[profile.id] || [];
+                    const businessNames = ownedBusinesses.length > 0 ? ownedBusinesses.join(', ') : 'No Business Claimed';
+
+                    if (!sub) {
+                        return {
+                            id: `free-${profile.id}`,
+                            profileId: profile.id,
+                            merchant: profile.full_name || profile.email,
+                            businessNames: businessNames,
+                            tier: 'Free',
+                            expires: 'Never',
+                            status: 'Active',
+                            isTrial: false,
+                            trialMonths: 0,
+                            quotas: { max_locations: 1, max_shields: 0 }
+                        }
+                    }
+
+                    return {
+                        id: sub.id,
+                        profileId: profile.id,
+                        merchant: profile.full_name || profile.email,
+                        businessNames: businessNames,
+                        tier: sub.tier === 'Tier 1' ? 'Pro' : sub.tier === 'Tier 2' ? 'Enterprise' : sub.tier,
+                        expires: new Date(sub.expires_at).toLocaleDateString(),
+                        status: sub.status,
+                        isTrial: sub.is_trial,
+                        trialMonths: sub.trial_months,
+                        autoRenew: sub.auto_renew,
+                        quotas: sub.quotas || { max_locations: 1, max_shields: 0 }
+                    }
+                })
+                setSubscriptions(allSubsAndFree)
+            }
+            if (campaignsData.data) {
+                setTrialCampaigns(campaignsData.data)
             }
             setIsLoading(false)
         }
@@ -82,16 +133,24 @@ export default function FinancialsPage() {
     }
 
     const handleGrantTrial = async () => {
-        if (!trialForm.businessId) return showToast("Select a business", "error")
+        if (!trialForm.profileId) return showToast("Select a merchant", "error")
         setIsGrantingTrial(true)
-        const { data, error } = await supabase.rpc('admin_grant_free_trial', {
-            p_business_id: trialForm.businessId,
-            p_tier: trialForm.tier,
-            p_months: parseInt(trialForm.months)
-        })
 
-        if (error || !data?.success) {
-            showToast(error?.message || data?.error || "Failed to grant trial", "error")
+        // API call to the server to grant trial
+        const res = await fetch('/api/admin/subscriptions/grant', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                profileId: trialForm.profileId,
+                tier: trialForm.tier,
+                months: parseInt(trialForm.months)
+            })
+        });
+
+        const data = await res.json();
+
+        if (!data?.success) {
+            showToast(data?.error || "Failed to grant trial", "error")
         } else {
             showToast(`Granted ${trialForm.tier} Trial successfully!`)
             setShowTrialModal(false)
@@ -100,6 +159,56 @@ export default function FinancialsPage() {
             window.location.reload()
         }
         setIsGrantingTrial(false)
+    }
+
+    const handleRevokeTrial = async (profileId) => {
+        if (!confirm('Are you sure you want to revoke this trial? The merchant will revert to the Free tier immediately.')) return;
+        setIsLoading(true)
+
+        const res = await fetch('/api/admin/subscriptions/revoke', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ profileId })
+        });
+        const data = await res.json();
+
+        if (!data?.success) {
+            showToast(data?.error || "Failed to revoke trial", "error")
+        } else {
+            showToast("Trial revoked successfully")
+            window.location.reload()
+        }
+        setIsLoading(false)
+    }
+
+    const handleCreateCampaign = async () => {
+        if (!campaignForm.name) return showToast("Campaign name is required", "error")
+        setIsCreatingCampaign(true)
+
+        const { error } = await supabase.from('trial_campaigns').insert([{
+            name: campaignForm.name,
+            tier: campaignForm.tier,
+            trial_months: parseInt(campaignForm.months),
+            max_redemptions: parseInt(campaignForm.maxRedemptions),
+            addons: campaignForm.addons
+        }])
+
+        if (error) {
+            showToast(error.message || "Failed to create campaign", "error")
+        } else {
+            showToast("Trial Campaign created successfully!")
+            setShowCreateCampaignModal(false)
+            setCampaignForm({ name: '', tier: 'Pro', months: 3, maxRedemptions: 50, addons: [] })
+            window.location.reload()
+        }
+        setIsCreatingCampaign(false)
+    }
+
+    const handleCopyLink = (campaignId) => {
+        const domain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tagdeer.ly';
+        const link = `https://${domain}/merchant/login?trial_campaign=${campaignId}`;
+        navigator.clipboard.writeText(link);
+        showToast("Campaign Link copied to clipboard!");
     }
 
 
@@ -126,6 +235,12 @@ export default function FinancialsPage() {
                         className={`px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${activeTab === 'subs' ? 'bg-emerald-500/10 text-emerald-400 shadow-sm border border-emerald-500/20' : 'text-slate-400 hover:text-slate-200'}`}
                     >
                         <ShieldCheck className="w-4 h-4" /> Active Subscriptions
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('trial_campaigns')}
+                        className={`px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${activeTab === 'trial_campaigns' ? 'bg-indigo-500/10 text-indigo-400 shadow-sm border border-indigo-500/20' : 'text-slate-400 hover:text-slate-200'}`}
+                    >
+                        <CreditCard className="w-4 h-4" /> Trial Campaigns
                     </button>
                     <button
                         onClick={() => setActiveTab('reports')}
@@ -251,8 +366,8 @@ export default function FinancialsPage() {
                             <table className="w-full text-left text-sm text-slate-400 min-w-[600px]">
                                 <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50 sticky top-0 z-10">
                                     <tr>
-                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300">Business Name</th>
-                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300">Tier</th>
+                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300">Merchant Account</th>
+                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300">Tier & Quotas</th>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300">Expires</th>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300">Status</th>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-right">Action</th>
@@ -263,11 +378,17 @@ export default function FinancialsPage() {
                                         <tr><td colSpan="5" className="px-6 py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" /></td></tr>
                                     ) : subscriptions.map(sub => (
                                         <tr key={sub.id} className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
-                                            <td className="px-6 py-4 font-medium text-white">{sub.business}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="font-medium text-white">{sub.merchant}</div>
+                                                <div className="text-xs text-slate-500 mt-1 max-w-[200px] truncate" title={sub.businessNames}>{sub.businessNames}</div>
+                                            </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col">
                                                     <span className="font-bold text-emerald-400">{sub.tier}</span>
                                                     {sub.isTrial && <span className="text-[10px] text-amber-500 font-medium">Trial: {sub.trialMonths}m</span>}
+                                                    <div className="text-[10px] text-slate-400 mt-1">
+                                                        Loc: {sub.quotas.max_locations} | Shd: {sub.quotas.max_shields}
+                                                    </div>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">{sub.expires}</td>
@@ -278,12 +399,75 @@ export default function FinancialsPage() {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-right">
-                                                <button className="text-slate-400 hover:text-white font-medium transition-colors">Manual Extend</button>
+                                                {sub.tier === 'Free' ? (
+                                                    <button onClick={() => {
+                                                        setTrialForm(prev => ({ ...prev, profileId: sub.profileId }))
+                                                        setShowTrialModal(true)
+                                                    }} className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors">Grant Trial</button>
+                                                ) : sub.isTrial ? (
+                                                    <button onClick={() => handleRevokeTrial(sub.profileId)} className="text-amber-500 hover:text-amber-400 font-medium transition-colors">Revoke Trial</button>
+                                                ) : (
+                                                    <button className="text-slate-400 hover:text-white font-medium transition-colors">Manual Extend</button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
                                     {!isLoading && subscriptions.length === 0 && (
-                                        <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-500">No active subscriptions.</td></tr>
+                                        <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-500">No businesses found.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* 2.5 Trial Campaigns */}
+                {activeTab === 'trial_campaigns' && (
+                    <div className="w-full bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden flex flex-col">
+                        <div className="p-4 border-b border-slate-700/50 bg-slate-800/50 flex justify-between items-center shrink-0">
+                            <h3 className="font-semibold text-white">Trial Campaigns</h3>
+                            <button onClick={() => setShowCreateCampaignModal(true)} className="text-sm bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-1.5 rounded-lg transition-colors font-medium">Create Campaign</button>
+                        </div>
+                        <div className="flex-1 overflow-auto">
+                            <table className="w-full text-left text-sm text-slate-400 min-w-[600px]">
+                                <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50 sticky top-0 z-10">
+                                    <tr>
+                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300">Campaign Name</th>
+                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300">Offer</th>
+                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300">Redemptions</th>
+                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300">Status</th>
+                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {isLoading ? (
+                                        <tr><td colSpan="5" className="px-6 py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" /></td></tr>
+                                    ) : trialCampaigns.map(camp => (
+                                        <tr key={camp.id} className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
+                                            <td className="px-6 py-4 font-medium text-white">{camp.name}</td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-indigo-400">{camp.tier}</span>
+                                                    <span className="text-[10px] text-slate-500 font-medium">{camp.trial_months} Months</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="text-slate-300 font-bold">{camp.current_redemptions}</span> / {camp.max_redemptions}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${camp.is_active ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'}`}>
+                                                    {camp.is_active ? 'Active' : 'Inactive'}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button onClick={() => handleCopyLink(camp.id)} className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors flex items-center justify-end gap-1 w-full">
+                                                    <Copy className="w-3 h-3" /> Copy Link
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {!isLoading && trialCampaigns.length === 0 && (
+                                        <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-500">No campaigns found.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -332,10 +516,10 @@ export default function FinancialsPage() {
 
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-1">Select Business</label>
-                                <select value={trialForm.businessId} onChange={e => setTrialForm({ ...trialForm, businessId: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-emerald-500 appearance-none">
-                                    <option value="">-- Choose a Business --</option>
-                                    {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Select Merchant Account</label>
+                                <select value={trialForm.profileId} onChange={e => setTrialForm({ ...trialForm, profileId: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-emerald-500 appearance-none">
+                                    <option value="">-- Choose a Merchant --</option>
+                                    {subscriptions.map(m => <option key={m.profileId} value={m.profileId}>{m.merchant} {m.businessNames && m.businessNames !== 'No Business Claimed' ? `(${m.businessNames})` : ''}</option>)}
                                 </select>
                             </div>
 
@@ -357,6 +541,50 @@ export default function FinancialsPage() {
                             <button onClick={() => setShowTrialModal(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-2 rounded-lg transition-colors border border-slate-700">Cancel</button>
                             <button disabled={isGrantingTrial} onClick={handleGrantTrial} className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)] disabled:opacity-50">
                                 {isGrantingTrial ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CheckCircle2 className="w-4 h-4" /> Grant Trial</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Create Campaign Modal */}
+            {showCreateCampaignModal && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in">
+                    <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                        <h2 className="text-2xl font-bold text-white mb-2">Create Trial Campaign</h2>
+                        <p className="text-sm text-slate-400 mb-6">Generate a shareable link that grants new merchants a free trial of a specific tier upon registration.</p>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Campaign Name</label>
+                                <input placeholder="e.g. Summer Promo 2026" type="text" value={campaignForm.name} onChange={e => setCampaignForm({ ...campaignForm, name: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500" />
+                            </div>
+
+                            <div className="flex gap-4">
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-slate-300 mb-1">Offer Tier</label>
+                                    <select value={campaignForm.tier} onChange={e => setCampaignForm({ ...campaignForm, tier: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500 appearance-none">
+                                        <option value="Pro">Pro</option>
+                                        <option value="Enterprise">Enterprise</option>
+                                    </select>
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-slate-300 mb-1">Duration (Months)</label>
+                                    <input type="number" min="1" max="12" value={campaignForm.months} onChange={e => setCampaignForm({ ...campaignForm, months: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500" />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Max Redemptions limit</label>
+                                <input type="number" min="1" max="1000" value={campaignForm.maxRedemptions} onChange={e => setCampaignForm({ ...campaignForm, maxRedemptions: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500" />
+                                <p className="text-xs text-slate-500 mt-1">Maximum number of merchants who can claim this link.</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 flex gap-3">
+                            <button onClick={() => setShowCreateCampaignModal(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-2 rounded-lg transition-colors border border-slate-700">Cancel</button>
+                            <button disabled={isCreatingCampaign} onClick={handleCreateCampaign} className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(99,102,241,0.2)] disabled:opacity-50">
+                                {isCreatingCampaign ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Generate Link'}
                             </button>
                         </div>
                     </div>

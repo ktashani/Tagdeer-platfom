@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,10 +15,21 @@ import { getPresignedUploadUrl } from '@/app/actions/storage';
 
 export default function MerchantOnboarding() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const {
         supabase, user, showToast, t, lang, isRTL, loading,
         categories = [], regions = [], shieldPricing = { trust: 20, fatora: 50 }
     } = useTagdeer();
+
+    const trialCampaign = searchParams.get('trial_campaign');
+
+    const navigateForward = (path) => {
+        if (trialCampaign) {
+            router.push(`${path}?trial_campaign=${trialCampaign}`);
+        } else {
+            router.push(path);
+        }
+    };
 
     // Block admin accounts from onboarding — they should never claim via this flow
     if (!loading && user && user.role === 'admin') {
@@ -38,6 +49,48 @@ export default function MerchantOnboarding() {
         );
     }
 
+    // Quota Check State
+    const [hasQuota, setHasQuota] = useState(true);
+    const [quotaData, setQuotaData] = useState(null);
+
+    useEffect(() => {
+        if (!user || !supabase) return;
+        const checkQuota = async () => {
+            const [subsRes, bizCountRes] = await Promise.all([
+                supabase.from('subscriptions').select('quotas').eq('profile_id', user.id).eq('status', 'Active').maybeSingle(),
+                supabase.from('businesses').select('id', { count: 'exact', head: true }).eq('claimed_by', user.id)
+            ]);
+
+            const used = bizCountRes.count || 0;
+            const max = subsRes.data?.quotas?.max_locations || 1; // Default Free tier is 1
+
+            setQuotaData({ used, max });
+            setHasQuota(used < max);
+        };
+        checkQuota();
+    }, [user, supabase]);
+
+    // Block if quota exceeded
+    if (quotaData && !hasQuota) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
+                <div className="max-w-md text-center">
+                    <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Lock className="w-8 h-8 text-amber-600" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">Location Limit Reached</h2>
+                    <p className="text-slate-500 mb-6">Your current subscription tier allows for a maximum of <strong>{quotaData.max}</strong> locations. You currently manage <strong>{quotaData.used}</strong> locations.</p>
+                    <button onClick={() => router.push('/merchant/settings')} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors">
+                        Upgrade Tier in Settings
+                    </button>
+                    <button onClick={() => router.push('/merchant/dashboard')} className="mt-4 block w-full text-slate-500 hover:text-slate-700 font-medium">
+                        Return to Dashboard
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     // Wizard State
     const [step, setStep] = useState(1);
 
@@ -47,11 +100,14 @@ export default function MerchantOnboarding() {
     const [selectedExisting, setSelectedExisting] = useState(null); // existing business to claim
 
     useEffect(() => {
-        if (regions.length > 0 && !businessData.region) {
-            setBusinessData(prev => ({ ...prev, region: regions[0] }));
+        const regionNames = regions.map(r => typeof r === 'string' ? r : r.name);
+        const categoryNames = categories.map(c => typeof c === 'string' ? c : c.name);
+
+        if (regionNames.length > 0 && !businessData.region) {
+            setBusinessData(prev => ({ ...prev, region: regionNames[0] }));
         }
-        if (categories.length > 0 && !businessData.category) {
-            setBusinessData(prev => ({ ...prev, category: categories[0] }));
+        if (categoryNames.length > 0 && !businessData.category) {
+            setBusinessData(prev => ({ ...prev, category: categoryNames[0] }));
         }
     }, [regions, categories, businessData.region, businessData.category]);
 
@@ -395,7 +451,12 @@ export default function MerchantOnboarding() {
                                                         style={{ backgroundPosition: isRTL ? 'left 12px center' : 'right 12px center' }}
                                                     >
                                                         <option value="">{lang === 'ar' ? 'اختر...' : 'Select...'}</option>
-                                                        {categories.map(c => <option key={c} value={c}>{t(c)}</option>)}
+                                                        {categories.map(c => {
+                                                            const val = typeof c === 'string' ? c : c.name;
+                                                            const isActive = typeof c === 'string' ? true : c.isActive;
+                                                            if (!isActive) return null;
+                                                            return <option key={val} value={val}>{t(val)}</option>;
+                                                        })}
                                                     </select>
                                                 </div>
                                                 <div className="space-y-2">
@@ -406,7 +467,12 @@ export default function MerchantOnboarding() {
                                                         onChange={(e) => setBusinessData({ ...businessData, region: e.target.value })}
                                                         style={{ backgroundPosition: isRTL ? 'left 12px center' : 'right 12px center' }}
                                                     >
-                                                        {regions.map(r => <option key={r} value={r}>{t(r)}</option>)}
+                                                        {regions.map(r => {
+                                                            const val = typeof r === 'string' ? r : r.name;
+                                                            const isActive = typeof r === 'string' ? true : r.isActive;
+                                                            if (!isActive) return null;
+                                                            return <option key={val} value={val}>{t(val)}</option>;
+                                                        })}
                                                     </select>
                                                 </div>
                                             </div>
@@ -604,7 +670,7 @@ export default function MerchantOnboarding() {
                                 <p className="text-slate-500 max-w-md mx-auto mb-10 text-lg">{t('success_manual').replace('{name}', businessData.name)}</p>
                             )}
 
-                            <Button size="lg" onClick={() => router.push('/merchant/dashboard')} className="px-10 rounded-full bg-slate-900 border-0 hover:bg-slate-800 shadow-xl">
+                            <Button size="lg" onClick={() => navigateForward('/merchant/dashboard')} className="px-10 rounded-full bg-slate-900 border-0 hover:bg-slate-800 shadow-xl">
                                 {t('enter_dashboard')}
                             </Button>
                         </div>

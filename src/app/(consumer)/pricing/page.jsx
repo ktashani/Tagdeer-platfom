@@ -120,79 +120,61 @@ export default function PricingPage() {
                     </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto mb-16">
-                    {/* Tier 1 */}
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm p-10 hover:shadow-xl transition-shadow relative flex flex-col">
-                        <div className="mb-6">
-                            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Tier 1 (Base)</h3>
-                            <p className="text-slate-500 dark:text-slate-400 text-sm">Perfect for single-location businesses.</p>
-                        </div>
-                        <div className="mb-8 pb-8 border-b border-slate-100 dark:border-slate-800">
-                            <span className="text-5xl font-black text-slate-900 dark:text-white">{priceTier1} <span className="text-2xl font-bold">LYD</span></span>
-                            <span className="text-slate-500"> / mo</span>
-                        </div>
-                        <ul className="space-y-5 mb-10 flex-1">
-                            <li className="flex items-start gap-4">
-                                <Check className="w-6 h-6 text-emerald-500 shrink-0" />
-                                <span className="text-slate-700 dark:text-slate-300">Manage 1 Business Location</span>
-                            </li>
-                            <li className="flex items-start gap-4">
-                                <Check className="w-6 h-6 text-emerald-500 shrink-0" />
-                                <span className="text-slate-700 dark:text-slate-300">Accept Reviews & Interactions</span>
-                            </li>
-                            <li className="flex items-start gap-4">
-                                <Check className="w-6 h-6 text-emerald-500 shrink-0" />
-                                <span className="text-slate-700 dark:text-slate-300">Detailed Performance Dashboard</span>
-                            </li>
-                            <li className="flex items-start gap-4 opacity-40">
-                                <Check className="w-6 h-6 shrink-0" />
-                                <span className="line-through">Team Management & Access Control</span>
-                            </li>
-                        </ul>
-                        <Link href="/merchant/login">
-                            <Button className="w-full py-6 text-lg rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700 font-bold transition-colors">
-                                {lang === 'ar' ? 'ابدأ الآن' : 'Start with Base'}
-                            </Button>
-                        </Link>
-                    </div>
+                <div className={`grid grid-cols-1 ${tierPricing.length === 1 ? 'max-w-md' : tierPricing.length === 2 ? 'max-w-4xl' : 'max-w-7xl'} mx-auto gap-8 mb-16`}>
+                    {tierPricing.map((tier, idx) => {
+                        const isActive = tier.isActive !== false;
+                        if (!isActive) return null;
 
-                    {/* Tier 2 */}
-                    <div className="bg-gradient-to-b from-indigo-900 to-slate-900 rounded-3xl border border-indigo-500 shadow-2xl shadow-indigo-500/20 p-10 relative flex flex-col transform md:-translate-y-6">
-                        <div className="absolute top-0 right-10 -translate-y-1/2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-5 py-1.5 rounded-full text-sm font-bold flex items-center gap-1 shadow-lg">
-                            <Crown className="w-4 h-4" /> MOST POPULAR
-                        </div>
-                        <div className="mb-6">
-                            <h3 className="text-2xl font-bold text-white mb-2">Tier 2 (Pro)</h3>
-                            <p className="text-indigo-200 text-sm">For growing brands and multiple branches.</p>
-                        </div>
-                        <div className="mb-8 pb-8 border-b border-indigo-500/30">
-                            <span className="text-5xl font-black text-white">{priceTier2} <span className="text-2xl font-bold">LYD</span></span>
-                            <span className="text-indigo-200"> / mo</span>
-                        </div>
-                        <ul className="space-y-5 mb-10 flex-1">
-                            <li className="flex items-start gap-4">
-                                <Check className="w-6 h-6 text-emerald-400 shrink-0" />
-                                <span className="text-slate-100">Manage Unlimited Locations</span>
-                            </li>
-                            <li className="flex items-start gap-4">
-                                <Check className="w-6 h-6 text-emerald-400 shrink-0" />
-                                <span className="text-slate-100 font-semibold">Unlock Team Management</span>
-                            </li>
-                            <li className="flex items-start gap-4">
-                                <Check className="w-6 h-6 text-emerald-400 shrink-0" />
-                                <span className="text-slate-100">Priority Support & Account Manager</span>
-                            </li>
-                            <li className="flex items-start gap-4">
-                                <Check className="w-6 h-6 text-emerald-400 shrink-0" />
-                                <span className="text-slate-100">Early Access to New Features</span>
-                            </li>
-                        </ul>
-                        <Link href="/merchant/login">
-                            <Button className="w-full py-6 text-lg rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-bold transition-colors shadow-lg shadow-indigo-500/30 border-0">
-                                {lang === 'ar' ? 'الترقية إلى برو' : 'Go Pro'}
-                            </Button>
-                        </Link>
-                    </div>
+                        const isPopular = tier.isPopular;
+
+                        return (
+                            <div
+                                key={tier.id}
+                                className={`rounded-3xl border p-10 transition-all relative flex flex-col ${isPopular
+                                        ? 'bg-gradient-to-b from-indigo-900 to-slate-900 border-indigo-500 shadow-2xl shadow-indigo-500/20 transform md:-translate-y-6'
+                                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl'
+                                    }`}
+                            >
+                                {isPopular && (
+                                    <div className="absolute top-0 right-10 -translate-y-1/2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-5 py-1.5 rounded-full text-sm font-bold flex items-center gap-1 shadow-lg">
+                                        <Crown className="w-4 h-4" /> {lang === 'ar' ? 'الأكثر رواجاً' : 'MOST POPULAR'}
+                                    </div>
+                                )}
+                                <div className="mb-6">
+                                    <h3 className={`text-2xl font-bold mb-2 ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                                        {tier.name}
+                                    </h3>
+                                    <p className={`${isPopular ? 'text-indigo-200' : 'text-slate-500 dark:text-slate-400'} text-sm`}>
+                                        {tier.description || (idx === 0 ? 'Perfect for single-location businesses.' : idx === 1 ? 'For growing brands and multiple branches.' : 'For large scale operations.')}
+                                    </p>
+                                </div>
+                                <div className={`mb-8 pb-8 border-b ${isPopular ? 'border-indigo-500/30' : 'border-slate-100 dark:border-slate-800'}`}>
+                                    <span className={`text-5xl font-black ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                                        {tier.price} <span className="text-2xl font-bold">LYD</span>
+                                    </span>
+                                    <span className={isPopular ? 'text-indigo-200' : 'text-slate-500'}> / mo</span>
+                                </div>
+                                <ul className="space-y-5 mb-10 flex-1">
+                                    {tier.features?.map((feature, fIdx) => (
+                                        <li key={fIdx} className="flex items-start gap-4">
+                                            <Check className={`w-6 h-6 shrink-0 ${isPopular ? 'text-emerald-400' : 'text-emerald-500'}`} />
+                                            <span className={isPopular ? 'text-slate-100' : 'text-slate-700 dark:text-slate-300'}>
+                                                {feature}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                                <Link href="/merchant/login">
+                                    <Button className={`w-full py-6 text-lg rounded-xl font-bold transition-colors shadow-lg border-0 ${isPopular
+                                            ? 'bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white shadow-indigo-500/30'
+                                            : 'bg-slate-100 hover:bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700'
+                                        }`}>
+                                        {lang === 'ar' ? 'ابدأ الآن' : `Go ${tier.name}`}
+                                    </Button>
+                                </Link>
+                            </div>
+                        );
+                    })}
                 </div>
 
                 {/* Shield Add-ons */}

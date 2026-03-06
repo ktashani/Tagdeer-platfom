@@ -24,12 +24,39 @@ BEGIN
     END IF;
 END $$;
 
--- 3. Insert default configuration (mirroring current hardcoded data)
+-- 3. Seed Initial Configuration Data
+-- We use JSONB to store arrays and objects flexibly.
+-- The following keys correspond to the hardcoded values being replaced.
 INSERT INTO public.platform_config (key, value) VALUES
-('categories', '["Supermarket","Pharmacy","Café & Restaurants","Bakery","Healthcare","Electronics","Tech & Telecommunication","Construction","Home Maintenance","Automotive","Beauty & Salon","Real Estate","Education","Travel","Fashion & Retail","Services","Food & Beverage","Delivery & Shipping"]'::jsonb),
-('regions', '["Tripoli", "Benghazi"]'::jsonb),
+('categories', '[
+    {"name": "Supermarket", "isActive": true, "requiresReceipt": true, "basePoints": 5},
+    {"name": "Pharmacy", "isActive": true, "requiresReceipt": true, "basePoints": 3},
+    {"name": "Café & Restaurants", "isActive": true, "requiresReceipt": false, "basePoints": 2},
+    {"name": "Bakery", "isActive": true, "requiresReceipt": false, "basePoints": 2},
+    {"name": "Healthcare", "isActive": true, "requiresReceipt": true, "basePoints": 5},
+    {"name": "Electronics", "isActive": true, "requiresReceipt": true, "basePoints": 10},
+    {"name": "Tech & Telecommunication", "isActive": true, "requiresReceipt": true, "basePoints": 5},
+    {"name": "Construction", "isActive": true, "requiresReceipt": true, "basePoints": 20},
+    {"name": "Home Maintenance", "isActive": true, "requiresReceipt": false, "basePoints": 5},
+    {"name": "Automotive", "isActive": true, "requiresReceipt": true, "basePoints": 15},
+    {"name": "Beauty & Salon", "isActive": true, "requiresReceipt": false, "basePoints": 3},
+    {"name": "Real Estate", "isActive": true, "requiresReceipt": true, "basePoints": 50},
+    {"name": "Education", "isActive": true, "requiresReceipt": true, "basePoints": 10},
+    {"name": "Travel", "isActive": true, "requiresReceipt": true, "basePoints": 25},
+    {"name": "Fashion & Retail", "isActive": true, "requiresReceipt": false, "basePoints": 5},
+    {"name": "Services", "isActive": true, "requiresReceipt": false, "basePoints": 5},
+    {"name": "Food & Beverage", "isActive": true, "requiresReceipt": false, "basePoints": 2},
+    {"name": "Delivery & Shipping", "isActive": true, "requiresReceipt": false, "basePoints": 3}
+]'::jsonb),
+('regions', '[
+    {"name": "Tripoli", "isActive": true},
+    {"name": "Benghazi", "isActive": true}
+]'::jsonb),
 ('shield_pricing', '{"trust": 20, "fatora": 50}'::jsonb),
-('tier_pricing', '[{"id":"tier1","name":"Pro","price":150,"features":["Unlimited Locations","1 Active Campaign (5 Coupons)","Team Management","Discovery Ribbon Ad"]},{"id":"tier2","name":"Enterprise","price":350,"features":["Unlimited Campaigns & Coupons","30 Scan Points (Highest)","Trust Shields Included","Resolution & Disputes Included"]}]'::jsonb),
+('tier_pricing', '[
+    {"id": "tier1", "name": "Tier 1 (Base)", "price": 49, "duration": "monthly", "features": ["1 Business Location", "Accept Reviews", "Performance Dashboard"]},
+    {"id": "tier2", "name": "Tier 2 (Pro)", "price": 99, "duration": "monthly", "features": ["Unlimited Locations", "Team Management", "Priority Support", "Early Access"]}
+]'::jsonb),
 ('vip_thresholds', '{"guest": 0, "bronze": 20, "silver": 1000, "gold": 5000, "vip": 20000}'::jsonb),
 ('admin_roles', '["super_admin", "admin", "assistant_admin", "support_agent"]'::jsonb)
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

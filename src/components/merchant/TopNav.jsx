@@ -33,10 +33,25 @@ export default function TopNav() {
     // Filter to only businesses owned by the current user
     const myBusinesses = businesses?.filter(b => b.owner_id === user?.id) || [];
 
-    // Store Selection State
     const [selectedStoreId, setSelectedStoreId] = useState(null);
     const [pendingClaim, setPendingClaim] = useState(null);
     const [claimStatuses, setClaimStatuses] = useState({}); // { businessId: 'pending' | 'approved' | 'missing_docs' }
+    const [subTier, setSubTier] = useState('Free');
+
+    useEffect(() => {
+        if (!supabase || !user) return;
+        const fetchTier = async () => {
+            const { data } = await supabase
+                .from('subscriptions')
+                .select('tier')
+                .eq('profile_id', user.id)
+                .eq('status', 'Active')
+                .maybeSingle();
+
+            if (data?.tier) setSubTier(data.tier);
+        };
+        fetchTier();
+    }, [supabase, user]);
 
     // Default select the first business when loaded
     useEffect(() => {
@@ -129,11 +144,16 @@ export default function TopNav() {
         <nav className="bg-[#1A1C23] border-b border-[#2C2E3E] text-slate-300 p-2 lg:px-6 flex justify-between items-center sticky top-0 z-50">
             {/* Logo area */}
             <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xl leading-none">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-xl leading-none">
                     T
                 </div>
-                <div className="font-bold text-lg tracking-tight hidden sm:block text-white">
+                <div className="font-bold text-lg tracking-tight hidden sm:flex items-center gap-2 text-white">
                     Tagdeer <span className="font-normal text-slate-400">Merchant</span>
+                    {subTier !== 'Free' && (
+                        <Badge variant="outline" className={`ml-1 text-[10px] h-5 ${subTier === 'Enterprise' ? 'border-purple-500 text-purple-400 bg-purple-500/10' : 'border-blue-500 text-blue-400 bg-blue-500/10'}`}>
+                            {subTier}
+                        </Badge>
+                    )}
                 </div>
             </div>
 

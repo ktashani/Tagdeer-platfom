@@ -16,8 +16,11 @@ export default function AddBusinessRoute() {
     const [newBizCategory, setNewBizCategory] = useState('');
 
     React.useEffect(() => {
-        if (regions.length > 0 && !newBizRegion) setNewBizRegion(regions[0]);
-        if (categories.length > 0 && !newBizCategory) setNewBizCategory(categories[0]);
+        const regionNames = regions.map(r => typeof r === 'string' ? r : r.name);
+        const categoryNames = categories.map(c => typeof c === 'string' ? c : c.name);
+
+        if (regionNames.length > 0 && !newBizRegion) setNewBizRegion(regionNames[0]);
+        if (categoryNames.length > 0 && !newBizCategory) setNewBizCategory(categoryNames[0]);
     }, [regions, categories, newBizRegion, newBizCategory]);
 
     const router = useRouter();
@@ -58,10 +61,16 @@ export default function AddBusinessRoute() {
                     />
                     <div className="grid grid-cols-2 gap-4">
                         <select value={newBizRegion} onChange={(e) => setNewBizRegion(e.target.value)} className="w-full px-4 py-4 rounded-xl border border-slate-300">
-                            {regions.map(r => <option key={r} value={r}>{t(r)}</option>)}
+                            {regions.map(r => {
+                                const val = typeof r === 'string' ? r : r.name;
+                                return <option key={val} value={val}>{t(val)}</option>;
+                            })}
                         </select>
                         <select value={newBizCategory} onChange={(e) => setNewBizCategory(e.target.value)} className="w-full px-4 py-4 rounded-xl border border-slate-300">
-                            {categories.map(c => <option key={c} value={c}>{t(c)}</option>)}
+                            {categories.map(c => {
+                                const val = typeof c === 'string' ? c : c.name;
+                                return <option key={val} value={val}>{t(val)}</option>;
+                            })}
                         </select>
                     </div>
                     <button onClick={handleSubmit} className="w-full bg-blue-700 text-white py-4 rounded-xl font-bold">{t('generate_profile')}</button>

@@ -13,7 +13,9 @@ export default function SettingsPage() {
         adminRoles: configAdminRoles,
         refreshConfig,
         supabase,
-        showToast
+        showToast,
+        loading: configLoading,
+        error: configError
     } = useTagdeer()
 
     const [activeTab, setActiveTab] = useState('categories')
@@ -32,33 +34,23 @@ export default function SettingsPage() {
 
     // Load initial data from config
     useEffect(() => {
-        if (configCategories?.length > 0) {
-            // Transform array of strings into object format if needed, 
-            // but currently the db is just an array of strings. We'll upgrade it to objects for the UI
-            // and save it back as strings to avoid breaking everything else, 
-            // OR if the user asked to extend it, we'll start saving objects. 
-            // For now, let's keep it simple: just strings to match the other pages.
-            setCategories(configCategories)
-        }
-        if (configRegions?.length > 0) {
-            setRegions(configRegions)
-        }
-        if (configShieldPricing) {
-            setShieldPricing(configShieldPricing)
-        }
-        if (configTierPricing?.length > 0) {
-            setTierPricing(configTierPricing)
-        }
+        // The context now provides the raw objects from the DB.
+        if (configCategories?.length > 0) setCategories(configCategories)
+        if (configRegions?.length > 0) setRegions(configRegions)
+        if (configShieldPricing) setShieldPricing(configShieldPricing)
+        if (configTierPricing?.length > 0) setTierPricing(configTierPricing)
     }, [configCategories, configRegions, configShieldPricing, configTierPricing])
 
     // Load Admins from profiles
+    const ADMIN_ROLES_FALLBACK = ['super_admin', 'admin', 'assistant_admin', 'support_agent'];
     useEffect(() => {
         const fetchAdmins = async () => {
-            if (!supabase || !configAdminRoles) return
+            if (!supabase) return
+            const rolesToQuery = configAdminRoles || ADMIN_ROLES_FALLBACK;
             const { data, error } = await supabase
                 .from('profiles')
-                .select('id, full_name, email, role, updated_at')
-                .in('role', configAdminRoles)
+                .select('id, full_name, email, role, created_at')
+                .in('role', rolesToQuery)
 
             if (data) setAdminUsers(data)
         }
@@ -87,7 +79,12 @@ export default function SettingsPage() {
     // --- Category Handlers ---
     const handleAddCategory = () => {
         if (!newCategoryName.trim()) return
-        const updated = [...categories, newCategoryName.trim()]
+        const updated = [...categories, {
+            name: newCategoryName.trim(),
+            isActive: true,
+            requiresReceipt: false,
+            basePoints: 5
+        }]
         setCategories(updated)
         saveConfig('categories', updated)
         setNewCategoryName('')
@@ -129,13 +126,73 @@ export default function SettingsPage() {
         saveConfig('shield_pricing', shieldPricing)
     }
 
-    const handleTierPriceChange = (id, newPrice) => {
-        const updated = tierPricing.map(t => t.id === id ? { ...t, price: parseInt(newPrice) || 0 } : t)
+    const handleTierChange = (id, field, value) => {
+        const updated = tierPricing.map(t => {
+            if (t.id === id) {
+                if (field === 'features') {
+                    return { ...t, features: value.split(',').map(f => f.trim()).filter(Boolean) }
+                }
+
+                // Handle nested allocations object
+                if (field.startsWith('allocations.')) {
+                    const allocField = field.split('.')[1]
+                    return {
+                        ...t,
+                        allocations: {
+                            ...t.allocations,
+                            [allocField]: value
+                        }
+                    }
+                }
+
+                return { ...t, [field]: value }
+            }
+            return t
+        })
         setTierPricing(updated)
+    }
+
+    const handleAddTier = () => {
+        const newTier = {
+            id: `tier_${Date.now()}`,
+            name: 'New Tier',
+            price: 0,
+            duration: 'monthly',
+            allocations: {
+                max_locations: 1,
+                max_shields: 0,
+                max_campaigns: 0,
+                gader_points: 5
+            },
+            features: ['New Feature'],
+            isActive: true,
+            isPopular: false
+        }
+        setTierPricing([...tierPricing, newTier])
     }
 
     const handleSaveTierPricing = () => {
         saveConfig('tier_pricing', tierPricing)
+    }
+
+    if (configLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-950">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+            </div>
+        )
+    }
+
+    if (configError) {
+        return (
+            <div className="min-h-screen flex items-center justify-center flex-col gap-4 bg-slate-950">
+                <AlertTriangle className="w-12 h-12 text-red-500" />
+                <p className="text-white text-lg">Failed to load configuration: {configError}</p>
+                <button onClick={refreshConfig} className="bg-slate-700 text-white px-4 py-2 rounded-lg hover:bg-slate-600 transition-colors">
+                    Try Again
+                </button>
+            </div>
+        )
     }
 
     return (
@@ -216,17 +273,42 @@ export default function SettingsPage() {
                             </div>
                             <div className="p-6 overflow-y-auto flex-1">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {categories.map((cat, idx) => (
-                                        <div key={idx} className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex items-center justify-between group">
-                                            <span className="font-semibold text-white">{cat}</span>
-                                            <button
-                                                onClick={() => handleDeleteCategory(idx)}
-                                                className="text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ))}
+                                    {categories.map((cat, idx) => {
+                                        const name = typeof cat === 'string' ? cat : cat.name;
+                                        const isActive = typeof cat === 'string' ? true : cat.isActive;
+
+                                        return (
+                                            <div key={idx} className={`bg-slate-900 border ${isActive ? 'border-slate-700' : 'border-red-900/50 opacity-60'} rounded-xl p-4 flex items-center justify-between group`}>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-white">{name}</span>
+                                                    {!isActive && <span className="text-[10px] bg-red-500/20 text-red-500 px-1.5 py-0.5 rounded uppercase font-bold">Inactive</span>}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            const updated = [...categories];
+                                                            if (typeof updated[idx] === 'string') {
+                                                                updated[idx] = { name: updated[idx], isActive: false };
+                                                            } else {
+                                                                updated[idx] = { ...updated[idx], isActive: !updated[idx].isActive };
+                                                            }
+                                                            setCategories(updated);
+                                                            saveConfig('categories', updated);
+                                                        }}
+                                                        className={`text-[10px] px-2 py-1 rounded border transition-colors ${isActive ? 'border-red-500/50 text-red-400 hover:bg-red-500/10' : 'border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10'}`}
+                                                    >
+                                                        {isActive ? 'Disable' : 'Enable'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteCategory(idx)}
+                                                        className="text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
@@ -246,17 +328,42 @@ export default function SettingsPage() {
                             </div>
                             <div className="p-6 overflow-y-auto flex-1">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {regions.map((loc, idx) => (
-                                        <div key={idx} className="bg-slate-900 border border-slate-700 rounded-xl p-5 flex justify-between items-center">
-                                            <h3 className="font-semibold text-white text-lg">{loc}</h3>
-                                            <button
-                                                onClick={() => handleDeleteRegion(idx)}
-                                                className="text-slate-500 hover:text-red-400"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ))}
+                                    {regions.map((loc, idx) => {
+                                        const name = typeof loc === 'string' ? loc : loc.name;
+                                        const isActive = typeof loc === 'string' ? true : loc.isActive;
+
+                                        return (
+                                            <div key={idx} className={`bg-slate-900 border ${isActive ? 'border-slate-700' : 'border-red-900/50 opacity-60'} rounded-xl p-5 flex justify-between items-center`}>
+                                                <div className="flex flex-col gap-1">
+                                                    <h3 className="font-semibold text-white text-lg">{name}</h3>
+                                                    {!isActive && <span className="text-[10px] bg-red-500/20 text-red-500 px-1.5 py-0.5 rounded uppercase font-bold w-fit">Inactive</span>}
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <button
+                                                        onClick={() => {
+                                                            const updated = [...regions];
+                                                            if (typeof updated[idx] === 'string') {
+                                                                updated[idx] = { name: updated[idx], isActive: false };
+                                                            } else {
+                                                                updated[idx] = { ...updated[idx], isActive: !updated[idx].isActive };
+                                                            }
+                                                            setRegions(updated);
+                                                            saveConfig('regions', updated);
+                                                        }}
+                                                        className={`text-xs px-2 py-1 rounded border transition-colors ${isActive ? 'border-red-500/50 text-red-400 hover:bg-red-500/10' : 'border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10'}`}
+                                                    >
+                                                        {isActive ? 'Disable' : 'Enable'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteRegion(idx)}
+                                                        className="text-slate-500 hover:text-red-400"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>
@@ -305,25 +412,102 @@ export default function SettingsPage() {
                                 <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-6">
                                     <h3 className="text-lg font-bold text-white mb-4 flex items-center justify-between">
                                         Subscription Tiers (LYD)
-                                        <button onClick={handleSaveTierPricing} disabled={isSaving} className="text-emerald-400 hover:text-emerald-300 text-sm flex items-center gap-1">
-                                            <Save className="w-4 h-4" /> Save Tiers
-                                        </button>
+                                        <div className="flex items-center gap-4">
+                                            <button onClick={handleAddTier} className="text-emerald-400 hover:text-emerald-300 text-sm flex items-center gap-1">
+                                                <Plus className="w-4 h-4" /> Add Tier
+                                            </button>
+                                            <button onClick={handleSaveTierPricing} disabled={isSaving} className="bg-emerald-500 hover:bg-emerald-400 text-white px-3 py-1 rounded text-sm font-bold flex items-center gap-1">
+                                                <Save className="w-4 h-4" /> Save Tiers
+                                            </button>
+                                        </div>
                                     </h3>
                                     <div className="space-y-4">
                                         {tierPricing.map(tier => (
-                                            <div key={tier.id} className="flex flex-col md:flex-row justify-between md:items-center gap-4 bg-slate-800 border border-slate-700 rounded-lg p-4">
-                                                <div>
-                                                    <h4 className="font-bold text-white">{tier.name}</h4>
-                                                    <div className="text-xs text-slate-400 mt-1 max-w-md truncate">{tier.features?.join(', ')}</div>
-                                                </div>
-                                                <div className="shrink-0 flex items-center gap-2">
-                                                    <input
-                                                        type="number"
-                                                        value={tier.price}
-                                                        onChange={e => handleTierPriceChange(tier.id, e.target.value)}
-                                                        className="w-24 bg-slate-900 border border-slate-600 rounded p-2 text-white text-xl font-bold text-right"
-                                                    />
-                                                    <span className="text-slate-400">/mo</span>
+                                            <div key={tier.id} className={`flex flex-col gap-4 bg-slate-800 border ${tier.isActive ? 'border-slate-700' : 'border-red-900/50 opacity-60'} rounded-lg p-5`}>
+                                                <div className="flex flex-col md:flex-row justify-between gap-4">
+                                                    <div className="flex-1 space-y-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={tier.name}
+                                                                onChange={e => handleTierChange(tier.id, 'name', e.target.value)}
+                                                                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white font-bold text-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                                                placeholder="Tier Name"
+                                                            />
+                                                            <button
+                                                                onClick={() => handleTierChange(tier.id, 'isPopular', !tier.isPopular)}
+                                                                className={`text-[10px] px-2 py-0.5 rounded uppercase font-bold transition-colors ${tier.isPopular ? 'bg-amber-500 text-white' : 'bg-slate-700 text-slate-400 hover:text-slate-200'}`}
+                                                            >
+                                                                {tier.isPopular ? 'Popular' : 'Mark Popular'}
+                                                            </button>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Features (comma separated)</label>
+                                                            <textarea
+                                                                value={tier.features?.join(', ') || ''}
+                                                                onChange={e => handleTierChange(tier.id, 'features', e.target.value)}
+                                                                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-h-[60px]"
+                                                                placeholder="Feature 1, Feature 2, Feature 3"
+                                                            />
+                                                        </div>
+                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-900/50 p-3 rounded border border-slate-700/50 mt-2">
+                                                            <div className="space-y-1">
+                                                                <label className="text-[9px] text-slate-500 uppercase font-bold tracking-wider block" title="-1 for Unlimited">Max Locations</label>
+                                                                <input
+                                                                    type="number"
+                                                                    value={tier.allocations?.max_locations ?? 1}
+                                                                    onChange={e => handleTierChange(tier.id, 'allocations.max_locations', parseInt(e.target.value) || 0)}
+                                                                    className="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-slate-300 text-xs focus:outline-none focus:border-emerald-500"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[9px] text-slate-500 uppercase font-bold tracking-wider block">Included Shields</label>
+                                                                <input
+                                                                    type="number"
+                                                                    value={tier.allocations?.max_shields ?? 0}
+                                                                    onChange={e => handleTierChange(tier.id, 'allocations.max_shields', parseInt(e.target.value) || 0)}
+                                                                    className="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-slate-300 text-xs focus:outline-none focus:border-emerald-500"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[9px] text-slate-500 uppercase font-bold tracking-wider block" title="-1 for Unlimited">Campaigns/Branch</label>
+                                                                <input
+                                                                    type="number"
+                                                                    value={tier.allocations?.max_campaigns ?? 0}
+                                                                    onChange={e => handleTierChange(tier.id, 'allocations.max_campaigns', parseInt(e.target.value) || 0)}
+                                                                    className="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-slate-300 text-xs focus:outline-none focus:border-emerald-500"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[9px] text-slate-500 uppercase font-bold tracking-wider block">Gader Pts / Scan</label>
+                                                                <input
+                                                                    type="number"
+                                                                    value={tier.allocations?.gader_points ?? 5}
+                                                                    onChange={e => handleTierChange(tier.id, 'allocations.gader_points', parseInt(e.target.value) || 0)}
+                                                                    className="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-slate-300 text-xs focus:outline-none focus:border-emerald-500"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="shrink-0 flex flex-col items-end gap-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="number"
+                                                                value={tier.price}
+                                                                onChange={e => handleTierChange(tier.id, 'price', parseInt(e.target.value) || 0)}
+                                                                className="w-24 bg-slate-900 border border-slate-600 rounded p-2 text-white text-xl font-bold text-right focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                                            />
+                                                            <span className="text-slate-400 font-bold">LYD / mo</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => handleTierChange(tier.id, 'isActive', !tier.isActive)}
+                                                                className={`text-xs px-3 py-1.5 rounded font-bold transition-all ${tier.isActive ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'}`}
+                                                            >
+                                                                {tier.isActive ? 'Disable Tier' : 'Enable Tier'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
@@ -360,9 +544,10 @@ export default function SettingsPage() {
                                                     <div className="text-xs text-slate-500">{admin.email}</div>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <span className={`px-2 py-1 rounded text-[10px] uppercase tracking-wider font-bold ${admin.role === 'super_admin' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                                                            : admin.role === 'admin' ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-                                                                : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                                    <span className={`px-2 py-1 rounded text-[10px] uppercase tracking-wider font-bold ${admin.role === 'super_admin' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                                        : admin.role === 'admin' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                                                            : admin.role === 'assistant_admin' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                                                                : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
                                                         }`}>
                                                         {admin.role.replace('_', ' ')}
                                                     </span>

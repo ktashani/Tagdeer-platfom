@@ -52,7 +52,8 @@ export async function loginAdmin(email, password) {
             return { success: false, error: 'Profile not found. Contact support.' }
         }
 
-        if (profile.role !== 'admin') {
+        const ADMIN_ROLES = ['super_admin', 'admin', 'assistant_admin', 'support_agent'];
+        if (!ADMIN_ROLES.includes(profile.role)) {
             return { success: false, error: 'Access denied. This account does not have admin privileges.' }
         }
 

@@ -35,11 +35,12 @@ export async function GET() {
             .eq('id', userId)
             .single()
 
-        if (error || !profile || profile.role !== 'admin') {
+        const ADMIN_ROLES = ['super_admin', 'admin', 'assistant_admin', 'support_agent'];
+        if (error || !profile || !ADMIN_ROLES.includes(profile.role)) {
             return NextResponse.json({ authenticated: false })
         }
 
-        return NextResponse.json({ authenticated: true })
+        return NextResponse.json({ authenticated: true, user: { id: userId, role: profile.role } })
     } catch {
         return NextResponse.json({ authenticated: false })
     }
