@@ -394,7 +394,7 @@ export function TagdeerProvider({ children }) {
             const { data, error } = await supabase.auth.verifyOtp({
                 email,
                 token,
-                type: 'magiclink',
+                type: 'email',
             });
 
             console.log("Supabase OTP Verify Result:", { data, error, email, token });
