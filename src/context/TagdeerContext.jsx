@@ -488,7 +488,7 @@ export function TagdeerProvider({ children }) {
                 const ADMIN_ROLES = ['super_admin', 'admin', 'assistant_admin', 'support_agent'];
                 const isAdmin = ADMIN_ROLES.includes(user?.role) || user?.userId === 'ADMIN-MOCK' || user?.isDevBypass;
 
-                let query = supabase.from('businesses').select('*, logs(*)');
+                let query = supabase.from('businesses').select('*, logs(*), storefronts(slug, logo_url, status)');
 
                 if (!isAdmin) {
                     query = query.eq('status', 'published');
@@ -524,6 +524,7 @@ export function TagdeerProvider({ children }) {
                             source: b.source,
                             status: b.status || 'published',
                             external_url: b.external_url,
+                            storefront: (Array.isArray(b.storefronts) ? b.storefronts[0] : b.storefronts) || null,
                             logs: rawLogs
                                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                                 .map(log => ({

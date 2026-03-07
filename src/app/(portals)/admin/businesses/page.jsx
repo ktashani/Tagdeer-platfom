@@ -29,6 +29,7 @@ export default function BusinessRegistry() {
     const [editForm, setEditForm] = useState({ name: '', category: '', region: '' })
     const [isSaving, setIsSaving] = useState(false)
     const [claimerProfile, setClaimerProfile] = useState(null)
+    const [storefrontData, setStorefrontData] = useState(null)
     const [isFetchingClaimer, setIsFetchingClaimer] = useState(false)
 
     // Restrict Reason Modal State
@@ -332,27 +333,42 @@ export default function BusinessRegistry() {
                                                             setEditForm({ name: business.name, category: business.category, region: business.city });
                                                             setIsEditMode(false);
                                                             setClaimerProfile(null);
+                                                            setStorefrontData(null);
 
-                                                            if (business.claimed && business.owner_id) {
-                                                                setIsFetchingClaimer(true);
-                                                                try {
-                                                                    const { data, error } = await supabase
-                                                                        .from('profiles')
-                                                                        .select('*')
-                                                                        .eq('id', business.owner_id)
-                                                                        .single();
+                                                            setIsFetchingClaimer(true);
+                                                            try {
+                                                                const promises = [];
 
-                                                                    if (error && error.code !== 'PGRST116') {
-                                                                        throw error;
-                                                                    }
-                                                                    if (data) {
-                                                                        setClaimerProfile(data);
-                                                                    }
-                                                                } catch (err) {
-                                                                    console.error("Error fetching claimer profile:", err);
-                                                                } finally {
-                                                                    setIsFetchingClaimer(false);
+                                                                if (business.claimed && business.owner_id) {
+                                                                    promises.push(
+                                                                        supabase
+                                                                            .from('profiles')
+                                                                            .select('*')
+                                                                            .eq('id', business.owner_id)
+                                                                            .single()
+                                                                            .then(({ data, error }) => {
+                                                                                if (error && error.code !== 'PGRST116') throw error;
+                                                                                if (data) setClaimerProfile(data);
+                                                                            })
+                                                                    );
                                                                 }
+
+                                                                promises.push(
+                                                                    supabase
+                                                                        .from('storefronts')
+                                                                        .select('*')
+                                                                        .eq('business_id', business.id)
+                                                                        .maybeSingle()
+                                                                        .then(({ data }) => {
+                                                                            if (data) setStorefrontData(data);
+                                                                        })
+                                                                );
+
+                                                                await Promise.all(promises);
+                                                            } catch (err) {
+                                                                console.error("Error fetching related records:", err);
+                                                            } finally {
+                                                                setIsFetchingClaimer(false);
                                                             }
                                                         }}
                                                         className="text-slate-400 hover:text-emerald-400 font-medium transition-colors flex items-center gap-1.5 justify-end w-full"
@@ -483,6 +499,7 @@ export default function BusinessRegistry() {
                     setSelectedBusiness(null);
                     setIsEditMode(false);
                     setClaimerProfile(null);
+                    setStorefrontData(null);
                 }
             }}>
                 <DialogContent className="sm:max-w-[500px] bg-slate-900 border-slate-700 text-white">
@@ -699,6 +716,53 @@ export default function BusinessRegistry() {
                                         {isSaving ? "Updating..." : selectedBusiness.status === 'published' ? "Restrict Profile" : "Un-Restrict Profile"}
                                     </Button>
                                 </div>
+
+                                {/* Storefront Moderation */}
+                                {storefrontData && (
+                                    <div className="bg-slate-800/50 border border-purple-500/30 rounded-lg p-4 flex items-center justify-between mt-3">
+                                        <div>
+                                            <div className="font-medium text-white flex items-center gap-2">
+                                                Public Microsite
+                                                {storefrontData.status === 'published' ? (
+                                                    <span className="bg-purple-500/10 text-purple-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">Live</span>
+                                                ) : (
+                                                    <span className="bg-slate-500/10 text-slate-400 text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">{storefrontData.status}</span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-1">
+                                                /b/{storefrontData.slug}
+                                            </p>
+                                        </div>
+                                        {storefrontData.status === 'published' && (
+                                            <Button
+                                                variant="outline"
+                                                className="bg-slate-900 hover:bg-red-900/50 text-red-400 hover:text-red-300 border-red-900/50 h-9"
+                                                onClick={async () => {
+                                                    if (!confirm('Are you sure you want to force unpublish this microsite? The merchant will be notified.')) return;
+                                                    setIsSaving(true);
+                                                    try {
+                                                        const { error } = await supabase
+                                                            .from('storefronts')
+                                                            .update({ status: 'archived' })
+                                                            .eq('id', storefrontData.id);
+
+                                                        if (error) throw error;
+                                                        showToast('Microsite forcefully unpublished.');
+                                                        setStorefrontData(prev => ({ ...prev, status: 'archived' }));
+                                                    } catch (err) {
+                                                        console.error(err);
+                                                        showToast('Failed to unpublish microsite.', 'error');
+                                                    } finally {
+                                                        setIsSaving(false);
+                                                    }
+                                                }}
+                                                disabled={isSaving}
+                                            >
+                                                Force Unpublish
+                                            </Button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

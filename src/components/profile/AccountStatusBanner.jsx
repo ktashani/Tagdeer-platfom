@@ -40,7 +40,7 @@ export function AccountStatusBanner({ status, lang }) {
                         }
                     </p>
                     <a
-                        href="mailto:support@tagdeer.com"
+                        href="mailto:support@tagdeer.app"
                         className={`inline-flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg transition-colors ${isBanned
                             ? 'bg-red-100 hover:bg-red-200 text-red-700'
                             : 'bg-amber-100 hover:bg-amber-200 text-amber-700'

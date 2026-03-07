@@ -162,6 +162,7 @@ export default function SettingsPage() {
                 max_locations: 1,
                 max_shields: 0,
                 max_campaigns: 0,
+                max_storefronts: 0,
                 gader_points: 5
             },
             features: ['New Feature'],
@@ -450,7 +451,7 @@ export default function SettingsPage() {
                                                                 placeholder="Feature 1, Feature 2, Feature 3"
                                                             />
                                                         </div>
-                                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-900/50 p-3 rounded border border-slate-700/50 mt-2">
+                                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-slate-900/50 p-3 rounded border border-slate-700/50 mt-2">
                                                             <div className="space-y-1">
                                                                 <label className="text-[9px] text-slate-500 uppercase font-bold tracking-wider block" title="-1 for Unlimited">Max Locations</label>
                                                                 <input
@@ -475,6 +476,15 @@ export default function SettingsPage() {
                                                                     type="number"
                                                                     value={tier.allocations?.max_campaigns ?? 0}
                                                                     onChange={e => handleTierChange(tier.id, 'allocations.max_campaigns', parseInt(e.target.value) || 0)}
+                                                                    className="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-slate-300 text-xs focus:outline-none focus:border-emerald-500"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[9px] text-slate-500 uppercase font-bold tracking-wider block" title="-1 for Unlimited">Max Storefronts</label>
+                                                                <input
+                                                                    type="number"
+                                                                    value={tier.allocations?.max_storefronts ?? 0}
+                                                                    onChange={e => handleTierChange(tier.id, 'allocations.max_storefronts', parseInt(e.target.value) || 0)}
                                                                     className="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-slate-300 text-xs focus:outline-none focus:border-emerald-500"
                                                                 />
                                                             </div>

@@ -18,11 +18,16 @@ export async function middleware(request) {
     const hostname = request.headers.get('host') || ''
     const pathname = request.nextUrl.pathname
 
-    // Define the main app domain (handle both localhost and production)
+    // Define the main app domain (handle localhost, staging, and production)
     const isLocalhost = hostname.includes('localhost') || hostname.includes('127.0.0.1')
+    const isStaging = hostname.includes('staging.tagdeer.app')
 
-    // You might want to get this from env variables in a real app, e.g. process.env.NEXT_PUBLIC_ROOT_DOMAIN
-    const rootDomain = isLocalhost ? 'localhost:3000' : (process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tagdeer.com')
+    // Auto-detect environment: localhost → staging → production
+    const rootDomain = isLocalhost
+        ? 'localhost:3000'
+        : isStaging
+            ? 'staging.tagdeer.app'
+            : (process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tagdeer.app')
 
     // Check if we are on a subdomain
     let currentHost = hostname.replace(`.${rootDomain}`, '')

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTagdeer } from '@/context/TagdeerContext';
-import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap } from 'lucide-react';
+import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap, Store } from 'lucide-react';
 import { calculateBusinessScore } from '@/lib/mathEngine';
 import { getDeviceFingerprint } from '@/lib/fingerprint';
 
@@ -147,6 +147,8 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
         return gradients[category] || 'linear-gradient(135deg, #64748b, #334155)';
     };
 
+    const hasStorefront = business.storefront && business.storefront.status === 'published';
+
     return (
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow flex flex-col relative overflow-hidden">
 
@@ -182,12 +184,18 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
             />
 
             <div className="flex items-start gap-4 mb-4 relative z-0">
-                <div
-                    className="w-16 h-16 rounded-2xl shrink-0 flex items-center justify-center text-2xl font-bold text-white shadow-inner"
-                    style={{ background: getGradient(business.category) }}
-                >
-                    {avatarLetter}
-                </div>
+                {business.storefront?.logo_url ? (
+                    <div className="w-16 h-16 rounded-2xl shrink-0 overflow-hidden shadow-sm border border-slate-100 bg-white">
+                        <img src={business.storefront.logo_url} alt={`${business.name} logo`} className="w-full h-full object-cover" loading="lazy" />
+                    </div>
+                ) : (
+                    <div
+                        className="w-16 h-16 rounded-2xl shrink-0 flex items-center justify-center text-2xl font-bold text-white shadow-inner"
+                        style={{ background: getGradient(business.category) }}
+                    >
+                        {avatarLetter}
+                    </div>
+                )}
 
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1">
@@ -289,6 +297,13 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                     </div>
                 </div>
             </div>
+
+            {hasStorefront && (
+                <a href={`/b/${business.storefront.slug}`} className="mb-4 w-full bg-slate-50 hover:bg-blue-50 text-blue-600 border border-slate-200 hover:border-blue-200 py-2.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-colors text-sm">
+                    <Store className="w-4 h-4" />
+                    {lang === 'ar' ? 'زيارة صفحة النشاط' : 'Visit Storefront'}
+                </a>
+            )}
 
             <div className="flex gap-3 mb-6">
                 <button onClick={() => openVoteModal(business.id, 'recommend', business)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 py-3 rounded-xl font-semibold flex justify-center items-center gap-2">

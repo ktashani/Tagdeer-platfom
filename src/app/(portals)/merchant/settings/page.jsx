@@ -25,7 +25,7 @@ export default function MerchantSettings() {
     // Account Level
     const [accountTier, setAccountTier] = useState('Free'); // 'Free', 'Pro', 'Enterprise'
     const [subscription, setSubscription] = useState(null);
-    const [quotaUsage, setQuotaUsage] = useState({ locationsUsed: 0, shieldsAssigned: 0 });
+    const [quotaUsage, setQuotaUsage] = useState({ locationsUsed: 0, shieldsAssigned: 0, storefrontsAssigned: 0 });
     const [personalInfo, setPersonalInfo] = useState({
         name: '',
         email: '',
@@ -50,18 +50,33 @@ export default function MerchantSettings() {
                     .eq('status', 'Active')
                     .single();
 
-                // Calculate Quota Usage
-                const [bizCountRes, shieldCountRes] = await Promise.all([
+                // Calculate Quota Usage and Addons
+                const [bizCountRes, shieldCountRes, storefrontCountRes, addonsRes] = await Promise.all([
                     supabase.from('businesses').select('id', { count: 'exact', head: true }).eq('claimed_by', user.id),
-                    supabase.from('feature_allocations').select('id', { count: 'exact', head: true }).eq('profile_id', user.id).eq('feature_type', 'shield').eq('status', 'active')
+                    supabase.from('feature_allocations').select('id', { count: 'exact', head: true }).eq('profile_id', user.id).eq('feature_type', 'shield').eq('status', 'active'),
+                    supabase.from('feature_allocations').select('id', { count: 'exact', head: true }).eq('profile_id', user.id).eq('feature_type', 'storefront').eq('status', 'active'),
+                    supabase.from('merchant_addons').select('addon_type, quantity').eq('profile_id', user.id).eq('status', 'active').or('expires_at.is.null,expires_at.gt.now()')
                 ]);
 
                 setQuotaUsage({
                     locationsUsed: bizCountRes.count || 0,
-                    shieldsAssigned: shieldCountRes.count || 0
+                    shieldsAssigned: shieldCountRes.count || 0,
+                    storefrontsAssigned: storefrontCountRes.count || 0
                 });
 
                 if (data && data.tier) {
+                    // Integrate Addons into dynamic computing Base Quotas
+                    const computedQuotas = { ...data.quotas };
+                    if (addonsRes.data) {
+                        addonsRes.data.forEach(addon => {
+                            const quotaKey = `max_${addon.addon_type}s`;
+                            if (computedQuotas[quotaKey] !== -1) {
+                                computedQuotas[quotaKey] = (computedQuotas[quotaKey] || 0) + addon.quantity;
+                            }
+                        });
+                    }
+                    data.quotas = computedQuotas;
+
                     setSubscription(data);
 
                     // Client-side expiry fallback
@@ -178,12 +193,12 @@ export default function MerchantSettings() {
 
     // Business Level (Contextual)
     const [businessShield, setBusinessShield] = useState(0); // 0 = None, 1 = Trust, 2 = Fatora
-    const [storefrontEnabled, setStorefrontEnabled] = useState(true);
+    const [businessStorefront, setBusinessStorefront] = useState(false);
 
     useEffect(() => {
         if (myBusiness && user) {
-            const fetchShieldState = async () => {
-                const { data } = await supabase
+            const fetchBusinessState = async () => {
+                const { data: shieldData } = await supabase
                     .from('feature_allocations')
                     .select('id')
                     .eq('business_id', myBusiness.id)
@@ -192,9 +207,20 @@ export default function MerchantSettings() {
                     .eq('status', 'active')
                     .maybeSingle();
 
-                setBusinessShield(data ? 1 : 0);
+                setBusinessShield(shieldData ? 1 : 0);
+
+                const { data: storefrontData } = await supabase
+                    .from('feature_allocations')
+                    .select('id')
+                    .eq('business_id', myBusiness.id)
+                    .eq('profile_id', user.id)
+                    .eq('feature_type', 'storefront')
+                    .eq('status', 'active')
+                    .maybeSingle();
+
+                setBusinessStorefront(!!storefrontData);
             };
-            fetchShieldState();
+            fetchBusinessState();
         }
     }, [myBusiness, user]);
 
@@ -206,7 +232,7 @@ export default function MerchantSettings() {
             if (activating) {
                 // Check quota
                 const maxShields = subscription?.quotas?.max_shields || 0;
-                if (quotaUsage.shieldsAssigned >= maxShields) {
+                if (maxShields !== -1 && quotaUsage.shieldsAssigned >= maxShields) {
                     if (showToast) showToast(`You have reached your allocation limit of ${maxShields} Shields. Upgrade your Tier.`, 'error');
                     return;
                 }
@@ -246,10 +272,57 @@ export default function MerchantSettings() {
         }
     };
 
+    const handleStorefrontToggle = async (isEnabled) => {
+        if (!myBusiness || !supabase || !user) return;
+        try {
+            if (isEnabled) {
+                // Check quota
+                const maxStorefronts = subscription?.quotas?.max_storefronts || 0;
+                if (maxStorefronts !== -1 && quotaUsage.storefrontsAssigned >= maxStorefronts) {
+                    if (showToast) showToast(`You have reached your allocation limit of ${maxStorefronts} Storefronts. Upgrade your Tier.`, 'error');
+                    return;
+                }
+
+                const { error } = await supabase
+                    .from('feature_allocations')
+                    .insert({
+                        profile_id: user.id,
+                        business_id: myBusiness.id,
+                        feature_type: 'storefront',
+                        status: 'active'
+                    });
+                if (error) {
+                    if (error.code === '23505') {
+                        await supabase.from('feature_allocations').update({ status: 'active' }).eq('business_id', myBusiness.id).eq('profile_id', user.id).eq('feature_type', 'storefront');
+                    } else throw error;
+                }
+                setQuotaUsage(prev => ({ ...prev, storefrontsAssigned: prev.storefrontsAssigned + 1 }));
+            } else {
+                // Revoke
+                const { error } = await supabase
+                    .from('feature_allocations')
+                    .update({ status: 'revoked' })
+                    .eq('profile_id', user.id)
+                    .eq('business_id', myBusiness.id)
+                    .eq('feature_type', 'storefront');
+                if (error) throw error;
+                // Deactivate the actual storefront if it exists
+                await supabase.from('storefronts').update({ status: 'archived' }).eq('business_id', myBusiness.id);
+                setQuotaUsage(prev => ({ ...prev, storefrontsAssigned: Math.max(0, prev.storefrontsAssigned - 1) }));
+            }
+
+            setBusinessStorefront(isEnabled);
+            if (showToast) showToast(isEnabled ? 'Storefront Enabled for this branch!' : 'Storefront Disabled.');
+        } catch (err) {
+            console.error(err);
+            if (showToast) showToast('Failed to update storefront settings.', 'error');
+        }
+    };
+
     const handlePasswordReset = async () => {
         if (!supabase || !user?.email) return;
         try {
-            const redirectUrl = `${window.location.origin}/auth/callback?next=/merchant/reset-password`;
+            const redirectUrl = `${window.location.origin}/auth/callback?next=/merchant/reset-password&from=merchant`;
             const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
                 redirectTo: redirectUrl,
             });
@@ -564,11 +637,25 @@ export default function MerchantSettings() {
                                                     <ShieldCheck className="w-5 h-5 text-emerald-500" /> Trust Shields
                                                 </div>
                                                 <span className="text-sm font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">
-                                                    {quotaUsage.shieldsAssigned} / {subscription?.quotas?.max_shields || 0}
+                                                    {subscription?.quotas?.max_shields === -1 ? 'Unlimited' : `${quotaUsage.shieldsAssigned} / ${subscription?.quotas?.max_shields || 0}`}
                                                 </span>
                                             </div>
-                                            <Progress value={subscription?.quotas?.max_shields ? (quotaUsage.shieldsAssigned / subscription.quotas.max_shields) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName={quotaUsage.shieldsAssigned >= (subscription?.quotas?.max_shields || 0) ? 'bg-amber-500' : 'bg-emerald-500'} />
+                                            <Progress value={subscription?.quotas?.max_shields === -1 ? 100 : subscription?.quotas?.max_shields ? (quotaUsage.shieldsAssigned / subscription.quotas.max_shields) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName={subscription?.quotas?.max_shields === -1 ? 'bg-emerald-500' : quotaUsage.shieldsAssigned >= (subscription?.quotas?.max_shields || 0) ? 'bg-amber-500' : 'bg-emerald-500'} />
                                             <p className="text-xs text-slate-500">Allocate shields to your branches globally.</p>
+                                        </div>
+
+                                        {/* Storefronts Quota */}
+                                        <div className="space-y-3 p-5 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex items-center gap-2 font-semibold">
+                                                    <Store className="w-5 h-5 text-purple-500" /> Live Storefronts
+                                                </div>
+                                                <span className="text-sm font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">
+                                                    {subscription?.quotas?.max_storefronts === -1 ? 'Unlimited' : `${quotaUsage.storefrontsAssigned} / ${subscription?.quotas?.max_storefronts || 0}`}
+                                                </span>
+                                            </div>
+                                            <Progress value={subscription?.quotas?.max_storefronts === -1 ? 100 : subscription?.quotas?.max_storefronts ? (quotaUsage.storefrontsAssigned / subscription.quotas.max_storefronts) * 100 : 0} className="h-2 bg-slate-100" indicatorClassName={subscription?.quotas?.max_storefronts === -1 ? 'bg-purple-500' : quotaUsage.storefrontsAssigned >= (subscription?.quotas?.max_storefronts || 0) ? 'bg-amber-500' : 'bg-purple-500'} />
+                                            <p className="text-xs text-slate-500">Number of active public microsites allowed.</p>
                                         </div>
 
                                     </div>
@@ -707,17 +794,29 @@ export default function MerchantSettings() {
                                     <CardTitle>Business Features</CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                                        <div className="flex items-center gap-4">
-                                            <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full">
-                                                <Store className="w-5 h-5" />
+                                    <div className={`p-5 rounded-xl border-2 transition-all ${businessStorefront ? 'border-purple-500 bg-purple-50/30 dark:bg-purple-900/10' : 'border-slate-200 dark:border-slate-800'}`}>
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                            <div className="flex gap-4 items-center">
+                                                <div className={`p-3 rounded-full ${businessStorefront ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-400 dark:bg-slate-800'}`}>
+                                                    <Store className="w-6 h-6" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                                                        Digital Storefront
+                                                        {businessStorefront && <Badge variant="outline" className="bg-purple-100 text-purple-700 border-0">Live & Configured</Badge>}
+                                                    </h4>
+                                                    <p className="text-sm text-slate-500 max-w-md">Launch a personalized SEO-optimized Microsite for this branch with menus and quick links.</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <h4 className="font-semibold">Digital Storefront</h4>
-                                                <p className="text-sm text-slate-500">Allow customers to view menus/catalogs and request quotes directly.</p>
+                                            <div className="flex items-center gap-4 shrink-0">
+                                                {businessStorefront && (
+                                                    <Button variant="outline" className="border-purple-200 text-purple-700 hover:bg-purple-50" onClick={() => router.push(`/merchant/storefront-builder/${myBusiness?.id}`)}>
+                                                        <Sparkles className="w-4 h-4 mr-2" /> Open Builder
+                                                    </Button>
+                                                )}
+                                                <Switch checked={businessStorefront} onCheckedChange={handleStorefrontToggle} className="data-[state=checked]:bg-purple-600" />
                                             </div>
                                         </div>
-                                        <Switch checked={storefrontEnabled} onCheckedChange={setStorefrontEnabled} />
                                     </div>
                                 </CardContent>
                             </Card>

@@ -1,5 +1,4 @@
 'use client';
-'use client'
 
 import { useState, useEffect } from 'react'
 import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, DollarSign, ExternalLink, ShieldCheck, Loader2 } from 'lucide-react'
@@ -21,7 +20,7 @@ export default function FinancialsPage() {
     // New Trial Campaigns state
     const [trialCampaigns, setTrialCampaigns] = useState([])
     const [showCreateCampaignModal, setShowCreateCampaignModal] = useState(false)
-    const [campaignForm, setCampaignForm] = useState({ name: '', tier: 'Pro', months: 3, maxRedemptions: 50, addons: [] })
+    const [campaignForm, setCampaignForm] = useState({ name: '', campaignType: 'tier_upgrade', addonType: 'storefront', addonQuantity: 1, tier: 'Pro', months: 3, maxRedemptions: 50, addons: [] })
     const [isCreatingCampaign, setIsCreatingCampaign] = useState(false)
 
     const [selectedTxn, setSelectedTxn] = useState(null)
@@ -187,10 +186,11 @@ export default function FinancialsPage() {
 
         const { error } = await supabase.from('trial_campaigns').insert([{
             name: campaignForm.name,
-            tier: campaignForm.tier,
+            campaign_type: campaignForm.campaignType,
+            tier: campaignForm.campaignType === 'tier_upgrade' ? campaignForm.tier : 'Free',
             trial_months: parseInt(campaignForm.months),
             max_redemptions: parseInt(campaignForm.maxRedemptions),
-            addons: campaignForm.addons
+            addons: campaignForm.campaignType === 'addon_grant' ? [{ type: campaignForm.addonType, quantity: parseInt(campaignForm.addonQuantity) }] : []
         }])
 
         if (error) {
@@ -198,14 +198,14 @@ export default function FinancialsPage() {
         } else {
             showToast("Trial Campaign created successfully!")
             setShowCreateCampaignModal(false)
-            setCampaignForm({ name: '', tier: 'Pro', months: 3, maxRedemptions: 50, addons: [] })
+            setCampaignForm({ name: '', campaignType: 'tier_upgrade', addonType: 'storefront', addonQuantity: 1, tier: 'Pro', months: 3, maxRedemptions: 50, addons: [] })
             window.location.reload()
         }
         setIsCreatingCampaign(false)
     }
 
     const handleCopyLink = (campaignId) => {
-        const domain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tagdeer.ly';
+        const domain = process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tagdeer.app';
         const link = `https://${domain}/merchant/login?trial_campaign=${campaignId}`;
         navigator.clipboard.writeText(link);
         showToast("Campaign Link copied to clipboard!");
@@ -447,8 +447,12 @@ export default function FinancialsPage() {
                                             <td className="px-6 py-4 font-medium text-white">{camp.name}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col">
-                                                    <span className="font-bold text-indigo-400">{camp.tier}</span>
-                                                    <span className="text-[10px] text-slate-500 font-medium">{camp.trial_months} Months</span>
+                                                    <span className="font-bold text-indigo-400 capitalize">
+                                                        {camp.campaign_type === 'addon_grant' ? `+${camp.addons?.[0]?.quantity || 1} ${camp.addons?.[0]?.type || 'Addon'}s` : camp.tier}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-500 font-medium">
+                                                        {camp.campaign_type === 'addon_grant' ? 'Feature Addon Trial' : 'Tier Upgrade'} &bull; {camp.trial_months} Months
+                                                    </span>
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">
@@ -560,14 +564,40 @@ export default function FinancialsPage() {
                                 <input placeholder="e.g. Summer Promo 2026" type="text" value={campaignForm.name} onChange={e => setCampaignForm({ ...campaignForm, name: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500" />
                             </div>
 
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Campaign Type</label>
+                                <select value={campaignForm.campaignType} onChange={e => setCampaignForm({ ...campaignForm, campaignType: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500 appearance-none">
+                                    <option value="tier_upgrade">Tier Upgrade (Pro/Enterprise)</option>
+                                    <option value="addon_grant">Feature Addon Grants</option>
+                                </select>
+                            </div>
+
                             <div className="flex gap-4">
-                                <div className="flex-1">
-                                    <label className="block text-sm font-medium text-slate-300 mb-1">Offer Tier</label>
-                                    <select value={campaignForm.tier} onChange={e => setCampaignForm({ ...campaignForm, tier: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500 appearance-none">
-                                        <option value="Pro">Pro</option>
-                                        <option value="Enterprise">Enterprise</option>
-                                    </select>
-                                </div>
+                                {campaignForm.campaignType === 'tier_upgrade' ? (
+                                    <div className="flex-1">
+                                        <label className="block text-sm font-medium text-slate-300 mb-1">Offer Tier</label>
+                                        <select value={campaignForm.tier} onChange={e => setCampaignForm({ ...campaignForm, tier: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500 appearance-none">
+                                            <option value="Pro">Pro</option>
+                                            <option value="Enterprise">Enterprise</option>
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="flex-1">
+                                            <label className="block text-sm font-medium text-slate-300 mb-1">Addon Feature</label>
+                                            <select value={campaignForm.addonType} onChange={e => setCampaignForm({ ...campaignForm, addonType: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500 appearance-none">
+                                                <option value="storefront">Digital Storefronts</option>
+                                                <option value="shield">Trust Shields</option>
+                                                <option value="location">Business Locations</option>
+                                                <option value="campaign">Coupon Campaigns</option>
+                                            </select>
+                                        </div>
+                                        <div className="w-24">
+                                            <label className="block text-sm font-medium text-slate-300 mb-1">Qty</label>
+                                            <input type="number" min="1" max="100" value={campaignForm.addonQuantity} onChange={e => setCampaignForm({ ...campaignForm, addonQuantity: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500" />
+                                        </div>
+                                    </>
+                                )}
                                 <div className="flex-1">
                                     <label className="block text-sm font-medium text-slate-300 mb-1">Duration (Months)</label>
                                     <input type="number" min="1" max="12" value={campaignForm.months} onChange={e => setCampaignForm({ ...campaignForm, months: e.target.value })} className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-indigo-500" />

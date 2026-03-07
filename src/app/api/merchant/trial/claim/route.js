@@ -67,12 +67,13 @@ export async function POST(req) {
         const { data: currentSub } = await supabase
             .from('subscriptions')
             .select('*')
-            .eq('business_id', businessId)
+            .eq('profile_id', userId)
             .single();
 
-        if (currentSub && (currentSub.status === 'Active' || currentSub.status === 'Pending')) {
+        // If it's a Tier Upgrade, they cannot overwrite a paid plan.
+        if (campaign.campaign_type !== 'addon_grant' && currentSub && (currentSub.status === 'Active' || currentSub.status === 'Pending')) {
             if (!currentSub.is_trial) {
-                return NextResponse.json({ success: false, error: 'Active paid subscriptions cannot be replaced by a free trial' });
+                return NextResponse.json({ success: false, error: 'Active paid subscriptions cannot be replaced by a free trial tier. Only Addon Trials are allowed.' });
             }
         }
 
@@ -80,7 +81,7 @@ export async function POST(req) {
         const expiresAt = new Date();
         expiresAt.setMonth(expiresAt.getMonth() + campaign.trial_months);
 
-        // 6. Execute Updates (Sequential because we lack true transactions via JS REST, but it is safe enough for trials)
+        // 6. Execute Updates
 
         // A. Register Redemption
         await supabase.from('trial_campaign_redemptions').insert({
@@ -93,28 +94,54 @@ export async function POST(req) {
             .update({ current_redemptions: campaign.current_redemptions + 1 })
             .eq('id', campaignId);
 
-        // C. Upsert Subscription
-        const subPayload = {
-            business_id: businessId,
-            tier: campaign.tier,
-            addons: campaign.addons || [],
-            status: 'Active',
-            expires_at: expiresAt.toISOString(),
-            is_trial: true,
-            trial_months: campaign.trial_months
-        };
 
-        if (currentSub) {
-            await supabase.from('subscriptions').update(subPayload).eq('business_id', businessId);
+        if (campaign.campaign_type === 'addon_grant') {
+            // C. Insert Addon token for each addon array item
+            const addonsToGrant = Array.isArray(campaign.addons) ? campaign.addons : [];
+            const addonInserts = addonsToGrant.map(addon => {
+                const typestr = typeof addon === 'string' ? addon : addon.type;
+                const qty = typeof addon === 'object' && addon.quantity ? addon.quantity : 1;
+                return {
+                    profile_id: userId,
+                    addon_type: typestr,
+                    quantity: qty,
+                    status: 'active',
+                    expires_at: expiresAt.toISOString()
+                }
+            });
+
+            if (addonInserts.length > 0) {
+                await supabase.from('merchant_addons').insert(addonInserts);
+            }
+
+            return NextResponse.json({
+                success: true,
+                message: `Successfully claimed feature trial addon for ${campaign.trial_months} months!`,
+                expires_at: expiresAt
+            });
         } else {
-            await supabase.from('subscriptions').insert(subPayload);
-        }
+            // C. Upsert Base Subscription Tier
+            const subPayload = {
+                profile_id: userId,
+                tier: campaign.tier,
+                status: 'Active',
+                expires_at: expiresAt.toISOString(),
+                is_trial: true,
+                trial_months: campaign.trial_months
+            };
 
-        return NextResponse.json({
-            success: true,
-            message: `Successfully claimed ${campaign.tier} trial for ${campaign.trial_months} months!`,
-            expires_at: expiresAt
-        });
+            if (currentSub) {
+                await supabase.from('subscriptions').update(subPayload).eq('profile_id', userId);
+            } else {
+                await supabase.from('subscriptions').insert(subPayload);
+            }
+
+            return NextResponse.json({
+                success: true,
+                message: `Successfully claimed ${campaign.tier} trial for ${campaign.trial_months} months!`,
+                expires_at: expiresAt
+            });
+        }
 
     } catch (err) {
         console.error('Trial claim exception:', err);

@@ -148,7 +148,7 @@ export default function MerchantGuard({ children }) {
                     </div>
 
                     <a
-                        href="mailto:support@tagdeer.com"
+                        href="mailto:support@tagdeer.app"
                         className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-white transition-colors shadow-lg ${isBanned
                             ? 'bg-red-600 hover:bg-red-700'
                             : 'bg-amber-600 hover:bg-amber-700'

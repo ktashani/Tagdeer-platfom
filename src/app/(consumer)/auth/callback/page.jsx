@@ -54,7 +54,7 @@ function AuthCallbackInner() {
 
                 if (sessionError) throw sessionError;
 
-                if (session?.user?.email) {
+                if (session?.user) {
                     if (isMounted) setStatusText(lang === 'ar' ? 'تم تسجيل الدخول، جارِ التوجيه...' : 'Logged in, redirecting...');
 
                     // If coming from the merchant portal, ensure role is initialized to merchant
@@ -100,8 +100,8 @@ function AuthCallbackInner() {
                     return;
                 }
 
-                const subscription = supabase.auth.onAuthStateChange(async (event, newSession) => {
-                    if (event === 'SIGNED_IN' && newSession?.user?.email) {
+                const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+                    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED' || event === 'PASSWORD_RECOVERY') && newSession?.user) {
                         if (isMounted) setStatusText(lang === 'ar' ? 'تم تسجيل الدخول، جارِ التوجيه...' : 'Logged in, redirecting...');
 
                         // If coming from the merchant portal, ensure role is initialized to merchant
@@ -146,7 +146,7 @@ function AuthCallbackInner() {
                     }
                 });
 
-                authListener = subscription.data.subscription;
+                authListener = subscription;
 
             } catch (err) {
                 console.error('Error during auth callback:', err);
