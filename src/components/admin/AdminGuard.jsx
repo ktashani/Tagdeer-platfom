@@ -17,7 +17,9 @@ export default function AdminGuard({ children }) {
 
     useEffect(() => {
         // Don't guard the login page itself
-        if (pathname === '/admin/login') {
+        // On subdomain (admin.tagdeer.app), usePathname() returns '/login'
+        // On path-based (localhost:3000/admin/login), it returns '/admin/login'
+        if (pathname === '/admin/login' || pathname === '/login') {
             setIsAuthorized(true)
             setChecking(false)
             return
@@ -37,15 +39,15 @@ export default function AdminGuard({ children }) {
                     if (data.authenticated) {
                         setIsAuthorized(true)
                     } else {
-                        router.push('/admin/login?redirect=' + encodeURIComponent(pathname))
+                        router.push('/login?redirect=' + encodeURIComponent(pathname))
                     }
                 } else {
-                    router.push('/admin/login?redirect=' + encodeURIComponent(pathname))
+                    router.push('/login?redirect=' + encodeURIComponent(pathname))
                 }
             } catch {
                 // If no API exists yet, fall back to cookie detection via document.cookie
                 // Note: admin_auth is httpOnly so this won't work — redirect to login
-                router.push('/admin/login?redirect=' + encodeURIComponent(pathname))
+                router.push('/login?redirect=' + encodeURIComponent(pathname))
             } finally {
                 setChecking(false)
             }
