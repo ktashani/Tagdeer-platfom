@@ -17,13 +17,15 @@ export default function MerchantGuard({ children }) {
     useEffect(() => {
         if (!loading) {
             // Don't guard the login or onboarding page itself
-            if (pathname === '/merchant/login' || pathname === '/merchant/onboarding') {
+            // On subdomain (merchant.tagdeer.app), usePathname() returns '/login'
+            // On path-based (localhost:3000/merchant/login), it returns '/merchant/login'
+            if (pathname === '/merchant/login' || pathname === '/login' || pathname === '/merchant/onboarding' || pathname === '/onboarding') {
                 setIsAuthorized(true)
                 return
             }
 
             if (!user) {
-                router.push('/merchant/login?redirect=' + encodeURIComponent(pathname))
+                router.push('/login?redirect=' + encodeURIComponent(pathname))
                 return;
             }
 
@@ -31,7 +33,7 @@ export default function MerchantGuard({ children }) {
             // just ran but React state hasn't caught up yet (race condition from callback)
             if (user?.role && user.role !== 'merchant' && !user?.isDevBypass) {
                 if (!supabase) {
-                    router.push('/merchant/login?reason=merchant_required')
+                    router.push('/login?reason=merchant_required')
                     return;
                 }
                 // Fresh DB check to see if role was updated by init-role
@@ -46,10 +48,10 @@ export default function MerchantGuard({ children }) {
                             // Role was updated — allow through
                             setIsAuthorized(true)
                         } else {
-                            router.push('/merchant/login?reason=merchant_required')
+                            router.push('/login?reason=merchant_required')
                         }
                     } catch {
-                        router.push('/merchant/login?reason=merchant_required')
+                        router.push('/login?reason=merchant_required')
                     }
                 }
                 recheckRole()
