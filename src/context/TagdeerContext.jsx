@@ -391,11 +391,23 @@ export function TagdeerProvider({ children }) {
         if (!supabase) return;
 
         try {
-            const { data, error } = await supabase.auth.verifyOtp({
+            // Try 'email' type first (for existing users via signInWithOtp)
+            let { data, error } = await supabase.auth.verifyOtp({
                 email,
                 token,
                 type: 'email',
             });
+
+            // If 'email' type fails, try 'signup' (for new users, Supabase sends a signup confirmation)
+            if (error) {
+                const signupResult = await supabase.auth.verifyOtp({
+                    email,
+                    token,
+                    type: 'signup',
+                });
+                data = signupResult.data;
+                error = signupResult.error;
+            }
 
             console.log("Supabase OTP Verify Result:", { data, error, email, token });
 
