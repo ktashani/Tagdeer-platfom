@@ -247,10 +247,18 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
     return (
         <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow flex flex-col relative overflow-hidden">
 
-            {/* Dynamic Ribbon for Active Discounts */}
-            {business.hasActiveDiscount && (
-                <div className="absolute top-4 -right-8 bg-gradient-to-r from-red-500 to-rose-600 text-white text-xs font-bold py-1 px-10 transform rotate-45 shadow-md z-10">
-                    {t('discount_active', 'Discount Active!')}
+            {/* Dynamic Ribbon for Active Business Ribbons */}
+            {business.activeRibbon && (
+                <div className={`absolute top-4 -right-8 text-white text-xs font-bold py-1 px-10 transform rotate-45 shadow-md z-10 ${{
+                    red: 'bg-gradient-to-r from-red-500 to-rose-600',
+                    green: 'bg-gradient-to-r from-emerald-500 to-green-600',
+                    blue: 'bg-gradient-to-r from-blue-500 to-indigo-600',
+                    amber: 'bg-gradient-to-r from-amber-500 to-orange-600',
+                    purple: 'bg-gradient-to-r from-purple-500 to-violet-600',
+                    pink: 'bg-gradient-to-r from-pink-500 to-rose-600',
+                    orange: 'bg-gradient-to-r from-orange-500 to-red-600'
+                }[business.activeRibbon.color] || 'bg-gradient-to-r from-red-500 to-rose-600'}`}>
+                    {business.activeRibbon.label}
                 </div>
             )}
 

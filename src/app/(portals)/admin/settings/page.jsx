@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Grid, MapPin, DollarSign, Lock, Plus, Edit2, Check, X, ChevronRight, Save, Trash2, Users, AlertTriangle, ShieldAlert } from 'lucide-react'
+import { Grid, MapPin, DollarSign, Lock, Plus, Edit2, Check, X, ChevronRight, Save, Trash2, Users, AlertTriangle, ShieldAlert, Tag } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function SettingsPage() {
@@ -27,6 +27,28 @@ export default function SettingsPage() {
     const [shieldPricing, setShieldPricing] = useState({ trust: 20, fatora: 50 })
     const [tierPricing, setTierPricing] = useState([])
     const [adminUsers, setAdminUsers] = useState([])
+
+    // Ribbon configuration state
+    const RIBBON_COLORS = ['red', 'green', 'blue', 'amber', 'purple', 'pink', 'orange'];
+    const [ribbonConfig, setRibbonConfig] = useState({
+        addonPrice: 15,
+        types: [
+            { id: 'discount', label: 'Discount', label_ar: 'خصم', icon: '🏷️' },
+            { id: 'announcement', label: 'Announcement', label_ar: 'إعلان', icon: '📢' },
+            { id: 'seasonal', label: 'Seasonal', label_ar: 'موسمي', icon: '🎄' },
+            { id: 'event', label: 'Event', label_ar: 'فعالية', icon: '🎉' }
+        ],
+        colors: RIBBON_COLORS
+    });
+
+    // Load ribbon config from platform_config
+    useEffect(() => {
+        if (!supabase) return;
+        (async () => {
+            const { data } = await supabase.from('platform_config').select('value').eq('key', 'ribbon_config').maybeSingle();
+            if (data?.value) setRibbonConfig(prev => ({ ...prev, ...data.value }));
+        })();
+    }, [supabase]);
 
     // Inline edit states
     const [editingCategory, setEditingCategory] = useState(null)
@@ -175,6 +197,23 @@ export default function SettingsPage() {
     const handleSaveTierPricing = () => {
         saveConfig('tier_pricing', tierPricing)
     }
+
+    const handleSaveRibbonConfig = async () => {
+        setIsSaving(true);
+        try {
+            // Upsert ribbon_config in platform_config
+            const { error } = await supabase
+                .from('platform_config')
+                .upsert({ key: 'ribbon_config', value: ribbonConfig }, { onConflict: 'key' });
+            if (error) throw error;
+            showToast('Ribbon configuration saved!');
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to save ribbon config.', 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     if (configLoading) {
         return (
@@ -528,6 +567,15 @@ export default function SettingsPage() {
                                                                     className="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-slate-300 text-xs focus:outline-none focus:border-emerald-500"
                                                                 />
                                                             </div>
+                                                            <div className="space-y-1">
+                                                                <label className="text-[9px] text-slate-500 uppercase font-bold tracking-wider block">Ribbons / Biz</label>
+                                                                <input
+                                                                    type="number"
+                                                                    value={tier.allocations?.max_ribbons ?? 0}
+                                                                    onChange={e => handleTierChange(tier.id, 'allocations.max_ribbons', parseInt(e.target.value) || 0)}
+                                                                    className="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-slate-300 text-xs focus:outline-none focus:border-emerald-500"
+                                                                />
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div className="shrink-0 flex flex-col items-end gap-3">
@@ -552,6 +600,107 @@ export default function SettingsPage() {
                                                 </div>
                                             </div>
                                         ))}
+                                    </div>
+                                </div>
+
+                                {/* Ribbon Addon & Types */}
+                                <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-6">
+                                    <h3 className="text-lg font-bold text-white mb-4 flex items-center justify-between">
+                                        <span className="flex items-center gap-2"><Tag className="w-5 h-5 text-amber-400" /> Ribbon Addon & Types</span>
+                                        <button onClick={handleSaveRibbonConfig} disabled={isSaving} className="text-emerald-400 hover:text-emerald-300 text-sm flex items-center gap-1">
+                                            <Save className="w-4 h-4" /> Save Ribbons
+                                        </button>
+                                    </h3>
+                                    <p className="text-xs text-slate-400 mb-4">Merchants can purchase ribbons as standalone addons or use tier allocations. 1 active ribbon per business at a time.</p>
+
+                                    {/* Addon Price */}
+                                    <div className="bg-slate-800 border border-slate-700 rounded-lg p-4 mb-4">
+                                        <label className="text-sm text-slate-400 block mb-2">Ribbon Addon Price (LYD / month)</label>
+                                        <input
+                                            type="number"
+                                            value={ribbonConfig.addonPrice}
+                                            onChange={e => setRibbonConfig(prev => ({ ...prev, addonPrice: parseInt(e.target.value) || 0 }))}
+                                            className="w-32 bg-slate-900 border border-slate-600 rounded p-2 text-white text-xl font-bold"
+                                        />
+                                    </div>
+
+                                    {/* Ribbon Types */}
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-sm font-semibold text-slate-300">Available Ribbon Types</label>
+                                            <button
+                                                onClick={() => {
+                                                    const newType = { id: `custom_${Date.now()}`, label: 'New Type', label_ar: 'نوع جديد', icon: '🏷️' };
+                                                    setRibbonConfig(prev => ({ ...prev, types: [...prev.types, newType] }));
+                                                }}
+                                                className="text-emerald-400 hover:text-emerald-300 text-xs flex items-center gap-1"
+                                            >
+                                                <Plus className="w-3 h-3" /> Add Type
+                                            </button>
+                                        </div>
+                                        {ribbonConfig.types.map((type, idx) => (
+                                            <div key={type.id} className="flex items-center gap-3 bg-slate-800 border border-slate-700 rounded-lg p-3">
+                                                <input
+                                                    type="text"
+                                                    value={type.icon}
+                                                    onChange={e => {
+                                                        const updated = [...ribbonConfig.types];
+                                                        updated[idx] = { ...updated[idx], icon: e.target.value };
+                                                        setRibbonConfig(prev => ({ ...prev, types: updated }));
+                                                    }}
+                                                    className="w-12 bg-slate-900 border border-slate-600 rounded p-1.5 text-center text-lg"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={type.label}
+                                                    onChange={e => {
+                                                        const updated = [...ribbonConfig.types];
+                                                        updated[idx] = { ...updated[idx], label: e.target.value };
+                                                        setRibbonConfig(prev => ({ ...prev, types: updated }));
+                                                    }}
+                                                    className="flex-1 bg-slate-900 border border-slate-600 rounded p-1.5 text-slate-300 text-sm"
+                                                    placeholder="Type name (EN)"
+                                                />
+                                                <input
+                                                    type="text"
+                                                    value={type.label_ar}
+                                                    onChange={e => {
+                                                        const updated = [...ribbonConfig.types];
+                                                        updated[idx] = { ...updated[idx], label_ar: e.target.value };
+                                                        setRibbonConfig(prev => ({ ...prev, types: updated }));
+                                                    }}
+                                                    className="flex-1 bg-slate-900 border border-slate-600 rounded p-1.5 text-slate-300 text-sm"
+                                                    dir="rtl"
+                                                    placeholder="الاسم بالعربية"
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        setRibbonConfig(prev => ({ ...prev, types: prev.types.filter((_, i) => i !== idx) }));
+                                                    }}
+                                                    className="text-slate-500 hover:text-red-400"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Available Colors */}
+                                    <div className="mt-4">
+                                        <label className="text-sm font-semibold text-slate-300 block mb-2">Available Colors</label>
+                                        <div className="flex gap-2 flex-wrap">
+                                            {RIBBON_COLORS.map(color => {
+                                                const colorMap = {
+                                                    red: 'bg-red-500', green: 'bg-emerald-500', blue: 'bg-blue-500',
+                                                    amber: 'bg-amber-500', purple: 'bg-purple-500', pink: 'bg-pink-500', orange: 'bg-orange-500'
+                                                };
+                                                return (
+                                                    <div key={color} className={`w-8 h-8 rounded-full ${colorMap[color]} border-2 border-slate-600 flex items-center justify-center text-white text-[10px] font-bold uppercase`} title={color}>
+                                                        {color.charAt(0)}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 </div>
 

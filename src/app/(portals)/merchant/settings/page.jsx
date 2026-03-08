@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Crown, Building, Trash2, CheckCircle2, ArrowUpRight, Loader2, Sparkles } from "lucide-react";
+import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Crown, Building, Trash2, CheckCircle2, ArrowUpRight, Loader2, Sparkles, Tag } from "lucide-react";
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Globe } from 'lucide-react';
@@ -243,6 +243,21 @@ export default function MerchantSettings() {
     const [businessShield, setBusinessShield] = useState(0); // 0 = None, 1 = Trust, 2 = Fatora
     const [businessStorefront, setBusinessStorefront] = useState(false);
 
+    // Ribbon state
+    const [activeRibbon, setActiveRibbon] = useState(null);
+    const [ribbonConfig, setRibbonConfig] = useState(null);
+    const [ribbonForm, setRibbonForm] = useState({ ribbon_type: 'discount', label: '', color: 'red' });
+    const [isSavingRibbon, setIsSavingRibbon] = useState(false);
+
+    // Load ribbon config from platform_config
+    useEffect(() => {
+        if (!supabase) return;
+        (async () => {
+            const { data } = await supabase.from('platform_config').select('value').eq('key', 'ribbon_config').maybeSingle();
+            if (data?.value) setRibbonConfig(data.value);
+        })();
+    }, [supabase]);
+
     useEffect(() => {
         if (myBusiness && user) {
             const fetchBusinessState = async () => {
@@ -267,6 +282,18 @@ export default function MerchantSettings() {
                     .maybeSingle();
 
                 setBusinessStorefront(!!storefrontData);
+
+                // Fetch active ribbon for this business
+                const { data: ribbonData } = await supabase
+                    .from('business_ribbons')
+                    .select('*')
+                    .eq('business_id', myBusiness.id)
+                    .eq('is_active', true)
+                    .maybeSingle();
+                if (ribbonData) {
+                    setActiveRibbon(ribbonData);
+                    setRibbonForm({ ribbon_type: ribbonData.ribbon_type, label: ribbonData.label, color: ribbonData.color });
+                }
             };
             fetchBusinessState();
         }
@@ -868,6 +895,180 @@ export default function MerchantSettings() {
                                     </div>
                                 </CardContent>
                             </Card>
+
+                            {/* Business Ribbon */}
+                            {myBusiness && (
+                                <Card>
+                                    <CardHeader>
+                                        <div className="flex items-center gap-2">
+                                            <Tag className="w-5 h-5 text-amber-500" />
+                                            <CardTitle>Business Ribbon</CardTitle>
+                                        </div>
+                                        <CardDescription>Display a promotional ribbon on your business card in the Discover page. 1 active ribbon per business.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {activeRibbon ? (
+                                            <div className="space-y-4">
+                                                {/* Current ribbon preview */}
+                                                <div className={`p-4 rounded-xl border-2 border-amber-500 bg-amber-50/30 dark:bg-amber-900/10`}>
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`px-3 py-1.5 rounded-full text-white text-sm font-bold ${{
+                                                                red: 'bg-red-500', green: 'bg-emerald-500', blue: 'bg-blue-500',
+                                                                amber: 'bg-amber-500', purple: 'bg-purple-500', pink: 'bg-pink-500', orange: 'bg-orange-500'
+                                                            }[activeRibbon.color] || 'bg-red-500'}`}>
+                                                                {activeRibbon.label}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-semibold">{activeRibbon.ribbon_type}</p>
+                                                                <p className="text-xs text-slate-500">
+                                                                    Active since {new Date(activeRibbon.created_at).toLocaleDateString()}
+                                                                    {activeRibbon.expires_at && ` — expires ${new Date(activeRibbon.expires_at).toLocaleDateString()}`}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <Button
+                                                            variant="destructive"
+                                                            size="sm"
+                                                            disabled={isSavingRibbon}
+                                                            onClick={async () => {
+                                                                setIsSavingRibbon(true);
+                                                                try {
+                                                                    await supabase.from('business_ribbons').update({ is_active: false }).eq('id', activeRibbon.id);
+                                                                    setActiveRibbon(null);
+                                                                    if (showToast) showToast('Ribbon deactivated.');
+                                                                } catch (err) {
+                                                                    if (showToast) showToast('Failed to deactivate ribbon.', 'error');
+                                                                } finally {
+                                                                    setIsSavingRibbon(false);
+                                                                }
+                                                            }}
+                                                        >
+                                                            Deactivate
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {/* Ribbon type selector */}
+                                                <div className="space-y-2">
+                                                    <Label>Ribbon Type</Label>
+                                                    <div className="flex gap-2 flex-wrap">
+                                                        {(ribbonConfig?.types || [
+                                                            { id: 'discount', label: 'Discount', icon: '🏷️' },
+                                                            { id: 'announcement', label: 'Announcement', icon: '📢' },
+                                                            { id: 'seasonal', label: 'Seasonal', icon: '🎄' },
+                                                            { id: 'event', label: 'Event', icon: '🎉' }
+                                                        ]).map(type => (
+                                                            <button
+                                                                key={type.id}
+                                                                onClick={() => setRibbonForm(prev => ({ ...prev, ribbon_type: type.id }))}
+                                                                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${ribbonForm.ribbon_type === type.id
+                                                                        ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                                                                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                                                                    }`}
+                                                            >
+                                                                {type.icon} {type.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Ribbon label */}
+                                                <div className="space-y-2">
+                                                    <Label>Ribbon Text</Label>
+                                                    <Input
+                                                        value={ribbonForm.label}
+                                                        onChange={e => setRibbonForm(prev => ({ ...prev, label: e.target.value }))}
+                                                        placeholder='e.g. "50% OFF", "Grand Opening", "New Menu"'
+                                                        maxLength={30}
+                                                    />
+                                                </div>
+
+                                                {/* Color picker */}
+                                                <div className="space-y-2">
+                                                    <Label>Ribbon Color</Label>
+                                                    <div className="flex gap-2">
+                                                        {['red', 'green', 'blue', 'amber', 'purple', 'pink', 'orange'].map(color => {
+                                                            const colorMap = {
+                                                                red: 'bg-red-500', green: 'bg-emerald-500', blue: 'bg-blue-500',
+                                                                amber: 'bg-amber-500', purple: 'bg-purple-500', pink: 'bg-pink-500', orange: 'bg-orange-500'
+                                                            };
+                                                            return (
+                                                                <button
+                                                                    key={color}
+                                                                    onClick={() => setRibbonForm(prev => ({ ...prev, color }))}
+                                                                    className={`w-8 h-8 rounded-full ${colorMap[color]} transition-all ${ribbonForm.color === color ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 ring-blue-500 scale-110' : 'opacity-60 hover:opacity-100'
+                                                                        }`}
+                                                                />
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                {/* Preview */}
+                                                {ribbonForm.label && (
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs text-slate-500">Preview:</span>
+                                                        <div className={`px-3 py-1 rounded-full text-white text-sm font-bold ${{
+                                                            red: 'bg-red-500', green: 'bg-emerald-500', blue: 'bg-blue-500',
+                                                            amber: 'bg-amber-500', purple: 'bg-purple-500', pink: 'bg-pink-500', orange: 'bg-orange-500'
+                                                        }[ribbonForm.color] || 'bg-red-500'}`}>
+                                                            {ribbonForm.label}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Activate button */}
+                                                <Button
+                                                    disabled={!ribbonForm.label || isSavingRibbon}
+                                                    className="bg-amber-500 hover:bg-amber-600 text-white"
+                                                    onClick={async () => {
+                                                        if (!myBusiness || !supabase || !user) return;
+                                                        setIsSavingRibbon(true);
+                                                        try {
+                                                            // Check ribbon allocation
+                                                            const maxRibbons = subscription?.quotas?.max_ribbons || 0;
+                                                            if (maxRibbons === 0) {
+                                                                if (showToast) showToast('Ribbons are not included in your tier. Purchase as an addon or upgrade.', 'error');
+                                                                return;
+                                                            }
+
+                                                            // Deactivate any existing active ribbons for this business
+                                                            await supabase.from('business_ribbons').update({ is_active: false }).eq('business_id', myBusiness.id).eq('is_active', true);
+
+                                                            // Insert new ribbon
+                                                            const expiresAt = new Date();
+                                                            expiresAt.setMonth(expiresAt.getMonth() + 1);
+                                                            const { data: newRibbon, error } = await supabase.from('business_ribbons').insert({
+                                                                business_id: myBusiness.id,
+                                                                ribbon_type: ribbonForm.ribbon_type,
+                                                                label: ribbonForm.label,
+                                                                color: ribbonForm.color,
+                                                                expires_at: expiresAt.toISOString(),
+                                                                source: 'merchant'
+                                                            }).select().single();
+
+                                                            if (error) throw error;
+                                                            setActiveRibbon(newRibbon);
+                                                            if (showToast) showToast('Ribbon activated! It will appear on your business card.');
+                                                        } catch (err) {
+                                                            console.error(err);
+                                                            if (showToast) showToast(err?.message || 'Failed to activate ribbon.', 'error');
+                                                        } finally {
+                                                            setIsSavingRibbon(false);
+                                                        }
+                                                    }}
+                                                >
+                                                    {isSavingRibbon ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Tag className="w-4 h-4 mr-2" />}
+                                                    Activate Ribbon
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            )}
 
                             {/* Business Contact Details — editable after claiming */}
                             {myBusiness && (
