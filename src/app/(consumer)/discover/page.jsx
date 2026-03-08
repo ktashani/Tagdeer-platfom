@@ -1,11 +1,10 @@
 'use client';
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTagdeer } from '@/context/TagdeerContext';
-import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap, Store } from 'lucide-react';
+import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap, Store, Phone, Globe, Instagram, MessageCircle, Navigation } from 'lucide-react';
 import { calculateBusinessScore } from '@/lib/mathEngine';
 import { getDeviceFingerprint } from '@/lib/fingerprint';
-import Pagination from '@/components/ui/PaginationNav';
 import { SkeletonCardGrid } from '@/components/ui/SkeletonLoaders';
 
 function DiscoverContent() {
@@ -24,8 +23,12 @@ function DiscoverContent() {
     const [selectedRegion, setSelectedRegion] = useState('All');
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [expandedLogs, setExpandedLogs] = useState({});
-    const [currentPage, setCurrentPage] = useState(1);
+    const [inlineVote, setInlineVote] = useState({}); // { businessId: 'recommend'|'complain' }
+
+    // Infinite scroll state
     const PAGE_SIZE = 12;
+    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+    const loadMoreRef = useRef(null);
 
     // Pre-populate search from URL ?q= param (e.g. from Hero search)
     useEffect(() => {
@@ -37,20 +40,51 @@ function DiscoverContent() {
         setExpandedLogs(prev => ({ ...prev, [id]: !prev[id] }));
     };
 
-    const filteredBusinesses = businesses.filter(b => {
-        const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesRegion = selectedRegion === 'All' || b.region === selectedRegion;
-        const matchesCategory = selectedCategory === 'All' || b.category === selectedCategory;
-        return matchesSearch && matchesRegion && matchesCategory;
-    });
+    const toggleInlineVote = (businessId, type) => {
+        setInlineVote(prev => {
+            if (prev[businessId] === type) return { ...prev, [businessId]: null };
+            return { ...prev, [businessId]: type };
+        });
+    };
 
-    // Paginate filtered results
-    const totalPages = Math.ceil(filteredBusinesses.length / PAGE_SIZE);
-    const safePage = Math.min(currentPage, totalPages || 1);
-    const paginatedBusinesses = filteredBusinesses.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+    // A1: Trending sort — 72-hour activity window
+    const trendingScore = useCallback((b) => {
+        const now = Date.now();
+        const WINDOW = 72 * 3600000; // 72 hours
+        const recentLogs = (b.logs || []).filter(l =>
+            l.created_at && (now - new Date(l.created_at).getTime()) < WINDOW
+        );
+        const totalVotes = (b.recommends || 0) + (b.complains || 0);
+        return recentLogs.length * 100 + totalVotes; // recent activity weighted heavily
+    }, []);
 
-    // Reset page when filters change
-    useEffect(() => { setCurrentPage(1) }, [searchQuery, selectedRegion, selectedCategory]);
+    const filteredBusinesses = businesses
+        .filter(b => {
+            const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesRegion = selectedRegion === 'All' || b.region === selectedRegion;
+            const matchesCategory = selectedCategory === 'All' || b.category === selectedCategory;
+            return matchesSearch && matchesRegion && matchesCategory;
+        })
+        .sort((a, b) => trendingScore(b) - trendingScore(a));
+
+    // Infinite scroll — visible slice
+    const visibleBusinesses = filteredBusinesses.slice(0, visibleCount);
+    const hasMore = visibleCount < filteredBusinesses.length;
+
+    // Reset visible count when filters change
+    useEffect(() => { setVisibleCount(PAGE_SIZE) }, [searchQuery, selectedRegion, selectedCategory]);
+
+    // IntersectionObserver for infinite scroll
+    useEffect(() => {
+        if (!loadMoreRef.current || !hasMore) return;
+        const observer = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting) {
+                setVisibleCount(prev => prev + PAGE_SIZE);
+            }
+        }, { rootMargin: '200px' });
+        observer.observe(loadMoreRef.current);
+        return () => observer.disconnect();
+    }, [hasMore, visibleCount]);
 
     const openVoteModal = async (businessId, type, business) => {
         // Shield Level Checks for Complaints
@@ -116,7 +150,7 @@ function DiscoverContent() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                 {businesses.length === 0 ? (
                     <div className="col-span-full"><SkeletonCardGrid count={4} variant="light" /></div>
-                ) : paginatedBusinesses.map(business => (
+                ) : visibleBusinesses.map(business => (
                     <BusinessCard
                         key={business.id}
                         business={business}
@@ -127,17 +161,18 @@ function DiscoverContent() {
                         shareToFacebook={shareToFacebook}
                         expandedLogs={expandedLogs}
                         toggleLogs={toggleLogs}
+                        inlineVoteType={inlineVote[business.id] || null}
+                        toggleInlineVote={toggleInlineVote}
                     />
                 ))}
             </div>
-            {filteredBusinesses.length > PAGE_SIZE && (
-                <Pagination
-                    currentPage={safePage}
-                    totalItems={filteredBusinesses.length}
-                    pageSize={PAGE_SIZE}
-                    onPageChange={setCurrentPage}
-                    variant="light"
-                />
+            {/* Infinite scroll sentinel */}
+            {hasMore && (
+                <div ref={loadMoreRef} className="flex justify-center py-8">
+                    <div className="animate-pulse text-slate-400 text-sm">
+                        {lang === 'ar' ? 'جار التحميل...' : 'Loading more...'}
+                    </div>
+                </div>
             )}
         </div>
     );
@@ -151,11 +186,24 @@ export default function DiscoverRoute() {
     );
 }
 
-function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook, expandedLogs, toggleLogs }) {
+function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook, expandedLogs, toggleLogs, inlineVoteType, toggleInlineVote }) {
+    const { submitVote, voteReason, setVoteReason, user } = useTagdeer();
     const { rawRecommends, rawComplains } = calculateBusinessScore(business.logs || []);
     const totalVotes = rawRecommends + rawComplains;
     const safeIndex = business.display_score ?? (totalVotes === 0 ? 50 : 50);
     const avatarLetter = business.name ? business.name.charAt(0).toUpperCase() : '?';
+    const [inlineSubmitting, setInlineSubmitting] = useState(false);
+    const [inlineReason, setInlineReason] = useState('');
+
+    // Contact icons data
+    const contactLinks = [
+        business.phone && { icon: Phone, href: `tel:${business.phone}`, label: 'Phone', color: 'text-blue-600' },
+        business.whatsapp && { icon: MessageCircle, href: `https://wa.me/${business.whatsapp}`, label: 'WhatsApp', color: 'text-green-600' },
+        business.instagram && { icon: Instagram, href: business.instagram.startsWith('http') ? business.instagram : `https://instagram.com/${business.instagram}`, label: 'Instagram', color: 'text-pink-600' },
+        business.facebook && { icon: Facebook, href: business.facebook.startsWith('http') ? business.facebook : `https://facebook.com/${business.facebook}`, label: 'Facebook', color: 'text-blue-700' },
+        business.website && { icon: Globe, href: business.website.startsWith('http') ? business.website : `https://${business.website}`, label: 'Website', color: 'text-indigo-600' },
+        business.google_maps_url && { icon: Navigation, href: business.google_maps_url, label: 'Maps', color: 'text-emerald-600' },
+    ].filter(Boolean);
 
     const getGradient = (category) => {
         const gradients = {
@@ -241,6 +289,25 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                             </span>
                         )}
                     </div>
+
+                    {/* A3: Claimed business description */}
+                    {business.isClaimed && business.description && (
+                        <p className="text-sm text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">{business.description}</p>
+                    )}
+
+                    {/* A3: Contact icons row */}
+                    {contactLinks.length > 0 && (
+                        <div className="flex items-center gap-1.5 mt-2">
+                            {contactLinks.map(({ icon: Icon, href, label, color }) => (
+                                <a key={label} href={href} target="_blank" rel="noopener noreferrer"
+                                    className={`p-1.5 rounded-full bg-slate-50 hover:bg-slate-100 ${color} transition-colors`}
+                                    title={label}
+                                >
+                                    <Icon className="w-3.5 h-3.5" />
+                                </a>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex gap-2 shrink-0">
@@ -328,14 +395,72 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                 </a>
             )}
 
-            <div className="flex gap-3 mb-6">
-                <button onClick={() => openVoteModal(business.id, 'recommend', business)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 py-3 rounded-xl font-semibold flex justify-center items-center gap-2">
+            {/* A2: Inline vote buttons — expand section below instead of modal */}
+            <div className="flex gap-3 mb-3">
+                <button
+                    onClick={() => { openVoteModal(business.id, 'recommend', business); toggleInlineVote(business.id, 'recommend'); }}
+                    className={`flex-1 py-3 rounded-xl font-semibold flex justify-center items-center gap-2 transition-all border ${inlineVoteType === 'recommend'
+                            ? 'bg-green-100 text-green-800 border-green-300 shadow-inner'
+                            : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
+                        }`}
+                >
                     <ThumbsUp className="h-5 w-5" /> {t('recommend')}
                 </button>
-                <button onClick={() => openVoteModal(business.id, 'complain', business)} className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 py-3 rounded-xl font-semibold flex justify-center items-center gap-2">
+                <button
+                    onClick={() => { openVoteModal(business.id, 'complain', business); toggleInlineVote(business.id, 'complain'); }}
+                    className={`flex-1 py-3 rounded-xl font-semibold flex justify-center items-center gap-2 transition-all border ${inlineVoteType === 'complain'
+                            ? 'bg-red-100 text-red-800 border-red-300 shadow-inner'
+                            : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                        }`}
+                >
                     <ThumbsDown className="h-5 w-5" /> {t('complain')}
                 </button>
             </div>
+
+            {/* A2: Inline voting expansion panel */}
+            {inlineVoteType && (
+                <div className={`mb-4 p-4 rounded-xl border transition-all animate-in slide-in-from-top-2 ${inlineVoteType === 'recommend' ? 'bg-green-50/50 border-green-200' : 'bg-red-50/50 border-red-200'
+                    }`}>
+                    <p className="text-sm font-semibold mb-2 text-slate-700">
+                        {inlineVoteType === 'recommend'
+                            ? (lang === 'ar' ? 'لماذا تنصح بهذا النشاط؟' : 'Why do you recommend this business?')
+                            : (lang === 'ar' ? 'ما سبب شكواك؟' : 'What is your complaint about?')}
+                    </p>
+                    <textarea
+                        value={inlineReason}
+                        onChange={(e) => setInlineReason(e.target.value)}
+                        placeholder={lang === 'ar' ? 'اكتب ملاحظتك هنا... (اختياري)' : 'Write your note here... (optional)'}
+                        className="w-full p-3 rounded-lg border border-slate-200 text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                        rows={2}
+                        dir={isRTL ? 'rtl' : 'ltr'}
+                    />
+                    <div className="flex gap-2 mt-2">
+                        <button
+                            onClick={async () => {
+                                setInlineSubmitting(true);
+                                setVoteReason(inlineReason);
+                                await submitVote(business.id, inlineVoteType, business.isClaimed);
+                                setInlineReason('');
+                                toggleInlineVote(business.id, inlineVoteType);
+                                setInlineSubmitting(false);
+                            }}
+                            disabled={inlineSubmitting}
+                            className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${inlineVoteType === 'recommend' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                                } ${inlineSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                            {inlineSubmitting
+                                ? (lang === 'ar' ? 'جارٍ الإرسال...' : 'Submitting...')
+                                : (lang === 'ar' ? 'إرسال' : 'Submit')}
+                        </button>
+                        <button
+                            onClick={() => { setInlineReason(''); toggleInlineVote(business.id, inlineVoteType); }}
+                            className="px-4 py-2.5 rounded-lg font-bold text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
+                        >
+                            {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <div className="mt-auto border-t border-slate-100 pt-4">
                 <button onClick={() => toggleLogs(business.id)} className="w-full flex justify-between items-center font-semibold text-slate-700 mb-3 hover:text-blue-600">

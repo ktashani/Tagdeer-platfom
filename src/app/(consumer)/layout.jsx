@@ -197,17 +197,21 @@ export default function ClientLayout({ children }) {
         if (user) {
             if (!isClaimed) {
                 showToast(lang === 'ar'
-                    ? 'تم حفظ تقييمك في قبو الثقة. التقييم الحقيقي مقيد حالياً لأن صاحب العمل غائب.'
-                    : 'Your vote is saved in the Trust Vault. The public view is currently limited because the owner is absent.');
+                    ? 'تم حفظ تقييمك في سجل الثقة. العرض العام مقيّد حالياً لأن صاحب النشاط لم يسجّل بعد.'
+                    : 'Your vote is saved in the Trust Ledger. The public view is currently limited because the owner has not claimed this business yet.');
             } else {
                 showToast(lang === 'ar' ? 'تم تسجيل تقييمك بنجاح!' : 'Vote logged successfully!');
             }
         } else {
             const remaining = 3 - anonInteractions - 1;
             if (!isClaimed) {
-                showToast(`Saved to Trust Vault. (${remaining} anonymous logs remaining)`);
+                showToast(lang === 'ar'
+                    ? `تم الحفظ في سجل الثقة. (${remaining} تقييمات مجهولة متبقية)`
+                    : `Saved to Trust Ledger. (${remaining} anonymous votes remaining)`);
             } else {
-                showToast(`Successfully logged. (${remaining} anonymous logs remaining)`);
+                showToast(lang === 'ar'
+                    ? `تم التسجيل بنجاح. (${remaining} تقييمات مجهولة متبقية)`
+                    : `Successfully logged. (${remaining} anonymous votes remaining)`);
             }
         }
     };

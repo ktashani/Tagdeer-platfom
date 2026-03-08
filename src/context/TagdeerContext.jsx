@@ -532,6 +532,15 @@ export function TagdeerProvider({ children }) {
                             name: b.name,
                             region: b.region,
                             category: b.category,
+                            description: b.description || null,
+                            // Contact details (editable by merchant after claiming)
+                            phone: b.phone || null,
+                            whatsapp: b.whatsapp || null,
+                            instagram: b.instagram || null,
+                            facebook: b.facebook || null,
+                            website: b.website || null,
+                            google_maps_url: b.google_maps_url || null,
+                            logo_url: b.logo_url || null,
                             hasActiveDiscount: coupons?.some(c => c.business_id === b.id),
                             recommends: b.recommends ?? derivedRecommends,
                             complains: b.complains ?? derivedComplains,
@@ -544,6 +553,7 @@ export function TagdeerProvider({ children }) {
                             source: b.source,
                             status: b.status || 'published',
                             external_url: b.external_url,
+                            promotion_multiplier: b.promotion_multiplier || 0,
                             storefront: (Array.isArray(b.storefronts) ? b.storefronts[0] : b.storefronts) || null,
                             logs: rawLogs
                                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -552,6 +562,7 @@ export function TagdeerProvider({ children }) {
                                     type: log.interaction_type,
                                     text: log.reason_text || (log.interaction_type === 'recommend' ? 'User recommended' : 'User complained'),
                                     date: new Date(log.created_at).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US'),
+                                    created_at: log.created_at, // raw timestamp for trending calc
                                     trust_points: log.trust_points || null,
                                     is_verified: log.is_verified || false,
                                     helpful_votes: log.helpful_votes || 0,
