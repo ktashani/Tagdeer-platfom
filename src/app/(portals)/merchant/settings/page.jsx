@@ -232,8 +232,8 @@ export default function MerchantSettings() {
             if (error) throw error;
             if (showToast) showToast('Business contact details saved!');
         } catch (err) {
-            console.error(err);
-            if (showToast) showToast('Failed to save contact details.', 'error');
+            console.error('Business contact save error:', err?.message || err?.code || err?.details || JSON.stringify(err));
+            if (showToast) showToast(err?.message || 'Failed to save contact details.', 'error');
         } finally {
             setIsSavingContact(false);
         }

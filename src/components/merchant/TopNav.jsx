@@ -53,6 +53,29 @@ export default function TopNav() {
         fetchTier();
     }, [supabase, user]);
 
+    // Fetch actual pending resolution count for inbox badge
+    const [inboxCount, setInboxCount] = useState(0);
+    useEffect(() => {
+        if (!supabase || !user) return;
+        const fetchInboxCount = async () => {
+            try {
+                // Count complaint logs against businesses owned by this merchant that are pending resolution
+                const ownerBusinessIds = businesses?.filter(b => b.owner_id === user?.id).map(b => b.id) || [];
+                if (ownerBusinessIds.length === 0) return;
+                const { count } = await supabase
+                    .from('logs')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('interaction_type', 'complain')
+                    .in('business_id', ownerBusinessIds)
+                    .is('resolved_at', null);
+                setInboxCount(count || 0);
+            } catch (e) {
+                // Silently fail — badge stays 0
+            }
+        };
+        fetchInboxCount();
+    }, [supabase, user, businesses]);
+
     // Default select the first business when loaded
     useEffect(() => {
         if (myBusinesses.length > 0 && !selectedStoreId) {
@@ -106,8 +129,8 @@ export default function TopNav() {
 
     const activeStore = myBusinesses?.find(b => b.id === selectedStoreId) || myBusinesses?.[0];
 
-    // Business Logic: 1 business = free tier max. 2+ businesses = requires Pro Tier.
-    const isPro = false;
+    // Location gating: dynamic based on actual subscription tier
+    const isPro = subTier !== 'Free';
     const showAddButton = myBusinesses.length < 1 || isPro;
 
     const handleStoreSelect = (storeId) => {
@@ -134,7 +157,7 @@ export default function TopNav() {
             href: `${basePath}/inbox`,
             icon: MessageSquare,
             label: 'Inbox',
-            badge: '2' // Mock notification
+            badge: inboxCount > 0 ? String(inboxCount) : null // Real count from pending resolutions
         },
         { href: `${basePath}/coupons`, icon: Ticket, label: 'Coupons' },
         { href: `${basePath}/settings`, icon: Settings, label: 'Settings' },
