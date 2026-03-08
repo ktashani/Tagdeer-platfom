@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Crown, Building, Trash2, CheckCircle2, ArrowUpRight, Loader2, Sparkles } from "lucide-react";
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Globe } from 'lucide-react';
 
 export default function MerchantSettings() {
     const { user, businesses, supabase, showToast, setUser, tierPricing = [] } = useTagdeer();
@@ -32,6 +33,13 @@ export default function MerchantSettings() {
         phone: ''
     });
     const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+    // Business contact details state
+    const [businessContact, setBusinessContact] = useState({
+        description: '', phone: '', whatsapp: '', instagram: '',
+        facebook: '', website: '', google_maps_url: ''
+    });
+    const [isSavingContact, setIsSavingContact] = useState(false);
 
     useEffect(() => {
         if (user && supabase) {
@@ -190,6 +198,46 @@ export default function MerchantSettings() {
         }
     };
     // ----------------------------
+
+    // Fetch business contact details when business is found
+    useEffect(() => {
+        if (myBusiness && supabase) {
+            (async () => {
+                const { data } = await supabase
+                    .from('businesses')
+                    .select('description, phone, whatsapp, instagram, facebook, website, google_maps_url')
+                    .eq('id', myBusiness.id)
+                    .single();
+                if (data) setBusinessContact({
+                    description: data.description || '',
+                    phone: data.phone || '',
+                    whatsapp: data.whatsapp || '',
+                    instagram: data.instagram || '',
+                    facebook: data.facebook || '',
+                    website: data.website || '',
+                    google_maps_url: data.google_maps_url || ''
+                });
+            })();
+        }
+    }, [myBusiness, supabase]);
+
+    const handleSaveBusinessContact = async () => {
+        if (!supabase || !myBusiness) return;
+        setIsSavingContact(true);
+        try {
+            const { error } = await supabase
+                .from('businesses')
+                .update(businessContact)
+                .eq('id', myBusiness.id);
+            if (error) throw error;
+            if (showToast) showToast('Business contact details saved!');
+        } catch (err) {
+            console.error(err);
+            if (showToast) showToast('Failed to save contact details.', 'error');
+        } finally {
+            setIsSavingContact(false);
+        }
+    };
 
     // Business Level (Contextual)
     const [businessShield, setBusinessShield] = useState(0); // 0 = None, 1 = Trust, 2 = Fatora
@@ -820,6 +868,62 @@ export default function MerchantSettings() {
                                     </div>
                                 </CardContent>
                             </Card>
+
+                            {/* Business Contact Details — editable after claiming */}
+                            {myBusiness && (
+                                <Card>
+                                    <CardHeader>
+                                        <div className="flex items-center gap-2">
+                                            <Globe className="w-5 h-5 text-blue-600" />
+                                            <CardTitle>Business Contact Details</CardTitle>
+                                        </div>
+                                        <CardDescription>Add your business details to appear in the Discover directory as your public address book.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div>
+                                            <Label className="text-sm text-slate-500 mb-1 block">Business Description</Label>
+                                            <textarea
+                                                value={businessContact.description}
+                                                onChange={(e) => setBusinessContact(prev => ({ ...prev, description: e.target.value }))}
+                                                placeholder="Tell customers about your business..."
+                                                className="w-full p-3 rounded-lg border border-slate-200 dark:border-slate-700 dark:bg-slate-900 text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none"
+                                                rows={3}
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <Label className="text-sm text-slate-500 mb-1 block">📞 Phone Number</Label>
+                                                <Input value={businessContact.phone} onChange={(e) => setBusinessContact(prev => ({ ...prev, phone: e.target.value }))} placeholder="+218 91 xxx xxxx" className="dark:bg-slate-900 dark:border-slate-700" />
+                                            </div>
+                                            <div>
+                                                <Label className="text-sm text-slate-500 mb-1 block">💬 WhatsApp</Label>
+                                                <Input value={businessContact.whatsapp} onChange={(e) => setBusinessContact(prev => ({ ...prev, whatsapp: e.target.value }))} placeholder="+218 91 xxx xxxx" className="dark:bg-slate-900 dark:border-slate-700" />
+                                            </div>
+                                            <div>
+                                                <Label className="text-sm text-slate-500 mb-1 block">📸 Instagram</Label>
+                                                <Input value={businessContact.instagram} onChange={(e) => setBusinessContact(prev => ({ ...prev, instagram: e.target.value }))} placeholder="@yourbusiness or URL" className="dark:bg-slate-900 dark:border-slate-700" />
+                                            </div>
+                                            <div>
+                                                <Label className="text-sm text-slate-500 mb-1 block">📘 Facebook</Label>
+                                                <Input value={businessContact.facebook} onChange={(e) => setBusinessContact(prev => ({ ...prev, facebook: e.target.value }))} placeholder="Page URL or @username" className="dark:bg-slate-900 dark:border-slate-700" />
+                                            </div>
+                                            <div>
+                                                <Label className="text-sm text-slate-500 mb-1 block">🌐 Website</Label>
+                                                <Input value={businessContact.website} onChange={(e) => setBusinessContact(prev => ({ ...prev, website: e.target.value }))} placeholder="https://yourbusiness.com" className="dark:bg-slate-900 dark:border-slate-700" />
+                                            </div>
+                                            <div>
+                                                <Label className="text-sm text-slate-500 mb-1 block">📍 Google Maps Link</Label>
+                                                <Input value={businessContact.google_maps_url} onChange={(e) => setBusinessContact(prev => ({ ...prev, google_maps_url: e.target.value }))} placeholder="https://maps.google.com/..." className="dark:bg-slate-900 dark:border-slate-700" />
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-end pt-2">
+                                            <Button onClick={handleSaveBusinessContact} disabled={isSavingContact} className="bg-blue-600 hover:bg-blue-700 text-white">
+                                                {isSavingContact ? 'Saving...' : 'Save Contact Details'}
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
 
                         </TabsContent>
 

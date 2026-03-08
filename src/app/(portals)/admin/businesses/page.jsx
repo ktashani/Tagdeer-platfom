@@ -682,6 +682,35 @@ export default function BusinessRegistry() {
                                 )}
                             </div>
 
+                            {/* Business Contact Details (read-only for admin) */}
+                            <div className="space-y-4 pt-4 border-t border-slate-800">
+                                <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Contact Details</h3>
+                                {(() => {
+                                    const rawBiz = businesses.find(b => b.id === selectedBusiness.id);
+                                    const fields = [
+                                        { label: 'Description', value: rawBiz?.description },
+                                        { label: 'Phone', value: rawBiz?.phone },
+                                        { label: 'WhatsApp', value: rawBiz?.whatsapp },
+                                        { label: 'Instagram', value: rawBiz?.instagram },
+                                        { label: 'Facebook', value: rawBiz?.facebook || rawBiz?.external_url },
+                                        { label: 'Website', value: rawBiz?.website },
+                                        { label: 'Google Maps', value: rawBiz?.google_maps_url },
+                                    ].filter(f => f.value);
+                                    return fields.length > 0 ? (
+                                        <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm text-slate-300">
+                                            {fields.map(f => (
+                                                <div key={f.label} className={f.label === 'Description' ? 'col-span-2' : ''}>
+                                                    <span className="block text-xs text-slate-500 mb-0.5">{f.label}</span>
+                                                    <span className="font-medium text-white truncate block">{f.value}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-slate-500 italic">No contact details provided by the merchant.</p>
+                                    );
+                                })()}
+                            </div>
+
                             {/* Visibility Section */}
                             <div className="space-y-4 pt-4 border-t border-slate-800">
                                 <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Platform Visibility</h3>
