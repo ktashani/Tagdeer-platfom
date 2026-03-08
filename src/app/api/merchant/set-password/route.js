@@ -34,16 +34,21 @@ export async function POST(req) {
         let authUser = null;
         let userId = null;
 
-        // 1. Try to find the user in Supabase Auth
-        const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+        // 1. Look up user ID from profiles table first (fast, O(1) lookup)
+        const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('id')
+            .eq('email', email.toLowerCase().trim())
+            .maybeSingle();
 
-        if (listError) {
-            console.error('Admin list users error:', listError);
-            return NextResponse.json({ error: 'Failed to look up user' }, { status: 500 });
+        if (profile?.id) {
+            // Found in profiles — get the full auth user by ID
+            const { data: { user: foundUser }, error: getUserErr } = await supabaseAdmin.auth.admin.getUserById(profile.id);
+            if (!getUserErr && foundUser) {
+                authUser = foundUser;
+                userId = foundUser.id;
+            }
         }
-
-        authUser = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
-        userId = authUser?.id;
 
         // 2. If auth user doesn't exist, create them
         if (!authUser) {

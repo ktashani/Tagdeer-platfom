@@ -365,7 +365,15 @@ export function TagdeerProvider({ children }) {
         }
 
         try {
-            let callbackUrl = window.location.origin + '/auth/callback';
+            // Always use root domain for callback — the handler lives under (consumer) route group.
+            // On subdomains (merchant.tagdeer.app), using window.location.origin would point to
+            // a non-existent callback page, causing magic links to fail/expire.
+            const hostname = window.location.hostname;
+            const isLocalhost = hostname.includes('localhost') || hostname.includes('127.0.0.1');
+            const rootOrigin = isLocalhost
+                ? window.location.origin
+                : window.location.protocol + '//' + hostname.replace(/^(admin|merchant|business)\./, '');
+            let callbackUrl = rootOrigin + '/auth/callback';
             const params = new URLSearchParams();
             if (redirectFrom) params.set('from', redirectFrom);
             if (trialCampaign) params.set('trial_campaign', trialCampaign);

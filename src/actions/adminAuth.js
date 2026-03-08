@@ -77,5 +77,7 @@ export async function loginAdmin(email, password) {
 export async function logoutAdmin() {
     const cookieStore = await cookies()
     cookieStore.delete('admin_auth')
+    // Important: The admin login page also signs in via Supabase client-side (supabase.auth.signInWithPassword).
+    // The caller must also call supabase.auth.signOut() on the client to clear the Supabase session cookie.
     return { success: true }
 }

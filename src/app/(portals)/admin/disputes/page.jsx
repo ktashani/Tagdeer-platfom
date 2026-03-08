@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { scaleLinear } from 'd3-scale' // Dummy import comment for visual context if doing actual charts later
 import { FileText, MessageSquare, AlertTriangle, ShieldCheck, CheckCircle2, XCircle, Search, Clock, ZoomIn, AlertCircle, ArrowLeft } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
+import { SkeletonList } from '@/components/ui/SkeletonLoaders'
 
 export default function DisputesPage() {
     const { businesses, supabase, showToast } = useTagdeer()
@@ -77,7 +78,12 @@ export default function DisputesPage() {
     }
 
     if (isLoading) {
-        return <div className="min-h-screen flex items-center justify-center text-slate-400">Loading Disputes Queue...</div>
+        return (
+            <div className="animate-in fade-in duration-500 p-6">
+                <div className="mb-8"><div className="h-8 w-48 bg-slate-800 rounded animate-pulse" /><div className="h-4 w-64 bg-slate-800/50 rounded animate-pulse mt-2" /></div>
+                <SkeletonList count={5} variant="dark" />
+            </div>
+        )
     }
 
     return (

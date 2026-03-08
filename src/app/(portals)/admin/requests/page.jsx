@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react'
 import { CheckCircle2, XCircle, FileImage, Search, Filter } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
+import { SkeletonList } from '@/components/ui/SkeletonLoaders'
 
 export default function RequestsPage() {
     const { businesses, supabase, showToast } = useTagdeer()
@@ -97,7 +98,16 @@ export default function RequestsPage() {
     }
 
     if (isLoading) {
-        return <div className="min-h-screen flex items-center justify-center text-slate-400">Loading Business Claims...</div>
+        return (
+            <div className="animate-in fade-in duration-500 p-6">
+                <div className="mb-8"><div className="h-8 w-48 bg-slate-800 rounded animate-pulse" /><div className="h-4 w-64 bg-slate-800/50 rounded animate-pulse mt-2" /></div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <SkeletonList count={3} variant="dark" />
+                    <SkeletonList count={2} variant="dark" />
+                    <SkeletonList count={2} variant="dark" />
+                </div>
+            </div>
+        )
     }
 
     return (

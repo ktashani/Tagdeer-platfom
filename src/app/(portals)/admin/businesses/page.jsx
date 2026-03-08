@@ -1,16 +1,20 @@
 'use client';
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Search, Filter, Shield, ShieldAlert, Combine, SearchCheck, Check, Info, Trash2, Eye, Edit2, Save, X, Ban, Globe, Clock } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import Pagination from '@/components/ui/PaginationNav'
+import { SkeletonTable } from '@/components/ui/SkeletonLoaders'
 
 export default function BusinessRegistry() {
     const { businesses, supabase, showToast } = useTagdeer()
     const [searchTerm, setSearchTerm] = useState('')
+    const [currentPage, setCurrentPage] = useState(1)
+    const PAGE_SIZE = 15
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [filters, setFilters] = useState({
         category: 'All',
@@ -112,6 +116,14 @@ export default function BusinessRegistry() {
     })
 
     const activeFilterCount = Object.values(filters).filter(v => v !== 'All').length
+
+    // Paginate
+    const totalPages = Math.ceil(filteredBusinesses.length / PAGE_SIZE)
+    const safePage = Math.min(currentPage, totalPages || 1)
+    const paginatedBusinesses = filteredBusinesses.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+
+    // Reset page on filter/search change
+    useEffect(() => { setCurrentPage(1) }, [searchTerm, filters])
 
     return (
         <div className="animate-in fade-in duration-500">
@@ -259,7 +271,9 @@ export default function BusinessRegistry() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredBusinesses.map((business) => {
+                                {businesses.length === 0 ? (
+                                    <tr><td colSpan={6} className="p-0"><SkeletonTable rows={8} cols={5} variant="dark" /></td></tr>
+                                ) : paginatedBusinesses.map((business) => {
                                     const isSelected = selectedForMerge.includes(business.id)
                                     const isMaster = masterId === business.id
 
@@ -382,6 +396,15 @@ export default function BusinessRegistry() {
                                 })}
                             </tbody>
                         </table>
+                        {filteredBusinesses.length > PAGE_SIZE && (
+                            <Pagination
+                                currentPage={safePage}
+                                totalItems={filteredBusinesses.length}
+                                pageSize={PAGE_SIZE}
+                                onPageChange={setCurrentPage}
+                                variant="dark"
+                            />
+                        )}
                     </div>
                 </div>
 

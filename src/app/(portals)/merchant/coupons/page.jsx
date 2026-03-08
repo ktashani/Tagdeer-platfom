@@ -10,12 +10,16 @@ import { Plus, Gift, QrCode, Sparkles, MessageCircle, Play, Pause, Trash2, Edit 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useEffect } from 'react';
+import Pagination from '@/components/ui/PaginationNav';
+import { SkeletonCardGrid } from '@/components/ui/SkeletonLoaders';
 
 export default function CouponCommandCenter() {
     const { user, businesses, supabase, showToast, lang } = useTagdeer();
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const PAGE_SIZE = 8;
 
     // Support multi-business
     const myBusinesses = businesses ? businesses.filter(b => b.owner_id === user?.id || b.claimed_by === user?.id) : [];
@@ -253,7 +257,14 @@ export default function CouponCommandCenter() {
     };
 
     if (isLoading || user === undefined) {
-        return <div className="min-h-screen flex items-center justify-center">Loading Campaigns...</div>;
+        return (
+            <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8">
+                <div className="max-w-6xl mx-auto space-y-8">
+                    <div><div className="h-8 w-56 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" /><div className="h-4 w-72 bg-slate-100 dark:bg-slate-800/50 rounded animate-pulse mt-2" /></div>
+                    <SkeletonCardGrid count={6} variant="light" />
+                </div>
+            </div>
+        );
     }
 
     if (!myBusiness && myBusinesses.length === 0) {
@@ -446,7 +457,7 @@ export default function CouponCommandCenter() {
 
                 {/* Campaign List */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {campaigns.map((campaign) => (
+                    {campaigns.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map((campaign) => (
                         <Card key={campaign.id} className="border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col group relative">
 
                             <div className="absolute top-4 right-4 z-10">
@@ -520,6 +531,15 @@ export default function CouponCommandCenter() {
                     </button>
 
                 </div>
+                {campaigns.length > PAGE_SIZE && (
+                    <Pagination
+                        currentPage={currentPage}
+                        totalItems={campaigns.length}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={setCurrentPage}
+                        variant="light"
+                    />
+                )}
             </div>
 
             {/* Edit Modal (Immutability UX handled by disabling fields when active) */}

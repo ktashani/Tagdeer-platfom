@@ -5,6 +5,8 @@ import { Search, UserX, UserMinus, ShieldAlert, Award, AlertCircle, TrendingUp, 
 import { useTagdeer } from '@/context/TagdeerContext'
 import { usePlatformConfig } from '@/hooks/usePlatformConfig'
 import { formatDistanceToNow } from 'date-fns'
+import Pagination from '@/components/ui/PaginationNav'
+import { SkeletonTable } from '@/components/ui/SkeletonLoaders'
 
 export default function UsersPage() {
     const { supabase, showToast } = useTagdeer()
@@ -14,6 +16,8 @@ export default function UsersPage() {
     const [activeTab, setActiveTab] = useState('all') // 'all', 'consumers', 'merchants'
     const [statusFilter, setStatusFilter] = useState('all') // 'all', 'Active', 'Restricted', 'Banned'
     const [searchTerm, setSearchTerm] = useState('')
+    const [currentPage, setCurrentPage] = useState(1)
+    const PAGE_SIZE = 15
     const [selectedUser, setSelectedUser] = useState(null)
     const [userLogs, setUserLogs] = useState([])
     const [merchantBusinesses, setMerchantBusinesses] = useState([])
@@ -165,6 +169,14 @@ export default function UsersPage() {
             u.email.toLowerCase().includes(searchTerm.toLowerCase())
         return matchesTab && matchesStatus && matchesSearch
     })
+
+    // Paginate filtered results
+    const totalPages = Math.ceil(filteredUsers.length / PAGE_SIZE)
+    const safePage = Math.min(currentPage, totalPages || 1)
+    const paginatedUsers = filteredUsers.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+
+    // Reset page when filters change
+    useEffect(() => { setCurrentPage(1) }, [activeTab, statusFilter, searchTerm])
 
     // Count stats
     const consumerCount = users.filter(u => u.role === 'user').length
@@ -462,7 +474,9 @@ export default function UsersPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredUsers.map((user) => (
+                                    {isLoading ? (
+                                        <tr><td colSpan={5} className="p-0"><SkeletonTable rows={8} cols={5} variant="dark" /></td></tr>
+                                    ) : paginatedUsers.length > 0 ? paginatedUsers.map((user) => (
                                         <tr
                                             key={user.id}
                                             className={`border-b border-slate-700/50 transition-colors cursor-pointer ${selectedUser?.id === user.id
@@ -494,22 +508,25 @@ export default function UsersPage() {
                                                 <button className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors text-xs">View Profile</button>
                                             </td>
                                         </tr>
-                                    ))}
-                                    {filteredUsers.length === 0 && (
+                                    )) : (
                                         <tr>
                                             <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
-                                                {isLoading ? (
-                                                    <div className="flex flex-col items-center justify-center text-slate-400">
-                                                        <Loader2 className="h-6 w-6 animate-spin mb-2" />
-                                                        Loading users...
-                                                    </div>
-                                                ) : "No users found matching your criteria."}
+                                                No users found matching your criteria.
                                             </td>
                                         </tr>
                                     )}
                                 </tbody>
                             </table>
                         </div>
+                        {!isLoading && filteredUsers.length > PAGE_SIZE && (
+                            <Pagination
+                                currentPage={safePage}
+                                totalItems={filteredUsers.length}
+                                pageSize={PAGE_SIZE}
+                                onPageChange={setCurrentPage}
+                                variant="dark"
+                            />
+                        )}
                     </div>
                 </div>
 

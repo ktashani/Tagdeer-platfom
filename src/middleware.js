@@ -49,7 +49,7 @@ export async function middleware(request) {
         // Exclude system paths, static files, and api from auth check
         if (!pathname.startsWith('/_next') && !pathname.includes('api')) {
             const authCookie = request.cookies.get('admin_auth');
-            const isAuthenticated = authCookie && authCookie.value && authCookie.value !== 'true';
+            const isAuthenticated = !!authCookie?.value;
 
             // Redirect to login if not authenticated and trying to access protected route
             if (!isAuthenticated && pathname !== '/login') {
@@ -80,7 +80,7 @@ export async function middleware(request) {
             const isAuthenticated = Array.from(request.cookies.getAll()).some(c => c.name.startsWith('sb-') && c.name.endsWith('-auth-token'));
 
             // Redirect to login if not authenticated and trying to access protected route
-            if (!isAuthenticated && pathname !== '/login') {
+            if (!isAuthenticated && pathname !== '/login' && pathname !== '/onboarding' && pathname !== '/reset-password') {
                 const loginUrl = request.nextUrl.clone();
                 loginUrl.pathname = '/login';
                 return NextResponse.redirect(loginUrl);

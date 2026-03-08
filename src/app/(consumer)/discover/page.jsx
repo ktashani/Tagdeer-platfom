@@ -5,6 +5,8 @@ import { useTagdeer } from '@/context/TagdeerContext';
 import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap, Store } from 'lucide-react';
 import { calculateBusinessScore } from '@/lib/mathEngine';
 import { getDeviceFingerprint } from '@/lib/fingerprint';
+import Pagination from '@/components/ui/PaginationNav';
+import { SkeletonCardGrid } from '@/components/ui/SkeletonLoaders';
 
 function DiscoverContent() {
     const {
@@ -22,6 +24,8 @@ function DiscoverContent() {
     const [selectedRegion, setSelectedRegion] = useState('All');
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [expandedLogs, setExpandedLogs] = useState({});
+    const [currentPage, setCurrentPage] = useState(1);
+    const PAGE_SIZE = 12;
 
     // Pre-populate search from URL ?q= param (e.g. from Hero search)
     useEffect(() => {
@@ -39,6 +43,14 @@ function DiscoverContent() {
         const matchesCategory = selectedCategory === 'All' || b.category === selectedCategory;
         return matchesSearch && matchesRegion && matchesCategory;
     });
+
+    // Paginate filtered results
+    const totalPages = Math.ceil(filteredBusinesses.length / PAGE_SIZE);
+    const safePage = Math.min(currentPage, totalPages || 1);
+    const paginatedBusinesses = filteredBusinesses.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+    // Reset page when filters change
+    useEffect(() => { setCurrentPage(1) }, [searchQuery, selectedRegion, selectedCategory]);
 
     const openVoteModal = async (businessId, type, business) => {
         // Shield Level Checks for Complaints
@@ -102,7 +114,9 @@ function DiscoverContent() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                {filteredBusinesses.map(business => (
+                {businesses.length === 0 ? (
+                    <div className="col-span-full"><SkeletonCardGrid count={4} variant="light" /></div>
+                ) : paginatedBusinesses.map(business => (
                     <BusinessCard
                         key={business.id}
                         business={business}
@@ -116,6 +130,15 @@ function DiscoverContent() {
                     />
                 ))}
             </div>
+            {filteredBusinesses.length > PAGE_SIZE && (
+                <Pagination
+                    currentPage={safePage}
+                    totalItems={filteredBusinesses.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setCurrentPage}
+                    variant="light"
+                />
+            )}
         </div>
     );
 }

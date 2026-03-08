@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EyeOff, Send, Gift, Clock, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { useTagdeer } from '@/context/TagdeerContext';
+import { SkeletonList } from '@/components/ui/SkeletonLoaders';
 
 export default function MerchantInbox() {
     const { user, businesses, supabase, showToast } = useTagdeer();
@@ -212,7 +213,14 @@ export default function MerchantInbox() {
     };
 
     if (isLoading || user === undefined) {
-        return <div className="min-h-screen flex items-center justify-center">Loading Inbox...</div>;
+        return (
+            <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8">
+                <div className="max-w-6xl mx-auto">
+                    <div className="mb-8"><div className="h-8 w-48 bg-slate-200 dark:bg-slate-800 rounded animate-pulse" /><div className="h-4 w-64 bg-slate-100 dark:bg-slate-800/50 rounded animate-pulse mt-2" /></div>
+                    <SkeletonList count={4} variant="light" />
+                </div>
+            </div>
+        );
     }
 
     if (!myBusiness) {

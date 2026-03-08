@@ -5,6 +5,8 @@ import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, Dolla
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useTagdeer } from '@/context/TagdeerContext'
 import { Copy } from 'lucide-react'
+import Pagination from '@/components/ui/PaginationNav'
+import { SkeletonTable } from '@/components/ui/SkeletonLoaders'
 
 export default function FinancialsPage() {
     const { supabase, showToast } = useTagdeer()
@@ -12,6 +14,8 @@ export default function FinancialsPage() {
     const [subscriptions, setSubscriptions] = useState([])
     const [businesses, setBusinesses] = useState([])
     const [isLoading, setIsLoading] = useState(true)
+    const [subsPage, setSubsPage] = useState(1)
+    const SUBS_PAGE_SIZE = 15
 
     const [showTrialModal, setShowTrialModal] = useState(false)
     const [trialForm, setTrialForm] = useState({ profileId: '', tier: 'Pro', months: 1 })
@@ -263,7 +267,7 @@ export default function FinancialsPage() {
                             </div>
                             <div className="flex-1 overflow-y-auto p-4 space-y-3">
                                 {isLoading ? (
-                                    <div className="text-center p-8 text-slate-500 flex justify-center"><Loader2 className="w-6 h-6 animate-spin" /></div>
+                                    <SkeletonTable rows={4} cols={4} variant="dark" />
                                 ) : transfers.length === 0 ? (
                                     <div className="text-center p-8 text-slate-500">No pending transfers.</div>
                                 ) : transfers.map(txn => (
@@ -375,8 +379,8 @@ export default function FinancialsPage() {
                                 </thead>
                                 <tbody>
                                     {isLoading ? (
-                                        <tr><td colSpan="5" className="px-6 py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" /></td></tr>
-                                    ) : subscriptions.map(sub => (
+                                        <tr><td colSpan="5" className="p-0"><SkeletonTable rows={6} cols={5} variant="dark" /></td></tr>
+                                    ) : subscriptions.slice((subsPage - 1) * SUBS_PAGE_SIZE, subsPage * SUBS_PAGE_SIZE).map(sub => (
                                         <tr key={sub.id} className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
                                             <td className="px-6 py-4">
                                                 <div className="font-medium text-white">{sub.merchant}</div>
@@ -417,6 +421,15 @@ export default function FinancialsPage() {
                                     )}
                                 </tbody>
                             </table>
+                            {subscriptions.length > SUBS_PAGE_SIZE && (
+                                <Pagination
+                                    currentPage={subsPage}
+                                    totalItems={subscriptions.length}
+                                    pageSize={SUBS_PAGE_SIZE}
+                                    onPageChange={setSubsPage}
+                                    variant="dark"
+                                />
+                            )}
                         </div>
                     </div>
                 )}
@@ -441,7 +454,7 @@ export default function FinancialsPage() {
                                 </thead>
                                 <tbody>
                                     {isLoading ? (
-                                        <tr><td colSpan="5" className="px-6 py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" /></td></tr>
+                                        <tr><td colSpan="5" className="p-0"><SkeletonTable rows={4} cols={5} variant="dark" /></td></tr>
                                     ) : trialCampaigns.map(camp => (
                                         <tr key={camp.id} className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
                                             <td className="px-6 py-4 font-medium text-white">{camp.name}</td>

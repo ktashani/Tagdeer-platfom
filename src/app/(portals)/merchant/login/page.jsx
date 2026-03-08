@@ -108,7 +108,7 @@ export default function MerchantLogin() {
         setIsLoading(true);
         try {
             await loginWithPassword(email, password);
-            navigateForward('/merchant/dashboard');
+            navigateForward('/dashboard');
         } catch (err) {
             // Error handled by context toast
         } finally {
