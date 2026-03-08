@@ -129,8 +129,8 @@ export default function SettingsPage() {
     const handleTierChange = (id, field, value) => {
         const updated = tierPricing.map(t => {
             if (t.id === id) {
-                if (field === 'features') {
-                    return { ...t, features: value.split(',').map(f => f.trim()).filter(Boolean) }
+                if (field === 'features' || field === 'features_ar') {
+                    return { ...t, [field]: value.split(',').map(f => f.trim()).filter(Boolean) }
                 }
 
                 // Handle nested allocations object
@@ -443,12 +443,43 @@ export default function SettingsPage() {
                                                             </button>
                                                         </div>
                                                         <div className="space-y-1">
+                                                            <label className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Description (EN)</label>
+                                                            <input
+                                                                type="text"
+                                                                value={tier.description || ''}
+                                                                onChange={e => handleTierChange(tier.id, 'description', e.target.value)}
+                                                                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                                                placeholder="Short description for pricing page"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Description (AR)</label>
+                                                            <input
+                                                                type="text"
+                                                                value={tier.description_ar || ''}
+                                                                onChange={e => handleTierChange(tier.id, 'description_ar', e.target.value)}
+                                                                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                                                dir="rtl"
+                                                                placeholder="الوصف المختصر لصفحة الباقات"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
                                                             <label className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Features (comma separated)</label>
                                                             <textarea
                                                                 value={tier.features?.join(', ') || ''}
                                                                 onChange={e => handleTierChange(tier.id, 'features', e.target.value)}
                                                                 className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-h-[60px]"
                                                                 placeholder="Feature 1, Feature 2, Feature 3"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Features AR (comma separated)</label>
+                                                            <textarea
+                                                                value={tier.features_ar?.join(', ') || ''}
+                                                                onChange={e => handleTierChange(tier.id, 'features_ar', e.target.value)}
+                                                                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-h-[60px]"
+                                                                dir="rtl"
+                                                                placeholder="الميزة ١، الميزة ٢، الميزة ٣"
                                                             />
                                                         </div>
                                                         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 bg-slate-900/50 p-3 rounded border border-slate-700/50 mt-2">

@@ -13,7 +13,9 @@ import {
     Users,
     MessageSquare,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Sparkles,
+    Store
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -21,12 +23,28 @@ export default function PricingPage() {
     const { t, lang, isRTL, shieldPricing = { trust: 20, fatora: 50 }, tierPricing = [] } = useTagdeer();
     const [openFaqIndex, setOpenFaqIndex] = useState(null);
 
-    const priceTier1 = tierPricing[0]?.price ?? 49;
-    const priceTier2 = tierPricing[1]?.price ?? 99;
-
     const toggleFaq = (index) => {
         setOpenFaqIndex(openFaqIndex === index ? null : index);
     };
+
+    // Active tiers only + free tier always first
+    const activeTiers = tierPricing.filter(t => t.isActive !== false);
+    const freeTier = {
+        id: 'free',
+        name: lang === 'ar' ? 'مجاني' : 'Free',
+        price: 0,
+        description: lang === 'ar'
+            ? 'سجّل نشاطك التجاري مجاناً وابدأ باستقبال التفاعلات من الزبائن.'
+            : 'Register your business for free and start receiving customer interactions.',
+        features: lang === 'ar'
+            ? ['فرع واحد', 'استقبال تقييمات المجتمع', 'مؤشر القدر الأساسي', 'إشعار عند وصول تقييم جديد']
+            : ['1 location', 'Receive community reviews', 'Basic Gader Score', 'Notifications on new reviews'],
+        isActive: true,
+        isPopular: false,
+        isFree: true
+    };
+
+    const allTiers = [freeTier, ...activeTiers];
 
     const benefits = [
         {
@@ -57,17 +75,40 @@ export default function PricingPage() {
         },
         {
             q: lang === 'ar' ? 'لدي سلسلة مطاعم، ما هي الباقة الأنسب لي؟' : 'I own a restaurant chain. Which plan is best for me?',
-            a: lang === 'ar' ? 'باقة (برو - Tier 2) هي الخيار الأمثل لك. تتيح لك إدارة فروع غير محدودة من حساب واحد، وإضافة مدراء الفروع كأعضاء فريق لإدارة كل فرع على حدة.' : 'The Pro Tier 2 is perfect for you. It allows you to manage unlimited locations from one account and invite branch managers as team members to handle specific locations.'
+            a: lang === 'ar' ? 'باقة (برو) هي الخيار الأمثل لك. تتيح لك إدارة فروع غير محدودة من حساب واحد، وإضافة مدراء الفروع كأعضاء فريق لإدارة كل فرع على حدة.' : 'The Pro plan is perfect for you. It allows you to manage unlimited locations from one account and invite branch managers as team members to handle specific locations.'
+        },
+        {
+            q: lang === 'ar' ? 'هل الحساب المجاني محدود؟' : 'Is the free account limited?',
+            a: lang === 'ar' ? 'الحساب المجاني يسمح لك بإدارة فرع واحد واستقبال التقييمات. للحصول على ميزات متقدمة مثل إدارة عدة فروع، والتقارير، وصفحة النشاط الرقمية، يمكنك الترقية في أي وقت.' : 'The free account lets you manage one location and receive reviews. For advanced features like multi-location management, reports, and digital storefronts, you can upgrade anytime.'
         }
     ];
+
+    // Tier description helper — reads from admin `description` or `description_ar`, falls back to defaults
+    const getTierDescription = (tier, idx) => {
+        if (lang === 'ar' && tier.description_ar) return tier.description_ar;
+        if (tier.description) return tier.description;
+        // Fallback
+        const defaults = [
+            { en: 'Perfect for single-location businesses getting started.', ar: 'مثالي للأنشطة التجارية ذات الفرع الواحد.' },
+            { en: 'For growing brands managing multiple branches.', ar: 'للعلامات التجارية المتنامية التي تدير عدة فروع.' },
+            { en: 'For large-scale operations and enterprise chains.', ar: 'للعمليات الكبيرة وسلاسل الشركات.' }
+        ];
+        const d = defaults[idx] || defaults[0];
+        return lang === 'ar' ? d.ar : d.en;
+    };
+
+    // Feature list helper — reads `features_ar` if available for Arabic
+    const getTierFeatures = (tier) => {
+        if (lang === 'ar' && tier.features_ar?.length > 0) return tier.features_ar;
+        return tier.features || [];
+    };
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20" dir={isRTL ? 'rtl' : 'ltr'}>
 
-            {/* Minimalist Hero */}
+            {/* Hero */}
             <section className="bg-gradient-to-br from-indigo-900 via-blue-900 to-slate-900 pt-32 pb-24 px-4 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-full bg-[url('/noise.png')] opacity-20 pointer-events-none mix-blend-overlay"></div>
-
                 <div className="max-w-4xl mx-auto text-center relative z-10">
                     <h1 className="text-4xl md:text-6xl font-black text-white mb-6 leading-tight">
                         {lang === 'ar' ? 'تحكم في سمعة نشاطك التجاري.' : 'Take Control of Your Business Reputation.'}
@@ -107,7 +148,9 @@ export default function PricingPage() {
                 </div>
             </section>
 
-            {/* Merchant Pricing Section */}
+            {/* ═══════════════════════════════════════
+                PRICING TIERS — Dynamic from Admin
+            ═══════════════════════════════════════ */}
             <section id="pricing" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
                 <div className="text-center mb-16">
                     <h2 className="text-3xl md:text-5xl font-extrabold text-slate-900 dark:text-white mb-6">
@@ -120,42 +163,61 @@ export default function PricingPage() {
                     </p>
                 </div>
 
-                <div className={`grid grid-cols-1 ${tierPricing.length === 1 ? 'max-w-md' : tierPricing.length === 2 ? 'max-w-4xl' : 'max-w-7xl'} mx-auto gap-8 mb-16`}>
-                    {tierPricing.map((tier, idx) => {
-                        const isActive = tier.isActive !== false;
-                        if (!isActive) return null;
-
+                <div className={`grid grid-cols-1 md:grid-cols-${Math.min(allTiers.length, 3)} max-w-7xl mx-auto gap-8 mb-16`}>
+                    {allTiers.map((tier, idx) => {
                         const isPopular = tier.isPopular;
+                        const isFree = tier.isFree || tier.price === 0;
+                        const features = getTierFeatures(tier);
 
                         return (
                             <div
                                 key={tier.id}
                                 className={`rounded-3xl border p-10 transition-all relative flex flex-col ${isPopular
-                                        ? 'bg-gradient-to-b from-indigo-900 to-slate-900 border-indigo-500 shadow-2xl shadow-indigo-500/20 transform md:-translate-y-6'
+                                    ? 'bg-gradient-to-b from-indigo-900 to-slate-900 border-indigo-500 shadow-2xl shadow-indigo-500/20 transform md:-translate-y-6'
+                                    : isFree
+                                        ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-900 shadow-sm hover:shadow-xl'
                                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl'
                                     }`}
                             >
                                 {isPopular && (
-                                    <div className="absolute top-0 right-10 -translate-y-1/2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-5 py-1.5 rounded-full text-sm font-bold flex items-center gap-1 shadow-lg">
+                                    <div className={`absolute top-0 ${isRTL ? 'left-10' : 'right-10'} -translate-y-1/2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-5 py-1.5 rounded-full text-sm font-bold flex items-center gap-1 shadow-lg`}>
                                         <Crown className="w-4 h-4" /> {lang === 'ar' ? 'الأكثر رواجاً' : 'MOST POPULAR'}
                                     </div>
                                 )}
+                                {isFree && (
+                                    <div className={`absolute top-0 ${isRTL ? 'left-10' : 'right-10'} -translate-y-1/2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-5 py-1.5 rounded-full text-sm font-bold flex items-center gap-1 shadow-lg`}>
+                                        <Sparkles className="w-4 h-4" /> {lang === 'ar' ? 'ابدأ مجاناً' : 'START FREE'}
+                                    </div>
+                                )}
+
                                 <div className="mb-6">
                                     <h3 className={`text-2xl font-bold mb-2 ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
                                         {tier.name}
                                     </h3>
                                     <p className={`${isPopular ? 'text-indigo-200' : 'text-slate-500 dark:text-slate-400'} text-sm`}>
-                                        {tier.description || (idx === 0 ? 'Perfect for single-location businesses.' : idx === 1 ? 'For growing brands and multiple branches.' : 'For large scale operations.')}
+                                        {getTierDescription(tier, idx)}
                                     </p>
                                 </div>
+
                                 <div className={`mb-8 pb-8 border-b ${isPopular ? 'border-indigo-500/30' : 'border-slate-100 dark:border-slate-800'}`}>
-                                    <span className={`text-5xl font-black ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
-                                        {tier.price} <span className="text-2xl font-bold">LYD</span>
-                                    </span>
-                                    <span className={isPopular ? 'text-indigo-200' : 'text-slate-500'}> / mo</span>
+                                    {isFree ? (
+                                        <span className={`text-5xl font-black ${isPopular ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                            {lang === 'ar' ? 'مجاني' : 'Free'}
+                                        </span>
+                                    ) : (
+                                        <>
+                                            <span className={`text-5xl font-black ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                                                {tier.price} <span className="text-2xl font-bold">{lang === 'ar' ? 'د.ل' : 'LYD'}</span>
+                                            </span>
+                                            <span className={isPopular ? 'text-indigo-200' : 'text-slate-500'}>
+                                                {' '}/{lang === 'ar' ? ' شهرياً' : ' mo'}
+                                            </span>
+                                        </>
+                                    )}
                                 </div>
+
                                 <ul className="space-y-5 mb-10 flex-1">
-                                    {tier.features?.map((feature, fIdx) => (
+                                    {features.map((feature, fIdx) => (
                                         <li key={fIdx} className="flex items-start gap-4">
                                             <Check className={`w-6 h-6 shrink-0 ${isPopular ? 'text-emerald-400' : 'text-emerald-500'}`} />
                                             <span className={isPopular ? 'text-slate-100' : 'text-slate-700 dark:text-slate-300'}>
@@ -164,12 +226,17 @@ export default function PricingPage() {
                                         </li>
                                     ))}
                                 </ul>
+
                                 <Link href="/merchant/login">
                                     <Button className={`w-full py-6 text-lg rounded-xl font-bold transition-colors shadow-lg border-0 ${isPopular
-                                            ? 'bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white shadow-indigo-500/30'
+                                        ? 'bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white shadow-indigo-500/30'
+                                        : isFree
+                                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
                                             : 'bg-slate-100 hover:bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700'
                                         }`}>
-                                        {lang === 'ar' ? 'ابدأ الآن' : `Go ${tier.name}`}
+                                        {lang === 'ar'
+                                            ? (isFree ? 'سجل مجاناً' : 'ابدأ الآن')
+                                            : (isFree ? 'Get Started Free' : `Go ${tier.name}`)}
                                     </Button>
                                 </Link>
                             </div>
@@ -177,58 +244,74 @@ export default function PricingPage() {
                     })}
                 </div>
 
-                {/* Shield Add-ons */}
+                {/* ═══════════════════════════════
+                    SHIELD ADD-ONS — Dynamic Pricing
+                ═══════════════════════════════ */}
                 <div className="max-w-4xl mx-auto bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 md:p-12 shadow-sm">
                     <div className="text-center mb-12">
                         <h3 className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white mb-4">
                             {lang === 'ar' ? 'تحصين الفروع: إضافات درع الحماية' : 'Location Armor: Security Shield Add-ons'}
                         </h3>
                         <p className="text-lg text-slate-500 dark:text-slate-400 max-w-2xl mx-auto">
-                            {lang === 'ar' ? 'احمِ سمعة فروعك بآليات متقدمة لمكافحة الاحتيال. تُضاف رسوم الدروع كاشتراك شهري مبني على كل فرع تود تحصينه.' : 'Protect your branch reputation with advanced anti-fraud mechanics. Shield fees are applied monthly per-location.'}
+                            {lang === 'ar'
+                                ? 'احمِ سمعة فروعك بآليات متقدمة لمكافحة الاحتيال. تُضاف رسوم الدروع كاشتراك شهري لكل فرع تود تحصينه.'
+                                : 'Protect your branch reputation with advanced anti-fraud mechanics. Shield fees are applied monthly per-location.'}
                         </p>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Trust Shield */}
                         <div className="flex flex-col gap-4 p-8 rounded-3xl bg-amber-50/50 dark:bg-amber-950/20 border-2 border-amber-100 dark:border-amber-900">
                             <div className="flex justify-between items-start">
                                 <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
                                     <ShieldCheck className="w-8 h-8" />
                                 </div>
-                                <div className="text-right">
-                                    <div className="text-2xl font-black text-slate-900 dark:text-white">{shieldPricing.trust} LYD</div>
-                                    <div className="text-sm font-medium text-slate-500">/mo per branch</div>
+                                <div className={isRTL ? 'text-left' : 'text-right'}>
+                                    <div className="text-2xl font-black text-slate-900 dark:text-white">{shieldPricing.trust} {lang === 'ar' ? 'د.ل' : 'LYD'}</div>
+                                    <div className="text-sm font-medium text-slate-500">{lang === 'ar' ? '/ شهرياً لكل فرع' : '/mo per branch'}</div>
                                 </div>
                             </div>
                             <div>
                                 <h4 className="text-xl font-bold text-slate-900 dark:text-white mt-4 mb-2 flex items-center gap-2">
-                                    Tagdeer Trust Shield <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold">Level 1</span>
+                                    {lang === 'ar' ? 'درع الثقة' : 'Tagdeer Trust Shield'} <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold">{lang === 'ar' ? 'المستوى ١' : 'Level 1'}</span>
                                 </h4>
-                                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">Secures your branch by forcing all incoming interactions and reviews to originate strictly from SMS-verified Tagdeer user accounts, eliminating bot spam.</p>
+                                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                                    {lang === 'ar'
+                                        ? 'يحمي فرعك عبر إلزام جميع التفاعلات والتقييمات الواردة بأن تصدر فقط من حسابات تقدير الموثقة برقم هاتف، مما يمنع الحسابات الوهمية والبوتات.'
+                                        : 'Secures your branch by forcing all incoming interactions and reviews to originate strictly from SMS-verified Tagdeer user accounts, eliminating bot spam.'}
+                                </p>
                             </div>
                         </div>
 
+                        {/* Fatora Shield */}
                         <div className="flex flex-col gap-4 p-8 rounded-3xl bg-blue-50/50 dark:bg-blue-950/20 border-2 border-blue-100 dark:border-blue-900">
                             <div className="flex justify-between items-start">
                                 <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
                                     <ShieldAlert className="w-8 h-8" />
                                 </div>
-                                <div className="text-right">
-                                    <div className="text-2xl font-black text-blue-600">{shieldPricing.fatora} LYD</div>
-                                    <div className="text-sm font-medium text-slate-500">/mo per branch</div>
+                                <div className={isRTL ? 'text-left' : 'text-right'}>
+                                    <div className="text-2xl font-black text-blue-600">{shieldPricing.fatora} {lang === 'ar' ? 'د.ل' : 'LYD'}</div>
+                                    <div className="text-sm font-medium text-slate-500">{lang === 'ar' ? '/ شهرياً لكل فرع' : '/mo per branch'}</div>
                                 </div>
                             </div>
                             <div>
                                 <h4 className="text-xl font-bold text-slate-900 dark:text-white mt-4 mb-2 flex items-center gap-2">
-                                    Tagdeer Fatora Shield <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-400 px-2 py-0.5 rounded-full font-bold border-0">Level 2</span>
+                                    {lang === 'ar' ? 'درع الفاتورة' : 'Tagdeer Fatora Shield'} <span className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-400 px-2 py-0.5 rounded-full font-bold border-0">{lang === 'ar' ? 'المستوى ٢' : 'Level 2'}</span>
                                 </h4>
-                                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">The ultimate protection. Requires physical receipt photo uploads for users to submit negative complaints. Unlocks the advanced Dispute Manager portal to challenge fake reviews directly.</p>
+                                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                                    {lang === 'ar'
+                                        ? 'الحماية القصوى. يُلزم المشتكين بتحميل صورة إيصال الشراء لتقديم شكوى سلبية. يفتح لك بوابة مدير النزاعات المتقدمة للطعن في التقييمات الكيدية مباشرة.'
+                                        : 'The ultimate protection. Requires physical receipt photo uploads for users to submit negative complaints. Unlocks the advanced Dispute Manager portal to challenge fake reviews directly.'}
+                                </p>
                             </div>
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* Merchant FAQs */}
+            {/* ═══════════════════
+                FAQ SECTION
+            ═══════════════════ */}
             <section className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
                 <h2 className="text-2xl md:text-3xl font-bold text-center text-slate-900 dark:text-white mb-10">
                     {lang === 'ar' ? 'أسئلة شائعة' : 'Frequently Asked Questions'}
@@ -241,10 +324,10 @@ export default function PricingPage() {
                             className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm"
                         >
                             <button
-                                className="w-full px-6 py-5 text-left flex justify-between items-center focus:outline-none"
+                                className={`w-full px-6 py-5 ${isRTL ? 'text-right' : 'text-left'} flex justify-between items-center focus:outline-none`}
                                 onClick={() => toggleFaq(index)}
                             >
-                                <span className={`font-semibold ${isRTL ? 'text-right' : 'text-left'} text-slate-800 dark:text-slate-200 ${openFaqIndex === index ? 'text-blue-600 dark:text-blue-400' : ''}`}>
+                                <span className={`font-semibold text-slate-800 dark:text-slate-200 ${openFaqIndex === index ? 'text-blue-600 dark:text-blue-400' : ''}`}>
                                     {faq.q}
                                 </span>
                                 {openFaqIndex === index ? (
@@ -263,6 +346,7 @@ export default function PricingPage() {
                     ))}
                 </div>
 
+                {/* CTA Bottom */}
                 <div className="mt-16 text-center bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900 p-8 rounded-3xl">
                     <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">
                         {lang === 'ar' ? 'مستعد لتحويل الزبائن إلى سفراء علامتك التجارية؟' : 'Ready to turn customers into brand ambassadors?'}
@@ -272,7 +356,7 @@ export default function PricingPage() {
                     </p>
                     <Link href="/merchant/login">
                         <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-10">
-                            {lang === 'ar' ? 'ابدأ كشريك بحساب مجاني' : 'Sign up for a Tagdeer Account'} <ArrowRight className={`ml-2 w-4 h-4 ${isRTL ? 'rotate-180 mr-2 ml-0' : ''}`} />
+                            {lang === 'ar' ? 'ابدأ كشريك بحساب مجاني' : 'Sign up for a Tagdeer Account'} <ArrowRight className={`${isRTL ? 'rotate-180 me-2' : 'ms-2'} w-4 h-4`} />
                         </Button>
                     </Link>
                 </div>
