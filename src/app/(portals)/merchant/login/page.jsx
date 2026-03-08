@@ -44,7 +44,7 @@ export default function MerchantLogin() {
         if (!loading && user && user.role === 'merchant') {
             // If they just verified via OTP and don't have a password, show set-password prompt
             if (step === 'set-password') return;
-            navigateForward('/merchant/dashboard');
+            navigateForward('/dashboard');
         }
     }, [user, loading, router, step, trialCampaign]);
 
@@ -203,11 +203,11 @@ export default function MerchantLogin() {
      */
     const handleSetPassword = async (newPassword) => {
         await setMerchantPassword(newPassword);
-        navigateForward('/merchant/dashboard');
+        navigateForward('/dashboard');
     };
 
     const handleSkipPassword = () => {
-        navigateForward('/merchant/dashboard');
+        navigateForward('/dashboard');
     };
 
     // --- Step 3: Set Password Prompt (full-screen component) ---
