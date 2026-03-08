@@ -325,23 +325,70 @@ export default async function PublicStorefront({ params, searchParams }) {
                 </div>
 
                 {/* ─── Community Trust & Rating ─────────────────── */}
-                <div className="mt-8 p-2 rounded-[2rem] bg-slate-100/50 dark:bg-slate-800/30 border border-slate-200/50 dark:border-slate-700/50">
-                    <div className="grid grid-cols-3 gap-2 mb-2">
-                        <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 shadow-sm text-center flex flex-col justify-center items-center">
-                            <div className="text-2xl md:text-3xl font-black text-emerald-500 mb-0.5">{business.recommends || 0}</div>
-                            <div className="text-slate-500 font-bold uppercase tracking-wider text-[10px] md:text-xs">{t.recommend}</div>
+                <div className="mt-8 p-4 md:p-6 rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                    {/* Gader Index Header — matches Discover page */}
+                    <div className="flex justify-between items-end mb-4">
+                        <div className="flex items-center gap-2">
+                            <div className={`p-1.5 rounded-md ${totalVotes === 0 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400' : ((business.recommends || 0) / totalVotes) >= 0.5 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
+                                ⚡
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-slate-900 dark:text-white font-bold text-lg leading-tight">{t.gaderScore}</span>
+                                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">{isRTL ? 'مقدار' : 'Migdar'}</span>
+                            </div>
                         </div>
-                        <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 shadow-sm text-center flex flex-col justify-center items-center" style={{ backgroundColor: theme.primaryColor + '10' }}>
-                            <div className="text-3xl md:text-4xl font-black mb-0.5" style={{ color: theme.primaryColor }}>{trustScore}</div>
-                            <div className="text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider text-[10px] md:text-xs">{t.gaderScore}</div>
+                        {totalVotes === 0 ? (
+                            <span className="text-sm font-medium text-slate-400 italic">
+                                {isRTL ? 'لا توجد تجارب بعد' : 'No experiences yet'}
+                            </span>
+                        ) : (
+                            <div className="flex items-center gap-1.5 text-sm font-bold">
+                                <span className="text-green-600 dark:text-green-400">{trustScore}</span>
+                                <span className="text-slate-300 dark:text-slate-600">/</span>
+                                <span className="text-red-500 dark:text-red-400">{totalVotes > 0 ? (100 - Math.round(((business.recommends || 0) / totalVotes) * 100)) + '%' : '0%'}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Tug-of-War Progress Bar — matches Discover page */}
+                    {totalVotes === 0 ? (
+                        <div className="w-full rounded-full h-4 overflow-hidden flex shadow-inner border border-slate-200 dark:border-slate-700 mb-4">
+                            <div className="bg-slate-300 dark:bg-slate-600 h-4 w-1/2 flex items-center justify-end">
+                                <span className="text-[10px] font-bold text-slate-500/70 pr-1.5">⚖️</span>
+                            </div>
+                            <div className="bg-slate-300 dark:bg-slate-600 h-4 w-1/2 border-l border-slate-400/30 dark:border-slate-500/30 flex items-center justify-start">
+                                <span className="text-[10px] font-bold text-slate-500/70 pl-1.5">⚖️</span>
+                            </div>
                         </div>
-                        <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 shadow-sm text-center flex flex-col justify-center items-center">
-                            <div className="text-2xl md:text-3xl font-black text-rose-500 mb-0.5">{business.complains || 0}</div>
-                            <div className="text-slate-500 font-bold uppercase tracking-wider text-[10px] md:text-xs">{t.complain}</div>
+                    ) : (
+                        <div className="w-full rounded-full h-4 overflow-hidden flex shadow-inner border border-slate-200 dark:border-slate-700 mb-4">
+                            <div
+                                className="bg-gradient-to-r from-green-400 to-green-500 h-4 transition-all duration-1000 ease-out flex items-center justify-end"
+                                style={{ width: `${Math.max(Math.round(((business.recommends || 0) / totalVotes) * 100), 8)}%` }}
+                            >
+                                {Math.round(((business.recommends || 0) / totalVotes) * 100) >= 20 && <span className="text-[10px] font-bold text-white/90 pr-1.5">👍</span>}
+                            </div>
+                            <div
+                                className="bg-gradient-to-r from-red-400 to-red-500 h-4 transition-all duration-1000 ease-out flex items-center justify-start"
+                                style={{ width: `${Math.max(100 - Math.round(((business.recommends || 0) / totalVotes) * 100), 8)}%` }}
+                            >
+                                {(100 - Math.round(((business.recommends || 0) / totalVotes) * 100)) >= 20 && <span className="text-[10px] font-bold text-white/90 pl-1.5">👎</span>}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Recommend/Complain Count Badges */}
+                    <div className={`flex justify-between text-xs font-bold px-1 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                        <div className="flex items-center gap-1.5 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded">
+                            👍 {business.recommends || 0} {t.recommend}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded">
+                            {business.complains || 0} {t.complain} 👎
                         </div>
                     </div>
-                    {/* We wrap InlineReviewBlock to override its default outer margin and border securely */}
-                    <div className="[&>div]:mt-0 [&>div]:shadow-sm">
+
+                    {/* Inline Review Block — vote form with full integrity */}
+                    <div className="[&>div]:mt-0 [&>div]:shadow-none [&>div]:border-0 [&>div]:p-0 [&>div]:rounded-none">
                         <InlineReviewBlock businessId={business.id} business={business} isRTL={isRTL} theme={theme} />
                     </div>
                 </div>
