@@ -11,7 +11,7 @@ function DiscoverContent() {
     const {
         t, lang, isRTL, businesses, anonInteractions, refreshAnonInteractions,
         showToast, setShowLimitModal, setVoteModal, setVoteReason, user,
-        categories = [], regions = []
+        categories = [], regions = [], supabase
     } = useTagdeer();
 
     const displayCategories = ["All", ...categories.map(c => typeof c === 'string' ? c : c.name)];
@@ -40,11 +40,35 @@ function DiscoverContent() {
         setExpandedLogs(prev => ({ ...prev, [id]: !prev[id] }));
     };
 
-    const toggleInlineVote = (businessId, type) => {
-        setInlineVote(prev => {
-            if (prev[businessId] === type) return { ...prev, [businessId]: null };
-            return { ...prev, [businessId]: type };
-        });
+    const toggleInlineVote = async (businessId, type) => {
+        // If collapsing (same button clicked again), just toggle off
+        if (inlineVote[businessId] === type) {
+            setInlineVote(prev => ({ ...prev, [businessId]: null }));
+            return;
+        }
+
+        // Gate: anonymous vote limit check BEFORE expanding
+        if (!user && supabase) {
+            try {
+                const fingerprint = await getDeviceFingerprint();
+                const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                const { count, error } = await supabase
+                    .from('logs')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('fingerprint', fingerprint)
+                    .gte('created_at', twentyFourHoursAgo);
+
+                if (!error && count >= 3) {
+                    setShowLimitModal(true);
+                    return; // Block expansion entirely
+                }
+            } catch (e) {
+                console.error('Limit check failed:', e);
+            }
+        }
+
+        // Safe to expand
+        setInlineVote(prev => ({ ...prev, [businessId]: type }));
     };
 
     // A1: Trending sort — 72-hour activity window
@@ -398,19 +422,19 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
             {/* A2: Inline vote buttons — expand section below instead of modal */}
             <div className="flex gap-3 mb-3">
                 <button
-                    onClick={() => { openVoteModal(business.id, 'recommend', business); toggleInlineVote(business.id, 'recommend'); }}
+                    onClick={() => toggleInlineVote(business.id, 'recommend')}
                     className={`flex-1 py-3 rounded-xl font-semibold flex justify-center items-center gap-2 transition-all border ${inlineVoteType === 'recommend'
-                            ? 'bg-green-100 text-green-800 border-green-300 shadow-inner'
-                            : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
+                        ? 'bg-green-100 text-green-800 border-green-300 shadow-inner'
+                        : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
                         }`}
                 >
                     <ThumbsUp className="h-5 w-5" /> {t('recommend')}
                 </button>
                 <button
-                    onClick={() => { openVoteModal(business.id, 'complain', business); toggleInlineVote(business.id, 'complain'); }}
+                    onClick={() => toggleInlineVote(business.id, 'complain')}
                     className={`flex-1 py-3 rounded-xl font-semibold flex justify-center items-center gap-2 transition-all border ${inlineVoteType === 'complain'
-                            ? 'bg-red-100 text-red-800 border-red-300 shadow-inner'
-                            : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                        ? 'bg-red-100 text-red-800 border-red-300 shadow-inner'
+                        : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
                         }`}
                 >
                     <ThumbsDown className="h-5 w-5" /> {t('complain')}
