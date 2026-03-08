@@ -77,8 +77,26 @@ export default function ClientLayout({ children }) {
 
         if (supabase) {
             try {
-                // ── Step 1: 24-Hour Same-Business Cooldown ──────────────
                 const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+                // ── Step 0: Server-side anonymous vote limit (3 per 24h) ──
+                // This check runs inside submitVote (not just openVoteModal)
+                // to prevent bypass via direct API calls or race conditions.
+                if (!user) {
+                    const { count: anonTotal, error: anonErr } = await supabase
+                        .from('logs')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('fingerprint', fingerprint)
+                        .gte('created_at', twentyFourHoursAgo);
+
+                    if (!anonErr && anonTotal >= 3) {
+                        setShowLimitModal(true);
+                        setVoteModal({ isOpen: false, businessId: null, type: null });
+                        return;
+                    }
+                }
+
+                // ── Step 1: 24-Hour Same-Business Cooldown ──────────────
 
                 // Build the full query in one chain to avoid mutation issues
                 const cooldownQuery = user?.id
@@ -146,7 +164,10 @@ export default function ClientLayout({ children }) {
         // Award +10 Gader Points to verified users
         if (user?.id && supabase) {
             try {
-                const newPoints = (user.gader || 0) + 10;
+                // Award points proportional to vote weight (min 5, max 25)
+                // Higher-tier users earn more per vote — their vote has more impact.
+                const earnedPoints = Math.max(5, Math.min(25, Math.round(weight * 10)));
+                const newPoints = (user.gader || 0) + earnedPoints;
                 await supabase
                     .from('profiles')
                     .update({ gader_points: newPoints })

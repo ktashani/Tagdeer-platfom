@@ -417,7 +417,8 @@ function LogItem({ log }) {
     const displayText = isExpanded ? log.text : log.text.substring(0, textLimit) + (isLong ? '...' : '');
 
     // Identify if the current viewer is the author (either via profile or fingerprint)
-    const isOwner = (user && log.profile_id === user.id) || (!user && log.fingerprint === getDeviceFingerprint());
+    // Note: parentheses around the fingerprint comparison are required due to JS operator precedence
+    const isOwner = (user && log.profile_id === user.id) || (!user && (log.fingerprint === getDeviceFingerprint()));
 
     const handleVote = async (voteType) => {
         if (votedType) return; // Prevent double voting locally
@@ -437,12 +438,14 @@ function LogItem({ log }) {
             try {
                 const fingerprint = getDeviceFingerprint();
 
-                await supabase.from('log_votes').insert([{
+                // Use upsert with conflict handling to prevent duplicate votes.
+                // Requires DB unique constraints on (log_id, profile_id) and (log_id, fingerprint).
+                await supabase.from('log_votes').upsert([{
                     log_id: log.id,
                     vote_type: voteType,
                     profile_id: user?.id || null,
                     fingerprint: user ? null : fingerprint
-                }]);
+                }], { onConflict: user?.id ? 'log_id,profile_id' : 'log_id,fingerprint', ignoreDuplicates: true });
 
                 // Persist the fact that THIS browser voted on THIS log
                 localStorage.setItem(`tagdeer_vote_${log.id}`, voteType);
