@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Script from 'next/script';
 import { InstagramBlock, FacebookBlock } from './SocialEmbeds';
+import StorefrontLogEntries from './StorefrontLogEntries';
 import { InlineReviewBlock } from './InlineReviewBlock';
 import {
     Store, MapPin, Phone, Globe, ExternalLink, ShieldCheck,
@@ -150,10 +151,10 @@ export default async function PublicStorefront({ params, searchParams }) {
     // Recent reviews from correct table
     const { data: recentLogs } = await supabase
         .from('logs')
-        .select('id, interaction_type, reason_text, created_at, profile_id')
+        .select('id, interaction_type, reason_text, created_at, profile_id, fingerprint, helpful_votes, unhelpful_votes, weight')
         .eq('business_id', business.id)
         .order('created_at', { ascending: false })
-        .limit(5);
+        .limit(10);
 
     // Trust Shield check
     const hasTrustShield = business.feature_allocations?.some(f => f.feature_type === 'shield' && f.status === 'active');
@@ -341,7 +342,7 @@ export default async function PublicStorefront({ params, searchParams }) {
                     </div>
                     {/* We wrap InlineReviewBlock to override its default outer margin and border securely */}
                     <div className="[&>div]:mt-0 [&>div]:shadow-sm">
-                        <InlineReviewBlock businessId={business.id} isRTL={isRTL} theme={theme} />
+                        <InlineReviewBlock businessId={business.id} business={business} isRTL={isRTL} theme={theme} />
                     </div>
                 </div>
 
@@ -389,39 +390,7 @@ export default async function PublicStorefront({ params, searchParams }) {
                         {t.communityReviews}
                     </h3>
                     {recentLogs && recentLogs.length > 0 ? (
-                        <div className="space-y-4">
-                            {recentLogs.map(log => (
-                                <div key={log.id} className="p-4 md:p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-left">
-                                    <div className={`flex items-start gap-4 mb-3 ${isRTL ? 'flex-row-reverse text-right' : ''}`}>
-                                        <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-500 shrink-0 mt-1">
-                                            💬
-                                        </div>
-                                        <div className={`flex-1 ${isRTL ? 'text-right' : ''}`}>
-                                            <div className={`flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 ${isRTL ? 'sm:flex-row-reverse' : ''}`}>
-                                                <p className="font-bold text-slate-900 dark:text-white text-lg leading-tight">
-                                                    {isRTL ? 'مستخدم لتقدير' : 'Tagdeer User'}
-                                                </p>
-                                                {log.interaction_type === 'recommend' ? (
-                                                    <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider leading-none self-start sm:self-auto">{t.recommend}</span>
-                                                ) : (
-                                                    <span className="bg-rose-100 text-rose-700 text-[10px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider leading-none self-start sm:self-auto">{t.complain}</span>
-                                                )}
-                                            </div>
-                                            <p className="text-xs text-slate-500 mt-1.5 font-medium">
-                                                {new Date(log.created_at).toLocaleDateString(isRTL ? 'ar-LY' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    {log.reason_text && (
-                                        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                                            <p className={`text-slate-600 dark:text-slate-300 text-sm md:text-base leading-relaxed whitespace-pre-wrap ${isRTL ? 'text-right' : ''}`}>
-                                                "{log.reason_text}"
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                        <StorefrontLogEntries logs={recentLogs} isRTL={isRTL} theme={theme} />
                     ) : (
                         <div className="p-8 md:p-12 rounded-[2rem] bg-slate-50 dark:bg-slate-900/50 border border-slate-200 border-dashed dark:border-slate-800 text-center flex flex-col items-center justify-center">
                             <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4 opacity-50">💬</div>
