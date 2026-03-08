@@ -525,7 +525,7 @@ export function TagdeerProvider({ children }) {
                 const ADMIN_ROLES = ['super_admin', 'admin', 'assistant_admin', 'support_agent'];
                 const isAdmin = ADMIN_ROLES.includes(user?.role) || user?.userId === 'ADMIN-MOCK' || user?.isDevBypass;
 
-                let query = supabase.from('businesses').select('*, logs(*), storefronts(slug, logo_url, status), business_ribbons(*)');
+                let query = supabase.from('businesses').select('*, logs(*), storefronts(slug, logo_url, status)');
 
                 if (!isAdmin) {
                     query = query.eq('status', 'published');
@@ -533,6 +533,24 @@ export function TagdeerProvider({ children }) {
 
                 const { data, error } = await query;
                 const { data: coupons } = await supabase.from('merchant_coupons').select('*').eq('status', 'active');
+
+                // Fetch ribbons separately — graceful failure if table doesn't exist yet
+                let ribbonsMap = {};
+                try {
+                    const { data: ribbons } = await supabase
+                        .from('business_ribbons')
+                        .select('*')
+                        .eq('is_active', true);
+                    if (ribbons) {
+                        ribbons.forEach(r => {
+                            if (!r.expires_at || new Date(r.expires_at) > new Date()) {
+                                if (!ribbonsMap[r.business_id]) ribbonsMap[r.business_id] = r;
+                            }
+                        });
+                    }
+                } catch (e) {
+                    // business_ribbons table may not exist yet — safe to ignore
+                }
 
                 if (error) {
                     console.warn('Supabase fetch failed, falling back to mock data.', error);
@@ -572,7 +590,7 @@ export function TagdeerProvider({ children }) {
                             external_url: b.external_url,
                             promotion_multiplier: b.promotion_multiplier || 0,
                             storefront: (Array.isArray(b.storefronts) ? b.storefronts[0] : b.storefronts) || null,
-                            activeRibbon: (b.business_ribbons || []).find(r => r.is_active && (!r.expires_at || new Date(r.expires_at) > new Date())) || null,
+                            activeRibbon: ribbonsMap[b.id] || null,
                             logs: rawLogs
                                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                                 .map(log => ({

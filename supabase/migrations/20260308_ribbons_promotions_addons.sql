@@ -29,11 +29,13 @@ CREATE INDEX IF NOT EXISTS idx_ribbons_active ON business_ribbons(is_active, exp
 -- RLS: Public can read active ribbons, merchants can manage their own
 ALTER TABLE business_ribbons ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Public can view active ribbons"
+DROP POLICY IF EXISTS "Public can view active ribbons" ON business_ribbons;
+CREATE POLICY "Public can view active ribbons"
     ON business_ribbons FOR SELECT
     USING (is_active = true AND (expires_at IS NULL OR expires_at > NOW()));
 
-CREATE POLICY IF NOT EXISTS "Merchants can manage own ribbons"
+DROP POLICY IF EXISTS "Merchants can manage own ribbons" ON business_ribbons;
+CREATE POLICY "Merchants can manage own ribbons"
     ON business_ribbons FOR ALL
     USING (
         business_id IN (
