@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { Hero } from '@/components/Hero/Hero';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ShieldCheck, ArrowRight, Check, Crown, ShieldAlert } from 'lucide-react';
+import { ShieldCheck, ArrowRight, Check, Crown, ShieldAlert, ThumbsUp, ThumbsDown, TrendingUp, TrendingDown, Store, MapPin } from 'lucide-react';
 
 export default function HomePage() {
     const { t, lang, isRTL, businesses, setShowPreRegModal } = useTagdeer();
@@ -26,6 +26,33 @@ export default function HomePage() {
     const topBusiness = [...businesses]
         .filter(b => !b.isShielded)
         .sort((a, b) => (b.recommends + b.complains) - (a.recommends + a.complains))[0];
+
+    // B: 72-hour leader banners
+    const WINDOW = 72 * 3600000;
+    const now = Date.now();
+
+    const { topRecommended, topComplained } = useMemo(() => {
+        const withRecentActivity = businesses.map(b => {
+            const recentLogs = (b.logs || []).filter(l =>
+                l.created_at && (now - new Date(l.created_at).getTime()) < WINDOW
+            );
+            const recentRecommends = recentLogs.filter(l => l.type === 'recommend').length;
+            const recentComplains = recentLogs.filter(l => l.type === 'complain').length;
+            const latestLog = recentLogs[0] || null;
+            return { ...b, recentRecommends, recentComplains, latestLog };
+        });
+
+        return {
+            topRecommended: withRecentActivity
+                .filter(b => b.recentRecommends > 0)
+                .sort((a, b) => b.recentRecommends - a.recentRecommends)
+                .slice(0, 5),
+            topComplained: withRecentActivity
+                .filter(b => b.recentComplains > 0)
+                .sort((a, b) => b.recentComplains - a.recentComplains)
+                .slice(0, 5)
+        };
+    }, [businesses]);
 
     const faqItems = [
         { q: t('faq_q1'), a: t('faq_a1') },
@@ -50,6 +77,43 @@ export default function HomePage() {
                 openFaqIndex={openFaqIndex}
                 toggleFaq={toggleFaq}
             />
+
+            {/* B: Leader Banners — 72hr window, min 3 businesses */}
+            {topRecommended.length >= 3 && (
+                <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-10" dir={isRTL ? 'rtl' : 'ltr'}>
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="p-1.5 rounded-lg bg-green-100">
+                            <TrendingUp className="w-5 h-5 text-green-600" />
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-800">
+                            {lang === 'ar' ? '🔥 الأكثر تقديراً هذا الأسبوع' : '🔥 Most Recommended This Week'}
+                        </h2>
+                    </div>
+                    <div className="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1 snap-x snap-mandatory">
+                        {topRecommended.map(b => (
+                            <LeaderCard key={b.id} business={b} type="recommend" lang={lang} isRTL={isRTL} />
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {topComplained.length >= 3 && (
+                <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6" dir={isRTL ? 'rtl' : 'ltr'}>
+                    <div className="flex items-center gap-2 mb-4">
+                        <div className="p-1.5 rounded-lg bg-red-100">
+                            <TrendingDown className="w-5 h-5 text-red-600" />
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-800">
+                            {lang === 'ar' ? '⚠️ الأكثر شكاوى هذا الأسبوع' : '⚠️ Most Complained This Week'}
+                        </h2>
+                    </div>
+                    <div className="flex gap-4 overflow-x-auto pb-4 -mx-1 px-1 snap-x snap-mandatory">
+                        {topComplained.map(b => (
+                            <LeaderCard key={b.id} business={b} type="complain" lang={lang} isRTL={isRTL} />
+                        ))}
+                    </div>
+                </section>
+            )}
 
             {/* Trust Engine Marketing Banner */}
             <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -114,5 +178,72 @@ export default function HomePage() {
                 </div>
             </section>
         </>
+    );
+}
+
+function LeaderCard({ business, type, lang, isRTL }) {
+    const totalVotes = (business.recommends || 0) + (business.complains || 0);
+    const recommendPct = totalVotes > 0 ? Math.round(((business.recommends || 0) / totalVotes) * 100) : 50;
+    const avatarLetter = business.name?.charAt(0).toUpperCase() || '?';
+
+    const hasStorefront = business.storefront?.status === 'published' && business.storefront?.slug;
+    const linkHref = hasStorefront ? `/b/${business.storefront.slug}` : `/discover?q=${encodeURIComponent(business.name)}`;
+
+    const isRecommend = type === 'recommend';
+    const borderColor = isRecommend ? 'border-green-200 hover:border-green-300' : 'border-red-200 hover:border-red-300';
+    const accentBg = isRecommend ? 'bg-green-50' : 'bg-red-50';
+
+    return (
+        <Link href={linkHref}
+            className={`min-w-[260px] max-w-[300px] snap-start flex-shrink-0 rounded-2xl border ${borderColor} bg-white p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group`}
+        >
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-3">
+                {business.storefront?.logo_url ? (
+                    <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-slate-100">
+                        <img src={business.storefront.logo_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    </div>
+                ) : (
+                    <div className="w-10 h-10 rounded-xl shrink-0 bg-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
+                        {avatarLetter}
+                    </div>
+                )}
+                <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-sm text-slate-800 truncate group-hover:text-blue-600 transition-colors">{business.name}</h3>
+                    <div className="flex items-center gap-1 text-xs text-slate-400">
+                        <MapPin className="w-3 h-3" /> {business.region}
+                    </div>
+                </div>
+            </div>
+
+            {/* Score bar */}
+            <div className="w-full rounded-full h-2.5 overflow-hidden flex shadow-inner border border-slate-200 mb-2">
+                <div className="bg-gradient-to-r from-green-400 to-green-500 h-full transition-all duration-700"
+                    style={{ width: `${Math.max(recommendPct, 5)}%` }} />
+                <div className="bg-gradient-to-r from-red-400 to-red-500 h-full transition-all duration-700"
+                    style={{ width: `${Math.max(100 - recommendPct, 5)}%` }} />
+            </div>
+
+            <div className="flex justify-between text-[10px] font-bold mb-3">
+                <span className="text-green-600">👍 {business.recommends || 0}</span>
+                <span className="text-red-500">{business.complains || 0} 👎</span>
+            </div>
+
+            {/* Latest review */}
+            {business.latestLog && (
+                <div className={`${accentBg} rounded-lg p-2.5 text-xs text-slate-600 line-clamp-2 leading-relaxed`}>
+                    "{business.latestLog.text}"
+                </div>
+            )}
+
+            {/* CTA */}
+            <div className="mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold text-blue-600 group-hover:text-blue-700">
+                {hasStorefront && <Store className="w-3.5 h-3.5" />}
+                {hasStorefront
+                    ? (lang === 'ar' ? 'زيارة صفحة النشاط' : 'Visit Storefront')
+                    : (lang === 'ar' ? 'عرض في الاكتشاف' : 'View in Discover')}
+                <ArrowRight className={`w-3.5 h-3.5 ${isRTL ? 'rotate-180' : ''}`} />
+            </div>
+        </Link>
     );
 }
