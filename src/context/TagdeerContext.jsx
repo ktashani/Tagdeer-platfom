@@ -365,14 +365,24 @@ export function TagdeerProvider({ children }) {
         }
 
         try {
-            // Always use root domain for callback — the handler lives under (consumer) route group.
-            // On subdomains (merchant.tagdeer.app), using window.location.origin would point to
-            // a non-existent callback page, causing magic links to fail/expire.
-            const hostname = window.location.hostname;
-            const isLocalhost = hostname.includes('localhost') || hostname.includes('127.0.0.1');
-            const rootOrigin = isLocalhost
-                ? window.location.origin
-                : window.location.protocol + '//' + hostname.replace(/^(admin|merchant|business)\./, '');
+            // Build callback URL using NEXT_PUBLIC_SITE_URL (env-aware) as the authoritative origin.
+            // This ensures magic links redirect to the correct environment:
+            //   localhost → http://localhost:3000/auth/callback
+            //   staging   → https://staging.tagdeer.app/auth/callback
+            //   production → https://tagdeer.app/auth/callback
+            // Fallback: strip subdomains from window.location.origin for safety.
+            const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+            let rootOrigin;
+            if (envSiteUrl) {
+                rootOrigin = envSiteUrl;
+            } else {
+                const hostname = window.location.hostname;
+                const isLocalhost = hostname.includes('localhost') || hostname.includes('127.0.0.1');
+                rootOrigin = isLocalhost
+                    ? window.location.origin
+                    : window.location.protocol + '//' + hostname.replace(/^(admin|merchant|business)\./, '');
+            }
+
             let callbackUrl = rootOrigin + '/auth/callback';
             const params = new URLSearchParams();
             if (redirectFrom) params.set('from', redirectFrom);
@@ -399,35 +409,42 @@ export function TagdeerProvider({ children }) {
         if (!supabase) return;
 
         try {
-            // Try 'email' type first (for existing users via signInWithOtp)
-            let { data, error } = await supabase.auth.verifyOtp({
-                email,
-                token,
-                type: 'email',
-            });
+            // Supabase sends different OTP types depending on the user state:
+            //   - 'email' for existing users (signInWithOtp on known email)
+            //   - 'magiclink' for magic link flow (the token from the link itself)
+            //   - 'signup' for brand new users (first-time signup confirmation)
+            // We try all three in sequence to handle every scenario.
+            const otpTypes = ['email', 'magiclink', 'signup'];
+            let lastError = null;
+            let resultData = null;
 
-            // If 'email' type fails, try 'signup' (for new users, Supabase sends a signup confirmation)
-            if (error) {
-                const signupResult = await supabase.auth.verifyOtp({
-                    email,
-                    token,
-                    type: 'signup',
-                });
-                data = signupResult.data;
-                error = signupResult.error;
+            for (const otpType of otpTypes) {
+                try {
+                    const { data, error } = await supabase.auth.verifyOtp({
+                        email,
+                        token,
+                        type: otpType,
+                    });
+
+                    if (!error && data?.user) {
+                        resultData = data;
+                        lastError = null;
+                        break; // Success!
+                    }
+                    if (error) lastError = error;
+                } catch (e) {
+                    lastError = e;
+                }
             }
 
-            console.log("Supabase OTP Verify Result:", { data, error, email, token });
+            if (lastError && !resultData) throw lastError;
 
-            if (error) throw error;
-
-            if (data.user) {
-                // Success! onAuthStateChange will handle syncing the profile
-                return data.user;
+            if (resultData?.user) {
+                return resultData.user;
             }
         } catch (err) {
             console.error("OTP Verification Error:", err);
-            showToast(err.message || (lang === 'ar' ? 'رمز غير صحيح' : 'Invalid code'));
+            showToast(err.message || (lang === 'ar' ? 'رمز غير صحيح أو منتهي الصلاحية' : 'Invalid or expired code'));
             throw err;
         }
     };

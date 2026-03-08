@@ -61,7 +61,10 @@ export async function POST(request) {
                 }
             } catch (adminErr) {
                 console.error('Admin API check failed:', adminErr);
-                // Fall through to return false
+                // CRITICAL: If admin API fails, default to showing password step
+                // rather than auto-sending magic link. The user can always click
+                // "Send verification code" if they don't have a password.
+                return Response.json({ hasPassword: true, userExists: true }, { status: 200 });
             }
         }
 

@@ -44,17 +44,23 @@ export default function MerchantLogin() {
         if (!loading && user && user.role === 'merchant') {
             // If they just verified via OTP and don't have a password, show set-password prompt
             if (step === 'set-password') return;
-            navigateForward('/dashboard');
+            navigateForward('/merchant/dashboard');
         }
     }, [user, loading, router, step, trialCampaign]);
 
     /**
      * Step 1: Email submit → check if merchant has a password set
-     * If yes: show password step
-     * If no: show password step anyway (user can try or use "Forgot password?" for magic link)
-     * This prevents immediately sending a magic link and hitting rate limits
+     * 
+     * CRITICAL LOGIC:
+     * - If user has a password → show password step
+     * - If user exists but no password → STILL show password step (with "Send code" option)
+     * - If user doesn't exist → ALSO show password step for signup flow
+     * - NEVER auto-send magic link/OTP from email step (prevents rate limits + redirect confusion)
+     * 
+     * The user explicitly chooses to receive a code via "Send verification code" button.
      */
     const [hasExistingPassword, setHasExistingPassword] = useState(false);
+    const [userExists, setUserExists] = useState(false);
 
     const handleEmailSubmit = async (e) => {
         e.preventDefault();
@@ -65,30 +71,34 @@ export default function MerchantLogin() {
 
         setIsCheckingPassword(true);
         try {
-            // Check if this email has a password set AND if user exists
             const res = await fetch('/api/merchant/check-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: email.trim().toLowerCase() }),
             });
-            const { hasPassword, userExists } = await res.json();
-            setHasExistingPassword(hasPassword);
+            const data = await res.json();
+            setHasExistingPassword(data.hasPassword || false);
+            setUserExists(data.userExists || false);
 
-            if (hasPassword) {
-                // Has password → go to password step
+            if (data.hasPassword) {
+                // User has a password → show password login step
+                setStep('password');
+            } else if (data.userExists) {
+                // User exists but no password → show password step with "Send code" option
+                // They can either try a password (if they set one via Supabase) or request a code
                 setStep('password');
             } else {
-                // New user OR existing user without password → auto-send OTP
+                // Brand new user → send OTP to create their account
                 try {
                     await loginWithEmail(email, 'merchant', trialCampaign);
                     setStep('otp');
+                    toast.info("We sent a verification code to your email. Check your inbox.");
                 } catch (otpErr) {
-                    // If OTP fails (e.g. rate limit), fall back to password step
                     toast.error("Could not send verification code. Please try again.");
                 }
             }
         } catch (err) {
-            // If check fails, still go to password step (user can try or request magic link)
+            // If API check fails entirely, still show password step (safe fallback)
             setStep('password');
         } finally {
             setIsCheckingPassword(false);
@@ -108,23 +118,25 @@ export default function MerchantLogin() {
         setIsLoading(true);
         try {
             await loginWithPassword(email, password);
-            navigateForward('/dashboard');
+            // loginWithPassword signs in via Supabase Auth → onAuthStateChange handles profile sync
+            // Then the auto-redirect useEffect above pushes to /merchant/dashboard
         } catch (err) {
-            // Error handled by context toast
+            // Error toast handled by context
         } finally {
             setIsLoading(false);
         }
     };
 
     /**
-     * "Forgot password?" → switch to OTP flow
+     * "Send verification code" — explicit user action to request OTP
+     * This replaces the old "Forgot password?" → now covers both forgot + no-password scenarios
      */
-    const handleForgotPassword = async () => {
+    const handleSendCode = async () => {
         setIsLoading(true);
         try {
             await loginWithEmail(email, 'merchant', trialCampaign);
             setStep('otp');
-            toast.info("Verification code sent. After verifying, you can reset your password.");
+            toast.info("Verification code sent to your email.");
         } catch (err) {
             // Error handled by context toast
         } finally {
@@ -168,6 +180,7 @@ export default function MerchantLogin() {
         setIsLoading(true);
         try {
             await verifyEmailOtp(email, code);
+
             // Ensure the user gets merchant role after OTP verification
             try {
                 const { data: { session } } = await supabase.auth.getSession();
@@ -188,7 +201,9 @@ export default function MerchantLogin() {
                 }
             } catch (roleErr) {
                 console.error('Failed to init merchant role after OTP:', roleErr);
+                // Even if init-role fails, we still proceed — MerchantGuard will re-check
             }
+
             // After OTP verification, show set-password prompt
             setStep('set-password');
         } catch (err) {
@@ -203,11 +218,11 @@ export default function MerchantLogin() {
      */
     const handleSetPassword = async (newPassword) => {
         await setMerchantPassword(newPassword);
-        navigateForward('/dashboard');
+        navigateForward('/merchant/dashboard');
     };
 
     const handleSkipPassword = () => {
-        navigateForward('/dashboard');
+        navigateForward('/merchant/dashboard');
     };
 
     // --- Step 3: Set Password Prompt (full-screen component) ---
@@ -225,217 +240,255 @@ export default function MerchantLogin() {
         switch (step) {
             case 'email':
                 return {
-                    icon: <Mail className="w-7 h-7" />,
-                    title: 'Welcome Back',
-                    description: 'Sign in or create an account to manage your business.',
-                    iconBg: 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 border-blue-100 dark:border-blue-800',
+                    title: 'Welcome to Tagdeer',
+                    description: merchantRequired
+                        ? 'Enter a merchant email to sign in or create your account.'
+                        : 'Sign in or sign up to manage your business reputation.',
+                    titleAr: 'مرحبًا بك في تقدير',
+                    descriptionAr: merchantRequired
+                        ? 'أدخل بريدك الإلكتروني للدخول إلى حسابك أو إنشاء حساب جديد.'
+                        : 'سجل دخولك أو أنشئ حسابًا لإدارة سمعة نشاطك التجاري.',
                 };
             case 'password':
                 return {
-                    icon: <Lock className="w-7 h-7" />,
-                    title: 'Enter Your Password',
-                    description: `Signing in as ${email}`,
-                    iconBg: 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 border-indigo-100 dark:border-indigo-800',
+                    title: hasExistingPassword ? 'Enter Your Password' : 'Sign In',
+                    description: hasExistingPassword
+                        ? 'Enter the password for your merchant account.'
+                        : 'Enter your password or request a verification code.',
+                    titleAr: hasExistingPassword ? 'أدخل كلمة المرور' : 'تسجيل الدخول',
+                    descriptionAr: hasExistingPassword
+                        ? 'أدخل كلمة المرور الخاصة بحساب الشريك.'
+                        : 'أدخل كلمة المرور أو اطلب رمز التحقق.',
                 };
             case 'otp':
                 return {
-                    icon: <KeyRound className="w-7 h-7" />,
-                    title: 'Check Your Email',
-                    description: 'Click the link sent to your email OR enter the 6-digit code below.',
-                    iconBg: 'bg-blue-50 dark:bg-blue-900/40 text-blue-600 border-blue-100 dark:border-blue-800',
+                    title: 'Verification Code',
+                    description: `We sent a 6-digit code to ${email}. Enter it below.`,
+                    titleAr: 'رمز التحقق',
+                    descriptionAr: `أرسلنا رمزًا مكونًا من 6 أرقام إلى ${email}. أدخله أدناه.`,
                 };
             default:
-                return { icon: null, title: '', description: '', iconBg: '' };
+                return { title: '', description: '', titleAr: '', descriptionAr: '' };
         }
     };
 
-    const { icon, title, description, iconBg } = getStepContent();
+    const { title, description, titleAr, descriptionAr } = getStepContent();
 
     return (
-        <div className="flex items-center justify-center min-h-[80vh] px-4 animate-in fade-in duration-500">
-            <Card className="w-full max-w-md border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl overflow-hidden relative">
-
-                {/* Decorative top bar */}
-                <div className="h-2 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 absolute top-0 left-0"></div>
-
-                <CardHeader className="pt-10 pb-6 text-center">
-                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border ${iconBg}`}>
-                        {icon}
+        <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB] p-4">
+            <div className="w-full max-w-md">
+                <div className="text-center mb-8">
+                    <div className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-semibold mb-6 shadow-lg">
+                        <Lock className="w-4 h-4" />
+                        Merchant Portal
                     </div>
-                    <CardTitle className="text-2xl font-black text-slate-900 dark:text-white">
-                        {title}
-                    </CardTitle>
-                    <CardDescription className="text-slate-500 text-base mt-2">
-                        {description}
-                    </CardDescription>
-                </CardHeader>
+                    <h1 className="text-3xl font-bold text-slate-900 mb-2">{title}</h1>
+                    <p className="text-slate-500">{description}</p>
+                </div>
 
-                <CardContent className="pb-10 px-8">
+                <Card className="shadow-xl border-0 bg-white">
+                    <CardContent className="pt-8 pb-8 px-6">
 
-                    {/* Info banner when redirected from a protected merchant route */}
-                    {merchantRequired && step === 'email' && (
-                        <div className="mb-6 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 flex items-start gap-3">
-                            <Info className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
-                            <div>
-                                <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">Merchant Account Required</p>
-                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">Please sign in with your merchant email to access the business portal. Admin and consumer accounts cannot be used here.</p>
-                                {user && (
-                                    <button
-                                        onClick={() => logout()}
-                                        className="mt-2 text-xs font-bold text-blue-700 dark:text-blue-300 underline hover:text-blue-900"
-                                    >
-                                        Sign out of current account first
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ========== STEP: EMAIL ========== */}
-                    {step === 'email' && (
-                        <form onSubmit={handleEmailSubmit} className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Business Email</label>
-                                <div className="relative">
-                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                    <Input
-                                        type="email"
-                                        placeholder="merchant@example.com"
-                                        className="pl-10 h-14 rounded-xl bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-lg"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        required
-                                        id="merchant-email"
-                                    />
+                        {/* Step 1: Email */}
+                        {step === 'email' && (
+                            <form onSubmit={handleEmailSubmit} className="space-y-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Email Address</label>
+                                    <div className="relative">
+                                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                        <Input
+                                            type="email"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            placeholder="your@email.com"
+                                            className="pl-11 h-12 text-base border-slate-200"
+                                            autoFocus
+                                        />
+                                    </div>
                                 </div>
-                            </div>
-                            <Button
-                                type="submit"
-                                className="w-full h-14 text-lg rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20"
-                                disabled={isLoading || isCheckingPassword}
-                                id="merchant-email-submit"
-                            >
-                                {(isLoading || isCheckingPassword) ? (
-                                    <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-                                ) : (
-                                    <>Continue with Email <ArrowRight className="w-5 h-5 ml-2" /></>
-                                )}
-                            </Button>
-                        </form>
-                    )}
-
-                    {/* ========== STEP: PASSWORD ========== */}
-                    {step === 'password' && (
-                        <form onSubmit={handlePasswordSubmit} className="space-y-6">
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Password</label>
-                                <div className="relative">
-                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                    <Input
-                                        type={showPassword ? "text" : "password"}
-                                        placeholder="Enter your password"
-                                        className="pl-10 pr-12 h-14 rounded-xl bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 text-lg"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        required
-                                        autoFocus
-                                        id="merchant-password"
-                                    />
-                                    <button
-                                        type="button"
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        tabIndex={-1}
-                                    >
-                                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                                    </button>
-                                </div>
-                            </div>
-                            <Button
-                                type="submit"
-                                className="w-full h-14 text-lg rounded-xl font-bold bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 shadow-xl"
-                                disabled={isLoading}
-                                id="merchant-password-submit"
-                            >
-                                {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Sign In"}
-                            </Button>
-                            <div className="space-y-2">
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={handleForgotPassword}
-                                    className="w-full text-blue-600 font-bold hover:text-blue-700 hover:bg-blue-50"
-                                    disabled={isLoading}
-                                    id="forgot-password"
-                                >
-                                    Forgot password? Use Magic Link
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() => { setStep('email'); setPassword(''); }}
-                                    className="w-full text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                                    id="use-different-email"
-                                >
-                                    Use a different email
-                                </Button>
-                            </div>
-                        </form>
-                    )}
-
-                    {/* ========== STEP: OTP ========== */}
-                    {step === 'otp' && (
-                        <form onSubmit={handleOtpSubmit} className="space-y-8">
-                            <div className="flex justify-between gap-2 sm:gap-4" dir="ltr">
-                                {otp.map((digit, index) => (
-                                    <Input
-                                        key={index}
-                                        id={`otp-${index}`}
-                                        type="text"
-                                        inputMode="numeric"
-                                        maxLength={1}
-                                        value={digit}
-                                        onChange={(e) => handleOtpChange(index, e.target.value.replace(/[^0-9]/g, ''))}
-                                        onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                                        className="w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-black rounded-xl bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800 focus:border-blue-500 focus:ring-blue-500"
-                                        autoFocus={index === 0}
-                                    />
-                                ))}
-                            </div>
-                            <div className="space-y-4">
                                 <Button
                                     type="submit"
-                                    className="w-full h-14 text-lg rounded-xl font-bold bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 shadow-xl"
-                                    disabled={isLoading || otp.join('').length < 6}
-                                    id="otp-submit"
+                                    className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base rounded-xl"
+                                    disabled={isCheckingPassword || !email}
                                 >
-                                    {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Verify Code"}
+                                    {isCheckingPassword ? (
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <>Continue <ArrowRight className="ml-2 w-4 h-4" /></>
+                                    )}
                                 </Button>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() => handleEmailSubmit({ preventDefault: () => { } })}
-                                    className="w-full text-blue-600 font-bold hover:text-blue-700 hover:bg-blue-50"
-                                    disabled={isLoading}
-                                    id="resend-otp"
-                                >
-                                    Resend Magic Link
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() => { setStep('email'); setOtp(['', '', '', '', '', '']); }}
-                                    className="w-full text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-                                    id="change-email"
-                                >
-                                    Use a different email
-                                </Button>
-                            </div>
-                        </form>
-                    )}
+                            </form>
+                        )}
 
-                </CardContent>
-            </Card>
+                        {/* Step 2a: Password */}
+                        {step === 'password' && (
+                            <div className="space-y-6">
+                                <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                                    {/* Show which email is being used */}
+                                    <div className="bg-slate-50 rounded-lg px-4 py-3 flex items-center gap-3">
+                                        <Mail className="w-4 h-4 text-slate-400" />
+                                        <span className="text-sm text-slate-600 truncate flex-1">{email}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setStep('email'); setPassword(''); }}
+                                            className="text-xs text-blue-600 hover:text-blue-700 font-semibold"
+                                        >
+                                            Change
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Password</label>
+                                        <div className="relative">
+                                            <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                            <Input
+                                                type={showPassword ? 'text' : 'password'}
+                                                value={password}
+                                                onChange={(e) => setPassword(e.target.value)}
+                                                placeholder="Enter your password"
+                                                className="pl-11 pr-11 h-12 text-base border-slate-200"
+                                                autoFocus
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                            >
+                                                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <Button
+                                        type="submit"
+                                        className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base rounded-xl"
+                                        disabled={isLoading || !password}
+                                    >
+                                        {isLoading ? (
+                                            <Loader2 className="w-5 h-5 animate-spin" />
+                                        ) : (
+                                            <>Sign In <ArrowRight className="ml-2 w-4 h-4" /></>
+                                        )}
+                                    </Button>
+                                </form>
+
+                                {/* Divider */}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 h-px bg-slate-200"></div>
+                                    <span className="text-xs text-slate-400 uppercase font-medium">or</span>
+                                    <div className="flex-1 h-px bg-slate-200"></div>
+                                </div>
+
+                                {/* Send verification code button — replaces "Forgot password?" */}
+                                <button
+                                    onClick={handleSendCode}
+                                    disabled={isLoading}
+                                    className="w-full h-12 border-2 border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-slate-700 font-semibold text-sm rounded-xl transition-all flex items-center justify-center gap-2"
+                                >
+                                    {isLoading ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <>
+                                            <Mail className="w-4 h-4" />
+                                            Send verification code to my email
+                                        </>
+                                    )}
+                                </button>
+
+                                {!hasExistingPassword && (
+                                    <div className="flex items-start gap-2 text-xs text-slate-400 bg-slate-50 rounded-lg p-3">
+                                        <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                                        <span>If you haven't set a password yet, use the verification code option above. After verifying, you'll be prompted to set a password.</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Step 2b: OTP */}
+                        {step === 'otp' && (
+                            <form onSubmit={handleOtpSubmit} className="space-y-6">
+                                {/* Show which email is being used */}
+                                <div className="bg-slate-50 rounded-lg px-4 py-3 flex items-center gap-3">
+                                    <Mail className="w-4 h-4 text-slate-400" />
+                                    <span className="text-sm text-slate-600 truncate">{email}</span>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700 text-center block">
+                                        Enter the 6-digit code from your email
+                                    </label>
+                                    <div className="flex gap-2 justify-center" dir="ltr">
+                                        {otp.map((digit, index) => (
+                                            <Input
+                                                key={index}
+                                                id={`otp-${index}`}
+                                                type="text"
+                                                inputMode="numeric"
+                                                maxLength={1}
+                                                value={digit}
+                                                onChange={(e) => handleOtpChange(index, e.target.value.replace(/\D/g, ''))}
+                                                onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                                                className="w-12 h-14 text-center text-xl font-bold border-slate-200"
+                                                autoFocus={index === 0}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <Button
+                                    type="submit"
+                                    className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold text-base rounded-xl"
+                                    disabled={isLoading || otp.join('').length < 6}
+                                >
+                                    {isLoading ? (
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                        <>Verify & Continue <ArrowRight className="ml-2 w-4 h-4" /></>
+                                    )}
+                                </Button>
+
+                                <div className="text-center">
+                                    <button
+                                        type="button"
+                                        onClick={handleSendCode}
+                                        disabled={isLoading}
+                                        className="text-sm text-blue-600 hover:text-blue-700 font-semibold"
+                                    >
+                                        Resend code
+                                    </button>
+                                    <span className="text-slate-300 mx-2">|</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setStep('password'); setOtp(['', '', '', '', '', '']); }}
+                                        className="text-sm text-slate-500 hover:text-slate-700 font-medium"
+                                    >
+                                        Back to password
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+
+                    </CardContent>
+                </Card>
+
+                {/* Footer info */}
+                <div className="text-center mt-6 space-y-3">
+                    <p className="text-xs text-slate-400">
+                        By signing in, you agree to Tagdeer's Terms of Service and Privacy Policy.
+                    </p>
+                    {step === 'email' && (
+                        <p className="text-sm text-slate-500">
+                            Not a merchant?{' '}
+                            <a href="/" className="text-blue-600 hover:text-blue-700 font-semibold">
+                                Go to Consumer Platform
+                            </a>
+                        </p>
+                    )}
+                </div>
+
+                {/* Prevent form flash from react hydration */}
+                <form className="hidden" onSubmit={(e) => e.preventDefault()}></form>
+            </div>
         </div>
     );
 }
