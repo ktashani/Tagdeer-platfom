@@ -69,6 +69,17 @@ export default function ClientLayout({ children }) {
 
     const submitVote = async () => {
         const { businessId, type } = voteModal;
+
+        // Block merchant accounts from voting — only consumers can contribute
+        if (user?.role === 'merchant') {
+            showToast(lang === 'ar'
+                ? 'حسابات التجار لا يمكنها التصويت. استخدم حساب مستهلك.'
+                : 'Merchant accounts cannot vote. Use a consumer account.'
+            );
+            setVoteModal({ isOpen: false, businessId: null, type: null });
+            return;
+        }
+
         const fingerprint = getDeviceFingerprint();
         let weight = calculateVoteWeight(user, 0); // default for offline
 

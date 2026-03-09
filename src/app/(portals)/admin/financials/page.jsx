@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react'
-import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, DollarSign, ExternalLink, ShieldCheck, Loader2 } from 'lucide-react'
+import { useState, useEffect, Fragment } from 'react'
+import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, DollarSign, ExternalLink, ShieldCheck, Loader2, ChevronDown, Building, Tag, Store } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useTagdeer } from '@/context/TagdeerContext'
 import { Copy } from 'lucide-react'
@@ -30,6 +30,12 @@ export default function FinancialsPage() {
     const [selectedTxn, setSelectedTxn] = useState(null)
     const [activeTab, setActiveTab] = useState('queue') // queue, subs, reports, trial_campaigns
     const [isConfirming, setIsConfirming] = useState(false)
+
+    // Expandable merchant detail state
+    const [expandedMerchant, setExpandedMerchant] = useState(null) // profileId
+    const [merchantDetail, setMerchantDetail] = useState({}) // { profileId: { businesses, allocations, transactions, addons } }
+    const [detailLoading, setDetailLoading] = useState(false)
+    const [detailTab, setDetailTab] = useState('businesses') // businesses, allocations, billing, addons
 
     useEffect(() => {
         if (!supabase) return;
@@ -215,6 +221,59 @@ export default function FinancialsPage() {
         showToast("Campaign Link copied to clipboard!");
     }
 
+    // Lazy-load merchant detail on expand
+    const toggleMerchantDetail = async (profileId) => {
+        if (expandedMerchant === profileId) {
+            setExpandedMerchant(null);
+            return;
+        }
+        setExpandedMerchant(profileId);
+        setDetailTab('businesses');
+
+        // Skip if already loaded
+        if (merchantDetail[profileId]) return;
+
+        setDetailLoading(true);
+        try {
+            const [bizRes, allocRes, txnRes] = await Promise.all([
+                supabase.from('businesses').select('id, name, region, category, is_shielded, shield_level, status, claimed_by').eq('claimed_by', profileId),
+                supabase.from('feature_allocations').select('*').eq('profile_id', profileId),
+                supabase.from('transactions').select('*').eq('profile_id', profileId).order('created_at', { ascending: false }).limit(20)
+            ]);
+
+            // Try to get ribbons (table may not exist)
+            let ribbons = [];
+            try {
+                const businessIds = (bizRes.data || []).map(b => b.id);
+                if (businessIds.length > 0) {
+                    const { data } = await supabase.from('business_ribbons').select('*').in('business_id', businessIds);
+                    ribbons = data || [];
+                }
+            } catch (e) { /* table may not exist */ }
+
+            const tierAllocs = (allocRes.data || []).filter(a => a.source !== 'addon');
+            const addonAllocs = (allocRes.data || []).filter(a => a.source === 'addon');
+
+            setMerchantDetail(prev => ({
+                ...prev,
+                [profileId]: {
+                    businesses: (bizRes.data || []).map(b => ({
+                        ...b,
+                        ribbons: ribbons.filter(r => r.business_id === b.id),
+                        activeRibbon: ribbons.find(r => r.business_id === b.id && r.is_active)
+                    })),
+                    allocations: tierAllocs,
+                    addons: addonAllocs,
+                    transactions: txnRes.data || []
+                }
+            }));
+        } catch (err) {
+            console.error('Failed to load merchant details:', err);
+        } finally {
+            setDetailLoading(false);
+        }
+    };
+
 
     return (
         <div className="animate-in fade-in duration-500 min-h-[calc(100vh-8rem)] flex flex-col">
@@ -381,40 +440,157 @@ export default function FinancialsPage() {
                                     {isLoading ? (
                                         <tr><td colSpan="5" className="p-0"><SkeletonTable rows={6} cols={5} variant="dark" /></td></tr>
                                     ) : subscriptions.slice((subsPage - 1) * SUBS_PAGE_SIZE, subsPage * SUBS_PAGE_SIZE).map(sub => (
-                                        <tr key={sub.id} className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <div className="font-medium text-white">{sub.merchant}</div>
-                                                <div className="text-xs text-slate-500 mt-1 max-w-[200px] truncate" title={sub.businessNames}>{sub.businessNames}</div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold text-emerald-400">{sub.tier}</span>
-                                                    {sub.isTrial && <span className="text-[10px] text-amber-500 font-medium">Trial: {sub.trialMonths}m</span>}
-                                                    <div className="text-[10px] text-slate-400 mt-1">
-                                                        Loc: {sub.quotas.max_locations} | Shd: {sub.quotas.max_shields}
+                                        <Fragment key={sub.id}>
+                                            <tr className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="font-medium text-white">{sub.merchant}</div>
+                                                    <div className="text-xs text-slate-500 mt-1 max-w-[200px] truncate" title={sub.businessNames}>{sub.businessNames}</div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-emerald-400">{sub.tier}</span>
+                                                        {sub.isTrial && <span className="text-[10px] text-amber-500 font-medium">Trial: {sub.trialMonths}m</span>}
+                                                        <div className="text-[10px] text-slate-400 mt-1">
+                                                            Loc: {sub.quotas.max_locations} | Shd: {sub.quotas.max_shields}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">{sub.expires}</td>
-                                            <td className="px-6 py-4">
-                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${sub.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                                                    }`}>
-                                                    {sub.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                {sub.tier === 'Free' ? (
-                                                    <button onClick={() => {
-                                                        setTrialForm(prev => ({ ...prev, profileId: sub.profileId }))
-                                                        setShowTrialModal(true)
-                                                    }} className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors">Grant Trial</button>
-                                                ) : sub.isTrial ? (
-                                                    <button onClick={() => handleRevokeTrial(sub.profileId)} className="text-amber-500 hover:text-amber-400 font-medium transition-colors">Revoke Trial</button>
-                                                ) : (
-                                                    <button className="text-slate-400 hover:text-white font-medium transition-colors">Manual Extend</button>
-                                                )}
-                                            </td>
-                                        </tr>
+                                                </td>
+                                                <td className="px-6 py-4">{sub.expires}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${sub.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                                        }`}>
+                                                        {sub.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        {sub.tier === 'Free' ? (
+                                                            <button onClick={() => {
+                                                                setTrialForm(prev => ({ ...prev, profileId: sub.profileId }))
+                                                                setShowTrialModal(true)
+                                                            }} className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors">Grant Trial</button>
+                                                        ) : sub.isTrial ? (
+                                                            <button onClick={() => handleRevokeTrial(sub.profileId)} className="text-amber-500 hover:text-amber-400 font-medium transition-colors">Revoke Trial</button>
+                                                        ) : (
+                                                            <button className="text-slate-400 hover:text-white font-medium transition-colors">Manual Extend</button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => toggleMerchantDetail(sub.profileId)}
+                                                            className={`p-1.5 rounded-lg transition-all ${expandedMerchant === sub.profileId ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400 hover:text-white'}`}
+                                                        >
+                                                            <ChevronDown className={`w-4 h-4 transition-transform ${expandedMerchant === sub.profileId ? 'rotate-180' : ''}`} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+
+                                            {/* Expanded Detail Row */}
+                                            {expandedMerchant === sub.profileId && (
+                                                <tr className="bg-slate-800/80">
+                                                    <td colSpan="5" className="px-6 py-4">
+                                                        {detailLoading && !merchantDetail[sub.profileId] ? (
+                                                            <div className="flex items-center justify-center py-8">
+                                                                <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+                                                            </div>
+                                                        ) : merchantDetail[sub.profileId] ? (
+                                                            <div className="animate-in slide-in-from-top-4 duration-300">
+                                                                {/* Detail Tabs */}
+                                                                <div className="flex gap-1 mb-4 bg-slate-900/50 p-1 rounded-lg w-fit">
+                                                                    {[{ key: 'businesses', label: 'Businesses', icon: Building }, { key: 'allocations', label: 'Allocations', icon: ShieldCheck }, { key: 'billing', label: 'Billing', icon: DollarSign }, { key: 'addons', label: 'Extra Addons', icon: Tag }].map(tab => (
+                                                                        <button
+                                                                            key={tab.key}
+                                                                            onClick={() => setDetailTab(tab.key)}
+                                                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${detailTab === tab.key ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                                                                        >
+                                                                            <tab.icon className="w-3.5 h-3.5" /> {tab.label}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+
+                                                                {/* Businesses Tab */}
+                                                                {detailTab === 'businesses' && (
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                        {merchantDetail[sub.profileId].businesses.length === 0 ? (
+                                                                            <p className="text-slate-500 text-sm col-span-2">No businesses connected.</p>
+                                                                        ) : merchantDetail[sub.profileId].businesses.map(biz => (
+                                                                            <div key={biz.id} className="bg-slate-900 border border-slate-700 rounded-lg p-3">
+                                                                                <div className="flex justify-between items-start">
+                                                                                    <div>
+                                                                                        <h4 className="font-semibold text-white text-sm">{biz.name}</h4>
+                                                                                        <p className="text-xs text-slate-500">{biz.region} • {biz.category}</p>
+                                                                                    </div>
+                                                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-bold ${biz.status === 'published' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-600/20 text-slate-400'}`}>{biz.status}</span>
+                                                                                </div>
+                                                                                <div className="flex gap-2 mt-2 flex-wrap">
+                                                                                    {biz.is_shielded && <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded">Shield L{biz.shield_level}</span>}
+                                                                                    {biz.activeRibbon && <span className="text-[10px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded">🏷️ {biz.activeRibbon.label}</span>}
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Allocations Tab */}
+                                                                {detailTab === 'allocations' && (
+                                                                    <div className="space-y-2">
+                                                                        {merchantDetail[sub.profileId].allocations.length === 0 ? (
+                                                                            <p className="text-slate-500 text-sm">No tier allocations.</p>
+                                                                        ) : (
+                                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                                                {merchantDetail[sub.profileId].allocations.map(alloc => (
+                                                                                    <div key={alloc.id} className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-center">
+                                                                                        <p className="text-[10px] text-slate-500 uppercase font-bold">{alloc.feature_type}</p>
+                                                                                        <p className={`text-sm font-bold mt-1 ${alloc.status === 'active' ? 'text-emerald-400' : 'text-slate-500'}`}>{alloc.status}</p>
+                                                                                        <p className="text-[10px] text-slate-600 mt-0.5">src: {alloc.source || 'tier'}</p>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Billing Tab */}
+                                                                {detailTab === 'billing' && (
+                                                                    <div className="space-y-2 max-h-48 overflow-auto">
+                                                                        {merchantDetail[sub.profileId].transactions.length === 0 ? (
+                                                                            <p className="text-slate-500 text-sm">No billing history.</p>
+                                                                        ) : merchantDetail[sub.profileId].transactions.map(txn => (
+                                                                            <div key={txn.id} className="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-lg p-3">
+                                                                                <div>
+                                                                                    <p className="text-white text-sm font-medium">{txn.requested_tier || txn.type} • {txn.amount} LYD</p>
+                                                                                    <p className="text-xs text-slate-500">{new Date(txn.created_at).toLocaleDateString()} • {txn.payment_method}</p>
+                                                                                </div>
+                                                                                <span className={`text-[10px] px-2 py-0.5 rounded uppercase font-bold ${txn.status === 'confirmed' ? 'bg-emerald-500/10 text-emerald-400' : txn.status === 'pending' ? 'bg-amber-500/10 text-amber-400' : 'bg-slate-600/10 text-slate-400'}`}>{txn.status}</span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Addons Tab */}
+                                                                {detailTab === 'addons' && (
+                                                                    <div className="space-y-2">
+                                                                        {merchantDetail[sub.profileId].addons.length === 0 ? (
+                                                                            <p className="text-slate-500 text-sm">No extra addons purchased. All allocations come from tier.</p>
+                                                                        ) : (
+                                                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                                                                {merchantDetail[sub.profileId].addons.map(addon => (
+                                                                                    <div key={addon.id} className="bg-slate-900 border border-amber-500/30 rounded-lg p-3">
+                                                                                        <p className="text-xs text-amber-400 uppercase font-bold">📦 {addon.feature_type}</p>
+                                                                                        <p className={`text-sm font-bold mt-1 ${addon.status === 'active' ? 'text-white' : 'text-slate-500'}`}>{addon.status}</p>
+                                                                                        {addon.expires_at && <p className="text-[10px] text-slate-500 mt-0.5">Expires: {new Date(addon.expires_at).toLocaleDateString()}</p>}
+                                                                                        {addon.purchased_at && <p className="text-[10px] text-slate-600">Purchased: {new Date(addon.purchased_at).toLocaleDateString()}</p>}
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : null}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </Fragment>
                                     ))}
                                     {!isLoading && subscriptions.length === 0 && (
                                         <tr><td colSpan="5" className="px-6 py-8 text-center text-slate-500">No businesses found.</td></tr>

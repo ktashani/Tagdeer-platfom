@@ -283,7 +283,7 @@ export default function MerchantOnboarding() {
                 const amount = shieldLevel === 1 ? shieldPricing.trust : shieldPricing.fatora;
                 await supabase.from('transactions').insert([{
                     business_id: businessId,
-                    user_id: activeUser.id,
+                    owner_id: activeUser.id,
                     amount: amount,
                     status: paymentMethod === 'manual' ? 'pending' : 'completed',
                     payment_method: paymentMethod,

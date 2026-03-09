@@ -239,6 +239,26 @@ export default function MerchantSettings() {
         }
     };
 
+    const requestAddonPurchase = async (addonName) => {
+        if (!user || !supabase || !myBusiness) return;
+        try {
+            const { error } = await supabase.from('transactions').insert([{
+                owner_id: user.id,
+                business_id: myBusiness.id,
+                amount: 0, // Admin can set actual price upon review if not strictly defined locally
+                status: 'pending',
+                payment_method: 'manual',
+                requested_tier: `${addonName} Addon`,
+                duration: '1 Month'
+            }]);
+            if (error) throw error;
+            if (showToast) showToast(`Purchase request for ${addonName} Addon submitted. Pending bank transfer approval.`, 'success');
+        } catch (err) {
+            console.error('Failed to request addon:', err);
+            if (showToast) showToast(`Failed to request ${addonName} Addon.`, 'error');
+        }
+    };
+
     // Business Level (Contextual)
     const [businessShield, setBusinessShield] = useState(0); // 0 = None, 1 = Trust, 2 = Fatora
     const [businessStorefront, setBusinessStorefront] = useState(false);
@@ -308,7 +328,8 @@ export default function MerchantSettings() {
                 // Check quota
                 const maxShields = subscription?.quotas?.max_shields || 0;
                 if (maxShields !== -1 && quotaUsage.shieldsAssigned >= maxShields) {
-                    if (showToast) showToast(`You have reached your allocation limit of ${maxShields} Shields. Upgrade your Tier.`, 'error');
+                    if (showToast) showToast(`You have reached your allocation limit of ${maxShields} Shields. Requesting Addon purchase...`, 'error');
+                    await requestAddonPurchase('Shield');
                     return;
                 }
 
@@ -354,7 +375,8 @@ export default function MerchantSettings() {
                 // Check quota
                 const maxStorefronts = subscription?.quotas?.max_storefronts || 0;
                 if (maxStorefronts !== -1 && quotaUsage.storefrontsAssigned >= maxStorefronts) {
-                    if (showToast) showToast(`You have reached your allocation limit of ${maxStorefronts} Storefronts. Upgrade your Tier.`, 'error');
+                    if (showToast) showToast(`You have reached your allocation limit of ${maxStorefronts} Storefronts. Requesting Addon purchase...`, 'error');
+                    await requestAddonPurchase('Storefront');
                     return;
                 }
 
@@ -965,8 +987,8 @@ export default function MerchantSettings() {
                                                                 key={type.id}
                                                                 onClick={() => setRibbonForm(prev => ({ ...prev, ribbon_type: type.id }))}
                                                                 className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${ribbonForm.ribbon_type === type.id
-                                                                        ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
-                                                                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                                                                    ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                                                                    : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
                                                                     }`}
                                                             >
                                                                 {type.icon} {type.label}
@@ -1031,7 +1053,9 @@ export default function MerchantSettings() {
                                                             // Check ribbon allocation
                                                             const maxRibbons = subscription?.quotas?.max_ribbons || 0;
                                                             if (maxRibbons === 0) {
-                                                                if (showToast) showToast('Ribbons are not included in your tier. Purchase as an addon or upgrade.', 'error');
+                                                                if (showToast) showToast('Ribbons are not included. Requesting Addon purchase...', 'error');
+                                                                setIsSavingRibbon(false);
+                                                                await requestAddonPurchase('Ribbon');
                                                                 return;
                                                             }
 

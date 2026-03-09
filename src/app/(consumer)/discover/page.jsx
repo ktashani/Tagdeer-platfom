@@ -47,6 +47,15 @@ function DiscoverContent() {
             return;
         }
 
+        // Block merchant accounts from voting
+        if (user?.role === 'merchant') {
+            if (showToast) showToast(lang === 'ar'
+                ? 'حسابات التجار لا يمكنها التصويت. استخدم حساب مستهلك.'
+                : 'Merchant accounts cannot vote. Use a consumer account.'
+            );
+            return;
+        }
+
         // Gate: anonymous vote limit check BEFORE expanding
         if (!user && supabase) {
             try {
