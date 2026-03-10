@@ -83,4 +83,32 @@ describe('TagdeerContext – Integration', () => {
 
         expect(Number(screen.getByTestId('biz-count').textContent)).toBeGreaterThan(0);
     });
+
+    it('provides all expected context keys from the bridge', () => {
+        function KeyChecker() {
+            const ctx = useTagdeer();
+            const requiredKeys = [
+                'lang', 'setLang', 't', 'isRTL',
+                'businesses', 'setBusinesses',
+                'supabase',
+                'user', 'setUser', 'loading',
+                'showLoginModal', 'setShowLoginModal',
+                'login', 'loginWithOtp', 'loginWithEmail',
+                'anonInteractions', 'setAnonInteractions',
+                'showLimitModal', 'setShowLimitModal',
+                'voteModal', 'setVoteModal',
+                'toastMessage', 'showToast',
+            ];
+            const missingKeys = requiredKeys.filter(k => !(k in ctx));
+            return <span data-testid="missing-keys">{missingKeys.join(',') || 'none'}</span>;
+        }
+
+        render(
+            <TagdeerProvider>
+                <KeyChecker />
+            </TagdeerProvider>
+        );
+
+        expect(screen.getByTestId('missing-keys').textContent).toBe('none');
+    });
 });

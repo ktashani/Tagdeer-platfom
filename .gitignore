@@ -21,3 +21,8 @@ playwright-report/
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Debug/test scripts (prevent future accumulation)
+test_*.js
+test_*.mjs
+kill_locks.js
