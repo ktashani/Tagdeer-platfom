@@ -23,36 +23,23 @@ export async function POST(req) {
             return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 });
         }
 
-        // Fetch current stats
-        const { data: business, error: fetchError } = await supabaseAdmin
-            .from('businesses')
-            .select('recommends, complains')
-            .eq('id', id)
-            .single();
+        // ✅ BUG-01 FIX: Atomic increment via RPC (prevents read-modify-write race)
+        const column = type === 'recommend' ? 'recommends' : 'complains';
+        const { error: rpcError } = await supabaseAdmin.rpc('increment_business_stat', {
+            p_business_id: id,
+            p_column: column,
+        });
 
-        if (fetchError || !business) {
-            return NextResponse.json({ error: 'Business not found' }, { status: 404 });
-        }
-
-        // Increment the appropriate counter
-        const updates = {};
-        if (type === 'recommend') {
-            updates.recommends = (business.recommends || 0) + 1;
-        } else if (type === 'complain') {
-            updates.complains = (business.complains || 0) + 1;
-        }
-
-        const { error: updateError } = await supabaseAdmin
-            .from('businesses')
-            .update(updates)
-            .eq('id', id);
-
-        if (updateError) {
-            console.error('Error updating business stats:', updateError);
+        if (rpcError) {
+            console.error('RPC error:', rpcError);
+            // If the RPC fails because the business doesn't exist, return 404
+            if (rpcError.message?.includes('does not exist') || rpcError.code === 'PGRST116') {
+                return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+            }
             return NextResponse.json({ error: 'Failed to update stats' }, { status: 500 });
         }
 
-        return NextResponse.json({ success: true, ...updates });
+        return NextResponse.json({ success: true });
     } catch (error) {
         console.error('API Route Error:', error);
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

@@ -65,17 +65,47 @@ export async function POST(req) {
             userId = newUser.user.id;
             authUser = newUser.user; // Assign the newly created user
 
-            // Wait a moment for trigger to create the plain profile
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // ✅ BUG-06 FIX: Poll for profile creation with exponential backoff
+            let profileReady = false;
+            for (let attempt = 0; attempt < 5; attempt++) {
+                const { data: checkProfile } = await supabaseAdmin
+                    .from('profiles')
+                    .select('id')
+                    .eq('id', userId)
+                    .maybeSingle();
 
-            // Explicitly set role to merchant for these newly created accounts
-            const { error: profileError } = await supabaseAdmin
-                .from('profiles')
-                .update({ role: 'merchant', has_password: true })
-                .eq('id', userId);
+                if (checkProfile) {
+                    profileReady = true;
+                    break;
+                }
+                // Exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
+                await new Promise(r => setTimeout(r, 200 * Math.pow(2, attempt)));
+            }
 
-            if (profileError) {
-                console.error('Profile update error:', profileError);
+            if (!profileReady) {
+                // Trigger didn't create the profile — create it explicitly
+                const { error: insertError } = await supabaseAdmin
+                    .from('profiles')
+                    .insert({
+                        id: userId,
+                        email: email.toLowerCase().trim(),
+                        role: 'merchant',
+                        has_password: true,
+                    });
+
+                if (insertError) {
+                    console.error('Profile insert fallback error:', insertError);
+                }
+            } else {
+                // Profile exists — just update the role and password flag
+                const { error: profileError } = await supabaseAdmin
+                    .from('profiles')
+                    .update({ role: 'merchant', has_password: true })
+                    .eq('id', userId);
+
+                if (profileError) {
+                    console.error('Profile update error:', profileError);
+                }
             }
 
             return NextResponse.json({ success: true, created: true });

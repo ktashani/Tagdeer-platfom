@@ -17,8 +17,37 @@ describe('contentFilter – containsBadWords', () => {
         expect(containsBadWords('صاحبه غشاش')).toBe(true);
     });
 
-    it('flags bad words embedded inside a larger sentence', () => {
-        expect(containsBadWords('I think they are spamming people')).toBe(true);
+    it('flags standalone bad words at start/end of string', () => {
+        expect(containsBadWords('scam detected here')).toBe(true);
+        expect(containsBadWords('this is a scam')).toBe(true);
+        expect(containsBadWords('crap')).toBe(true);
+    });
+
+    // ── BUG-02 FIX: Should NOT flag words that CONTAIN bad words as substrings ──
+    it('does NOT flag "classic" (contains "ass")', () => {
+        expect(containsBadWords('What a classic restaurant')).toBe(false);
+    });
+
+    it('does NOT flag "therapist" (contains "crap" shifted? — no, but it should not match "the")', () => {
+        expect(containsBadWords('She is a great therapist')).toBe(false);
+    });
+
+    it('does NOT flag "assassin" (contains "ass")', () => {
+        expect(containsBadWords('The movie is about an assassin')).toBe(false);
+    });
+
+    it('does NOT flag "scrapbook" (contains "crap")', () => {
+        expect(containsBadWords('I made a scrapbook for her birthday')).toBe(false);
+    });
+
+    it('does NOT flag "Islamabad" (no bad word)', () => {
+        expect(containsBadWords('I visited Islamabad last year')).toBe(false);
+    });
+
+    it('does NOT flag "spammer" partial match — flags because "spam" is a standalone word within "spammer" (Actually, with pure word boundary, spammer is one word, so it should be false)', () => {
+        // NOTE: \b treats "spammer" as a single word, so "spam" is not at a boundary.
+        // Therefore, it correctly returns false.
+        expect(containsBadWords('Stop being a spammer')).toBe(false);
     });
 
     // ── Should ALLOW clean content ──────────────────────────────────

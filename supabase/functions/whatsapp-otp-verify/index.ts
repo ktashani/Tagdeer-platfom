@@ -74,17 +74,45 @@ serve(async (req) => {
             .single();
 
         if (profileErr && profileErr.code === "PGRST116") {
-            // No profile found — create one
+            // No profile found — create auth user FIRST, then profile
             isNewUser = true;
-            const randomAlphanumeric = Math.random().toString(36).substring(2, 7).toUpperCase();
 
+            // ✅ BUG-03 FIX: Create a real Supabase Auth user (phone-based)
+            const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+                phone: normalizedPhone,
+                phone_confirm: true,
+                user_metadata: { signup_method: 'whatsapp_otp' },
+            });
+
+            if (authError) {
+                console.error("Error creating auth user:", authError);
+                return new Response(
+                    JSON.stringify({ error: "Failed to create user account" }),
+                    { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                );
+            }
+
+            const authUserId = authData.user.id;
+
+            // ✅ BUG-03 FIX: Use crypto-secure random for VIP code (not Math.random)
+            const randomBytes = new Uint8Array(4);
+            crypto.getRandomValues(randomBytes);
+            const randomAlphanumeric = Array.from(randomBytes)
+                .map(b => b.toString(36))
+                .join('')
+                .substring(0, 5)
+                .toUpperCase();
+
+            // ✅ BUG-03 FIX: Profile.id = auth user id (FK-safe)
             const { data: newProfile, error: insertErr } = await supabaseAdmin
                 .from("profiles")
                 .insert([{
+                    id: authUserId,
                     phone: normalizedPhone,
                     user_id: `VIP-${randomAlphanumeric}`,
                     gader_points: 20,
-                    vip_tier: "Bronze"
+                    vip_tier: "Bronze",
+                    role: "consumer",
                 }])
                 .select()
                 .single();

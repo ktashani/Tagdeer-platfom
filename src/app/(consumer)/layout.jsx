@@ -172,19 +172,17 @@ export default function ClientLayout({ children }) {
             }
         }
 
-        // Award +10 Gader Points to verified users
+        // ✅ BUG-01 FIX: Award Gader Points atomically via RPC
         if (user?.id && supabase) {
             try {
-                // Award points proportional to vote weight (min 5, max 25)
-                // Higher-tier users earn more per vote — their vote has more impact.
                 const earnedPoints = Math.max(5, Math.min(25, Math.round(weight * 10)));
-                const newPoints = (user.gader || 0) + earnedPoints;
-                await supabase
-                    .from('profiles')
-                    .update({ gader_points: newPoints })
-                    .eq('id', user.id);
-                // Update local state properly via setUser (not direct mutation)
-                setUser(prev => prev ? { ...prev, gader: newPoints } : prev);
+                const { data: newPoints, error: rpcErr } = await supabase.rpc('increment_gader_points', {
+                    p_profile_id: user.id,
+                    p_amount: earnedPoints,
+                });
+                if (!rpcErr && newPoints !== null) {
+                    setUser(prev => prev ? { ...prev, gader: newPoints } : prev);
+                }
             } catch (e) {
                 console.error('Error awarding points:', e);
             }

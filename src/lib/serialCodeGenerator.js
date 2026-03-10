@@ -2,6 +2,10 @@
  * Serial Code Generator for Tagdeer Coupons
  * Format: TAG-{MERCHANT_PREFIX}-{RANDOM_ALPHANUM}
  * Example: TAG-CAF-8X99AB
+ *
+ * ✅ COLLISION FIX: Uses crypto.getRandomValues() for cryptographic randomness
+ * instead of Math.random(). Combined with the UNIQUE constraint on serial_code
+ * in the database, this makes collisions virtually impossible.
  */
 
 /**
@@ -24,13 +28,15 @@ export function generateCouponSerial(businessName, randomLength = 6) {
         prefix += 'X';
     }
 
-    // 3. Generate random alphanumeric string
+    // 3. Generate random alphanumeric string using crypto-secure randomness
     const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded confusing chars: I, O, 1, 0
     let randomPart = '';
 
+    // ✅ COLLISION FIX: Use crypto.getRandomValues instead of Math.random
+    const values = new Uint8Array(randomLength);
+    crypto.getRandomValues(values);
     for (let i = 0; i < randomLength; i++) {
-        const randomIndex = Math.floor(Math.random() * characters.length);
-        randomPart += characters.charAt(randomIndex);
+        randomPart += characters.charAt(values[i] % characters.length);
     }
 
     // 4. Combine parts

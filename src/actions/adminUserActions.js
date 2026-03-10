@@ -81,26 +81,14 @@ export async function adminManageUserGader(userId, amount, reason) {
     await verifyAdmin()
     const supabase = getAdminSupabase()
 
-    // First get current points
-    const { data: profile, error: fetchError } = await supabase
-        .from('profiles')
-        .select('gader_points')
-        .eq('id', userId)
-        .single()
+    // ✅ BUG-01 FIX: Use atomic RPC instead of read-then-write
+    const { data: newPoints, error: rpcError } = await supabase.rpc('increment_gader_points', {
+        p_profile_id: userId,
+        p_amount: amount,
+    })
 
-    if (fetchError) {
-        return { error: fetchError.message || 'Failed to fetch user profile' }
-    }
-
-    const newPoints = Math.max((profile.gader_points || 0) + amount, 0)
-
-    const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ gader_points: newPoints })
-        .eq('id', userId)
-
-    if (updateError) {
-        return { error: updateError.message || 'Failed to update points' }
+    if (rpcError) {
+        return { error: rpcError.message || 'Failed to update points' }
     }
 
     return { success: true, newPoints }

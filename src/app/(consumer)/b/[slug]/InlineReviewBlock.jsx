@@ -166,15 +166,14 @@ export function InlineReviewBlock({ businessId, business, isRTL, theme }) {
                 return;
             }
 
-            // ── Step 5: Award Gader Points to verified users ──
+            // ✅ BUG-01 FIX: Award Gader Points atomically via RPC
             if (user?.id) {
                 try {
                     const earnedPoints = Math.max(5, Math.min(25, Math.round(weight * 10)));
-                    const newPoints = (user.gader || 0) + earnedPoints;
-                    await supabase
-                        .from('profiles')
-                        .update({ gader_points: newPoints })
-                        .eq('id', user.id);
+                    await supabase.rpc('increment_gader_points', {
+                        p_profile_id: user.id,
+                        p_amount: earnedPoints,
+                    });
                 } catch (e) {
                     console.error('Error awarding points:', e);
                 }
