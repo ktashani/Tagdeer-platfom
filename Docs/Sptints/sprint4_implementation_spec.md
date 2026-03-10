@@ -315,7 +315,7 @@ Change License:       Apache License, Version 2.0
 --------------------------------------------------------------------------
 
 For information about alternative licensing arrangements for the Licensed
-Work, please contact: hello@tagdeer.ly
+Work, please contact: hello@tagdeer.app
 
 Notice
 

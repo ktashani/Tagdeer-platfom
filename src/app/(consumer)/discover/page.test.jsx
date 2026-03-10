@@ -8,6 +8,10 @@ vi.mock('@/context/TagdeerContext', () => ({
     useTagdeer: vi.fn(),
 }));
 
+vi.mock('next/navigation', () => ({
+    useSearchParams: () => new URLSearchParams(),
+}));
+
 describe('DiscoverRoute', () => {
     it('renders without crashing and displays search input', () => {
         useTagdeer.mockReturnValue({

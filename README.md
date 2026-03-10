@@ -1,82 +1,83 @@
 # Tagdeer Platform | منصة تقدير
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![React](https://img.shields.io/badge/React-19.2.0-blue.svg)](https://reactjs.org/)
-[![Vite](https://img.shields.io/badge/Vite-7.2.4-purple.svg)](https://vitejs.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4.19-cyan.svg)](https://tailwindcss.com/)
-[![Supabase](https://img.shields.io/badge/Supabase-2.49.1-green.svg)](https://supabase.io/)
+[![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16.1-black.svg)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4.svg)](https://tailwindcss.com/)
+[![Supabase](https://img.shields.io/badge/Supabase-Backend-3FCF8E.svg)](https://supabase.io/)
 
-**Tagdeer** is a Libyan business evaluation and rewards platform where authentic experiences build a trusted community, and loyalty earns real value across Tripoli and Benghazi.
+**Tagdeer** (تقدير) is a Libyan community-powered business trust platform. Users leave honest evaluations ("Tagdeer") of local businesses and earn reputation points ("Gader") that unlock real-world rewards.
 
-> **تقدير** - أعطيهم تقديرك، واكسب قَدْرك
+> **أعطيهم تقديرك، واكسب قَدْرك**
+> *Give them your evaluation, and earn your value.*
 
-## Features
-
-- **Business Discovery**: Find and evaluate local businesses in Tripoli and Benghazi
-- **Community-Driven Reviews**: Share authentic experiences and help others make informed decisions
-- **Gader Score System**: Businesses earn reputation based on community feedback
-- **Shield Protection**: Premium businesses can activate shields to prevent fake reviews
-- **Bilingual Support**: Full Arabic and English language support with RTL layout
-- **Anonymous Voting**: Up to 3 anonymous reviews per week per user
-- **Business Pre-registration**: Early access program for business owners
+---
 
 ## Tech Stack
 
-- **Frontend**: React 19 + Vite 7
-- **Styling**: Tailwind CSS 3.4 + shadcn/ui components
-- **Backend**: Supabase (PostgreSQL + Auth + Realtime)
-- **Icons**: Lucide React
-- **State Management**: React Hooks
-- **i18n**: Custom translation system 
+| Layer | Technology |
+|---|---|
+| **Framework** | Next.js 16 (App Router, Turbopack) |
+| **UI** | React 19, Tailwind CSS 3.4, shadcn/ui, Lucide Icons |
+| **Backend** | Supabase (PostgreSQL 15, Auth, Realtime, Edge Functions, Storage) |
+| **State** | React Context (AuthProvider, BusinessDataProvider, UIProvider) |
+| **i18n** | Custom bilingual system (Arabic RTL default, English LTR) |
+| **Error Tracking** | Sentry |
+| **Deployment** | Vercel with wildcard subdomain routing |
 
-## Project Structure
+---
+
+## Architecture
+
+The application uses **Next.js App Router route groups** with subdomain-based routing:
 
 ```
-tagdeer-platform/
-├── .github/              # CI/CD Workflows
-├── public/               # Static Assets
-│   ├── favicon.ico
-│   └── logo-tagdeer.svg
-├── src/
-│   ├── components/       # Reusable UI Components
-│   │   ├── Hero/
-│   │   ├── Navigation/
-│   │   ├── Modals/
-│   │   └── Toast.jsx
-│   ├── hooks/            # Custom React Hooks
-│   │   └── useSupabase.js
-│   ├── i18n/             # Translation Files
-│   │   └── translations.js
-│   ├── lib/              # Third-party configurations
-│   │   └── supabaseClient.js
-│   ├── utils/            # Helper functions
-│   │   └── slugify.js
-│   ├── App.jsx           # Main Application Component
-│   ├── App.css           # Custom Styles
-│   ├── index.css         # Tailwind Imports & Global Styles
-│   └── main.jsx          # React Entry Point
-├── supabase/
-│   └── migrations/       # Database Schema
-├── .env.example          # Environment Variables Template
-├── index.html
-├── package.json
-├── tailwind.config.js
-└── vite.config.js
+src/app/
+├── (consumer)/          # Public-facing pages (tagdeer.app)
+│   ├── page.jsx         # Landing page
+│   ├── discover/        # Business discovery + SSR/SEO layout
+│   ├── b/[slug]/        # Public storefront (SSR)
+│   ├── profile/         # User profile + wallet
+│   ├── pricing/         # Subscription tiers
+│   └── about/           # About page
+├── (portals)/           # Authenticated portals
+│   ├── merchant/        # Merchant dashboard (merchant.tagdeer.app)
+│   │   ├── dashboard/
+│   │   ├── coupons/
+│   │   ├── storefront-builder/
+│   │   └── settings/
+│   └── admin/           # Admin panel (admin.tagdeer.app)
+│       ├── businesses/
+│       ├── users/
+│       ├── campaigns/
+│       ├── financials/
+│       └── settings/
+├── api/                 # API Routes
+│   ├── consumer/        # Consumer endpoints (stats, logs)
+│   ├── merchant/        # Merchant endpoints (password, trial)
+│   └── admin/           # Admin endpoints (auth, claims, subscriptions)
 ```
+
+**Context Providers** (refactored in Sprint 3):
+- `AuthProvider` — Authentication, session sync, login methods
+- `BusinessDataProvider` — Business data fetching, realtime subscriptions
+- `UIProvider` — Modal state, anonymous interaction tracking
+
+---
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 20+
-- npm or yarn
-- Supabase account (free tier works)
+- **Node.js 20+** and **npm**
+- **Supabase CLI** (`npm install -g supabase`)
+- A Supabase project (free tier works)
 
 ### Installation
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/tagdeer-platform.git
+   git clone https://github.com/tagdeer/tagdeer-platform.git
    cd tagdeer-platform
    ```
 
@@ -87,110 +88,99 @@ tagdeer-platform/
 
 3. **Set up environment variables**
    ```bash
-   cp .env.example .env
+   cp .env.example .env.local
    ```
-   Edit `.env` and add your Supabase credentials:
-   ```
-   VITE_SUPABASE_URL=https://your-project.supabase.co
-   VITE_SUPABASE_ANON_KEY=your-anon-key
-   ```
+   Fill in the required values (see [Environment Variables](#environment-variables) below).
 
-4. **Set up Supabase Database**
-   - Create a new Supabase project
-   - Run the SQL migration in `supabase/migrations/20260222_schema.sql`
-   - Enable Row Level Security (RLS) policies
-
-5. **Start development server**
+4. **Start the development server**
    ```bash
    npm run dev
    ```
+   Open [http://localhost:3000](http://localhost:3000).
 
-6. **Build for production**
-   ```bash
-   npm run build
-   ```
-
-## Database Schema
-
-### Tables
-
-- **businesses**: Store business information
-- **interactions**: User reviews and ratings
-- **pre_registrations**: Business owner pre-registration requests
-- **verified_users**: Phone-verified user accounts
-- **business_claims**: Business ownership claims
-
-### Key Features
-
-- Row Level Security (RLS) enabled
-- Automatic health score calculation
-- Indexed for performance
-- Sample data included
+---
 
 ## Environment Variables
 
 | Variable | Description | Required |
-|----------|-------------|----------|
-| `VITE_SUPABASE_URL` | Your Supabase project URL | Yes |
-| `VITE_SUPABASE_ANON_KEY` | Your Supabase anon key | Yes |
-| `VITE_GOOGLE_PLACES_API_KEY` | Google Places API (optional) | No |
-| `VITE_FACEBOOK_APP_ID` | Facebook App ID (optional) | No |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | ✅ |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key | ✅ |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only) | ✅ |
+| `NEXT_PUBLIC_ROOT_DOMAIN` | Root domain for subdomain routing | Optional |
+| `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN for error tracking | Optional |
+| `R2_ACCOUNT_ID` | Cloudflare R2 account ID | Optional |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 access key | Optional |
+| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 secret key | Optional |
+| `R2_BUCKET_NAME` | Cloudflare R2 bucket name | Optional |
+| `R2_PUBLIC_URL` | Cloudflare R2 public URL | Optional |
+| `META_ACCESS_TOKEN` | Meta WhatsApp API token (for OTP) | Optional |
+| `META_PHONE_NUMBER_ID` | Meta phone number ID | Optional |
+| `RESEND_API_KEY` | Resend API key (for email OTP) | Optional |
+
+---
+
+## Database
+
+Supabase PostgreSQL with **67+ migrations** managed via `supabase/migrations/`.
+
+### Core Tables
+
+| Table | Purpose |
+|---|---|
+| `businesses` | Business listings with trust scores |
+| `profiles` | User profiles with Gader points and VIP tiers |
+| `logs` | Community evaluations (recommend/complain) |
+| `storefronts` | Merchant public storefront pages |
+| `catalog_items` | Storefront product catalogs |
+| `merchant_coupons` | Loyalty reward coupons |
+| `platform_config` | Dynamic platform configuration |
+| `subscription_tiers` | Dynamic subscription tier definitions |
+| `feature_allocations` | Per-business feature entitlements |
+
+### Running Migrations
+
+```bash
+supabase db reset        # Reset and replay all migrations locally
+supabase db push         # Push migrations to remote (staging/production)
+```
+
+See `supabase/migrations/README.md` for migration conventions.
+
+---
 
 ## Deployment
 
-### StackBlitz
+### Vercel (Recommended)
 
-1. Import your GitHub repository to StackBlitz
-2. Add environment variables in StackBlitz settings
-3. The app will auto-deploy
+1. Import the GitHub repository into Vercel
+2. Add all environment variables in the Vercel dashboard
+3. Configure wildcard subdomain: `*.tagdeer.app`
+4. Map subdomains:
+   - `tagdeer.app` → consumer routes
+   - `merchant.tagdeer.app` → merchant portal
+   - `admin.tagdeer.app` → admin panel
+5. Deploy — zero build configuration needed
 
-### Vercel
+---
 
-1. Connect your GitHub repository to Vercel
-2. Add environment variables in Vercel dashboard
-3. Deploy with zero configuration
+## Key Concepts (Tagdeer Protocol)
 
-### Netlify
+| Term | Arabic | Meaning |
+|---|---|---|
+| **Tagdeer** | تقدير | An evaluation or review |
+| **Gader** | قَدْر | Trust points currency |
+| **Gader Index** | مؤشر القَدْر | Business reputation score |
+| **Migdar** | مقدار | Progress measure / ratio |
 
-1. Connect your GitHub repository to Netlify
-2. Set build command: `npm run build`
-3. Set publish directory: `dist`
-4. Add environment variables
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## Roadmap
-
-- [ ] Phone verification system
-- [ ] Loyalty points and rewards
-- [ ] Business dashboard
-- [ ] Receipt upload for shielded complaints
-- [ ] Mobile app (React Native)
-- [ ] AI-powered review analysis
-- [ ] Multi-city expansion
+---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Business Source License 1.1** (BUSL-1.1).
+See [LICENSE](LICENSE) for full details.
 
-## Acknowledgments
-
-- [shadcn/ui](https://ui.shadcn.com/) for beautiful UI components
-- [Supabase](https://supabase.io/) for backend infrastructure
-- [Tailwind CSS](https://tailwindcss.com/) for styling
-- [Lucide](https://lucide.dev/) for icons
-
-## Contact
-
-- Website: [tagdeer.ly](https://tagdeer.ly)
-- Email: hello@tagdeer.ly
-- Facebook: [@tagdeerly](https://facebook.com/tagdeerly)
+The license converts to **Apache 2.0** four years after each release.
 
 ---
 
