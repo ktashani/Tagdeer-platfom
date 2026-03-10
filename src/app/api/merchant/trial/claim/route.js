@@ -1,12 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { getServerUser } from '@/lib/serverAuth';
 
 export async function POST(req) {
     try {
-        const body = await req.json();
-        const { businessId, campaignId, userId } = body;
+        // ✅ SEC-03 FIX: Extract userId from authenticated session, NOT request body
+        const user = await getServerUser();
+        if (!user) {
+            return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
+        }
+        const userId = user.id;
 
-        if (!businessId || !campaignId || !userId) {
+        const body = await req.json();
+        const { businessId, campaignId } = body;
+
+        if (!businessId || !campaignId) {
             return NextResponse.json({ success: false, error: 'Missing required parameters' }, { status: 400 });
         }
 

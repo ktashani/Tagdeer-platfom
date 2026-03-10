@@ -1,13 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+import { getCorsHeaders } from "../_shared/cors.ts";
 
 serve(async (req) => {
+    // ✅ SEC-06 FIX: Dynamic CORS based on request origin
+    const corsHeaders = getCorsHeaders(req);
+
     // Handle CORS preflight
     if (req.method === "OPTIONS") {
         return new Response("ok", { headers: corsHeaders });
@@ -29,6 +28,19 @@ serve(async (req) => {
             Deno.env.get("SUPABASE_URL")!,
             Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
         );
+
+        // ✅ SEC-07 FIX: Rate limit — max 5 verify attempts per phone per 15 minutes
+        const { data: verifyAllowed, error: rlError } = await supabaseAdmin.rpc(
+            'check_otp_rate_limit',
+            { p_phone: normalizedPhone, p_action: 'verify', p_max_attempts: 5, p_window_minutes: 15 }
+        );
+
+        if (rlError || !verifyAllowed) {
+            return new Response(
+                JSON.stringify({ error: "Too many verification attempts. Please try again later." }),
+                { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+        }
 
         // Step 1: Check OTP in database
         const { data: otpRecord, error: selectErr } = await supabaseAdmin

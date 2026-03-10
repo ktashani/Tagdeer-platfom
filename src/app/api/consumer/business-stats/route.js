@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getServerUser } from '@/lib/serverAuth';
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -8,6 +9,12 @@ const supabaseAdmin = createClient(
 
 export async function POST(req) {
     try {
+        // ✅ SEC-01 FIX: Require authenticated user
+        const user = await getServerUser();
+        if (!user) {
+            return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+        }
+
         const { searchParams } = new URL(req.url);
         const id = searchParams.get('id');
         const type = searchParams.get('type');

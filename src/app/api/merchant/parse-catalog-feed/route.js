@@ -1,13 +1,69 @@
 import { NextResponse } from 'next/server';
+import { getServerUser } from '@/lib/serverAuth';
+
+/**
+ * ✅ SEC-02 FIX: SSRF Protection — blocks private, reserved, and internal IPs.
+ * Returns true if the URL is unsafe to fetch.
+ */
+function isBlockedUrl(urlString) {
+    try {
+        const parsed = new URL(urlString);
+
+        // Only allow http and https schemes
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return true;
+        }
+
+        const hostname = parsed.hostname.toLowerCase();
+
+        // Block private/internal hostnames and IP ranges
+        const blockedPatterns = [
+            /^localhost$/,
+            /^127\.\d+\.\d+\.\d+$/,
+            /^10\.\d+\.\d+\.\d+$/,
+            /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
+            /^192\.168\.\d+\.\d+$/,
+            /^169\.254\.\d+\.\d+$/,
+            /^0\.\d+\.\d+\.\d+$/,
+            /^\[::1\]$/,
+            /^\[fc/,
+            /^\[fd/,
+            /^\[fe80:/,
+            /\.internal$/,
+            /\.local$/,
+            /\.localhost$/,
+            /^metadata\.google\.internal$/,
+        ];
+
+        return blockedPatterns.some(pattern => pattern.test(hostname));
+    } catch {
+        return true; // Invalid URL → block
+    }
+}
 
 export async function POST(req) {
     try {
+        // ✅ SEC-02 FIX: Require authenticated merchant session
+        const user = await getServerUser();
+        if (!user) {
+            return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+        }
+
         const { url } = await req.json();
         if (!url) return NextResponse.json({ error: 'URL required' }, { status: 400 });
+
+        // ✅ SEC-02 FIX: Block private/internal URLs
+        if (isBlockedUrl(url)) {
+            return NextResponse.json(
+                { error: 'URL points to a restricted or invalid address' },
+                { status: 403 }
+            );
+        }
 
         const response = await fetch(url, {
             headers: { 'User-Agent': 'Tagdeer-Bot/1.0' },
             signal: AbortSignal.timeout(15000),
+            redirect: 'error', // ✅ SEC-02 FIX: Prevent redirect-based SSRF
         });
 
         if (!response.ok) {
