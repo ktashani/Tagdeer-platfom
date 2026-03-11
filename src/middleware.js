@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { createMiddlewareClient } from '@/lib/supabase/server'
 
 export const config = {
     matcher: [
@@ -44,7 +45,7 @@ export async function middleware(request) {
     }
 
     // Routing Logic
-    // 1. Admin Subdomain
+    // 1. Admin Subdomain — uses custom admin_auth cookie (NOT Supabase SSR)
     if (currentHost === 'admin') {
         // Exclude system paths, static files, and api from auth check
         if (!pathname.startsWith('/_next') && !pathname.includes('api')) {
@@ -72,33 +73,49 @@ export async function middleware(request) {
         return NextResponse.rewrite(newUrl)
     }
 
-    // 2. Merchant Subdomain
+    // 2. Merchant Subdomain — uses Supabase SSR cookie-based session
     if (currentHost === 'merchant' || currentHost === 'business') {
         // Exclude system paths, static files, and api from auth check
         if (!pathname.startsWith('/_next') && !pathname.includes('api')) {
-            // Supabase auth cookies start with sb- and end with -auth-token
-            const isAuthenticated = Array.from(request.cookies.getAll()).some(c => c.name.startsWith('sb-') && c.name.endsWith('-auth-token'));
+            // Create a response object that createMiddlewareClient can write cookies to
+            const newPath = pathname.startsWith('/merchant') ? pathname : `/merchant${pathname}`
+            const newUrl = new URL(newPath, request.url)
+            let response = NextResponse.rewrite(newUrl)
 
-            // Redirect to login if not authenticated and trying to access protected route
+            // Create an SSR-aware Supabase client that reads/writes cookies
+            const supabase = createMiddlewareClient(request, response)
+
+            // getUser() validates the session with the Supabase Auth server.
+            // This also refreshes expired tokens and writes updated cookies
+            // to the response via the setAll handler.
+            const { data: { user }, error } = await supabase.auth.getUser()
+
+            const isAuthenticated = !!user && !error
+
+            // Allow unauthenticated access to public pages
             if (!isAuthenticated && pathname !== '/login' && pathname !== '/onboarding' && pathname !== '/reset-password') {
                 const loginUrl = request.nextUrl.clone();
                 loginUrl.pathname = '/login';
                 return NextResponse.redirect(loginUrl);
             }
 
-            // Redirect to dashboard if authenticated and trying to access login
+            // Redirect authenticated users away from login page
             if (isAuthenticated && pathname === '/login') {
                 const dashboardUrl = request.nextUrl.clone();
                 dashboardUrl.pathname = '/dashboard';
                 return NextResponse.redirect(dashboardUrl);
             }
+
+            // Return the response with the rewrite AND the refreshed auth cookies
+            return response
         }
 
+        // For system paths (_next, api), just rewrite without auth check
         const newPath = pathname.startsWith('/merchant') ? pathname : `/merchant${pathname}`
         const newUrl = new URL(newPath, request.url)
         return NextResponse.rewrite(newUrl)
     }
 
-    // 3. Main App (www or root) -> proceeds normally
+    // 3. Main App (www or root) → proceeds normally
     return NextResponse.next()
 }

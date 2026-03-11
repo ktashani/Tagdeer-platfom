@@ -19,6 +19,7 @@ export default function MerchantLogin() {
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
     const [isLoading, setIsLoading] = useState(false);
     const [isCheckingPassword, setIsCheckingPassword] = useState(false);
+    const [isRedirecting, setIsRedirecting] = useState(false);
     const router = useRouter();
     const searchParams = useSearchParams();
     const {
@@ -40,14 +41,19 @@ export default function MerchantLogin() {
     };
 
     // Auto-redirect if already logged in as merchant (only merchant — not admin or consumer)
+    // Uses window.location.href (not router.push) so middleware rewrites
+    // /dashboard → /merchant/dashboard on the subdomain.
+    // The isRedirecting guard prevents the useEffect from firing multiple times
+    // during the auth state machine's SIGNED_IN → syncUserProfile transition.
     useEffect(() => {
+        if (isRedirecting) return;
         if (!loading && user && user.role === 'merchant') {
-            // If they just verified via OTP and don't have a password, show set-password prompt
             if (step === 'set-password') return;
+            setIsRedirecting(true);
             const dashPath = trialCampaign ? `/dashboard?trial_campaign=${trialCampaign}` : '/dashboard';
             window.location.href = dashPath;
         }
-    }, [user, loading, step, trialCampaign]);
+    }, [user, loading, step, trialCampaign, isRedirecting]);
 
     /**
      * Step 1: Email submit → check if merchant has a password set
@@ -225,6 +231,18 @@ export default function MerchantLogin() {
     const handleSkipPassword = () => {
         navigateForward('/dashboard');
     };
+
+    // Show a clean loading state during the redirect to prevent UI flashing
+    if (isRedirecting) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB]">
+                <div className="text-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
+                    <p className="text-slate-500 text-sm">Redirecting to dashboard...</p>
+                </div>
+            </div>
+        );
+    }
 
     // --- Step 3: Set Password Prompt (full-screen component) ---
     if (step === 'set-password') {

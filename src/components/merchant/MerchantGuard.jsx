@@ -24,8 +24,14 @@ export default function MerchantGuard({ children }) {
                 return
             }
 
+            // Normalize the path for the redirect param to prevent double /merchant prefixes
+            // when the middleware rewrites it on the subdomain.
+            const normalizedPath = pathname.startsWith('/merchant')
+                ? pathname.replace(/^\/merchant/, '') || '/'
+                : pathname
+
             if (!user) {
-                router.push('/login?redirect=' + encodeURIComponent(pathname))
+                router.push('/login?redirect=' + encodeURIComponent(normalizedPath))
                 return;
             }
 
@@ -33,7 +39,8 @@ export default function MerchantGuard({ children }) {
             // just ran but React state hasn't caught up yet (race condition from callback)
             if (user?.role && user.role !== 'merchant' && !user?.isDevBypass) {
                 if (!supabase) {
-                    router.push('/login?reason=merchant_required')
+                    const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                    router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
                     return;
                 }
                 // Fresh DB check to see if role was updated by init-role
@@ -48,10 +55,12 @@ export default function MerchantGuard({ children }) {
                             // Role was updated — allow through
                             setIsAuthorized(true)
                         } else {
-                            router.push('/login?reason=merchant_required')
+                            const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                            router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
                         }
                     } catch {
-                        router.push('/login?reason=merchant_required')
+                        const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                        router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
                     }
                 }
                 recheckRole()

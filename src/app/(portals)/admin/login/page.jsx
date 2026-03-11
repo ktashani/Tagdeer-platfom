@@ -22,7 +22,7 @@ export default function AdminLogin() {
         setIsLoading(true)
 
         try {
-            // 1. Server-side: validate credentials + role, set admin cookie
+            // Step 1: Server-side — validates credentials + role, sets httpOnly admin_auth cookie
             const result = await loginAdmin(email, password)
             if (!result.success) {
                 setError(result.error || 'Authentication failed')
@@ -30,13 +30,27 @@ export default function AdminLogin() {
                 return
             }
 
-            // 2. Client-side: also sign in via Supabase so TagdeerContext
-            //    recognizes the admin user and fetches all data (businesses, users)
+            // Step 2: Client-side — sign in via Supabase so AuthProvider sees the session.
+            // With @supabase/ssr, this writes session tokens to cookies (not localStorage),
+            // making them available to the middleware on the next request.
+            // We MUST await this before redirecting.
             if (supabase) {
-                await supabase.auth.signInWithPassword({ email, password })
+                try {
+                    await supabase.auth.signInWithPassword({ email, password })
+                } catch (supabaseErr) {
+                    // Non-fatal: admin_auth cookie is the primary auth mechanism.
+                    // Supabase session is optional for admin — it only powers TagdeerContext.
+                    console.warn('Client-side Supabase sign-in failed (non-fatal):', supabaseErr.message)
+                }
             }
 
-            const redirectPath = searchParams.get('redirect') || '/admin'
+            // Step 3: Hard redirect. Use bare path (no /admin prefix) because the
+            // middleware rewrites / → /admin on the admin subdomain.
+            const rawRedirect = searchParams.get('redirect') || '/'
+            // Strip /admin prefix if present to prevent double-prefixing on subdomain
+            const redirectPath = rawRedirect.startsWith('/admin')
+                ? rawRedirect.replace(/^\/admin/, '') || '/'
+                : rawRedirect
             window.location.href = redirectPath
         } catch (err) {
             setError('An error occurred. Please try again.')

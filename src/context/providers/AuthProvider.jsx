@@ -45,13 +45,11 @@ export function AuthProvider({ children }) {
             if (session) {
                 await syncUserProfile(session.user);
             } else {
-                try {
-                    const stored = localStorage.getItem('tagdeer-user');
-                    if (stored) setUser(JSON.parse(stored));
-                    else setUser(null);
-                } catch {
-                    setUser(null);
-                }
+                // If there is no Supabase session, explicitly clear any stale localStorage
+                // user data. This prevents the "ghost session" flash where the UI briefly
+                // thinks someone is logged in before the next routing check boots them out.
+                setUser(null);
+                localStorage.removeItem('tagdeer-user');
             }
             setLoading(false);
         };

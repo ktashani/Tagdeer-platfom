@@ -24,6 +24,11 @@ export default function AdminTopNav() {
     const { supabase } = useTagdeer()
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
+    // Helper to dynamically adapt paths based on whether we are currently on the admin subdomain
+    const isSubdomain = typeof window !== 'undefined' && window.location.hostname.startsWith('admin.')
+    const getPath = (href) => isSubdomain ? href.replace(/^\/admin/, '') || '/' : href
+
+
     const handleLogout = async () => {
         await logoutAdmin()
         if (supabase) await supabase.auth.signOut()
@@ -45,18 +50,19 @@ export default function AdminTopNav() {
                         {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                     </button>
 
-                    <Link href="/admin" className="font-bold text-lg md:text-xl tracking-tight text-emerald-400">
+                    <Link href={getPath('/admin')} className="font-bold text-lg md:text-xl tracking-tight text-emerald-400">
                         Tagdeer <span className="text-white">Admin</span>
                     </Link>
 
                     {/* Desktop Navigation */}
                     <div className="hidden md:flex gap-1 items-center bg-slate-900/50 p-1 rounded-lg border border-slate-800">
                         {NAV_ITEMS.map((item) => {
-                            const isActive = item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href)
+                            const targetPath = getPath(item.href)
+                            const isActive = targetPath === '/' ? pathname === '/' : pathname.startsWith(targetPath)
                             return (
                                 <Link
                                     key={item.name}
-                                    href={item.href}
+                                    href={targetPath}
                                     className={`px-3 lg:px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${isActive
                                         ? 'bg-emerald-500/10 text-emerald-400 shadow-sm'
                                         : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
@@ -110,12 +116,13 @@ export default function AdminTopNav() {
                         <div className="flex-1 overflow-y-auto py-4 px-3">
                             <div className="space-y-1">
                                 {NAV_ITEMS.map((item) => {
-                                    const isActive = item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href)
+                                    const targetPath = getPath(item.href)
+                                    const isActive = targetPath === '/' ? pathname === '/' : pathname.startsWith(targetPath)
                                     const Icon = item.icon
                                     return (
                                         <Link
                                             key={item.name}
-                                            href={item.href}
+                                            href={targetPath}
                                             onClick={() => setIsMobileMenuOpen(false)}
                                             className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isActive
                                                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
