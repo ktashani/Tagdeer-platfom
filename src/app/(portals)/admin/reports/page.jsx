@@ -37,13 +37,13 @@ export default function ReportsPage() {
                     supabase.from('logs').select('*', { count: 'exact', head: true }),
                     supabase.from('disputes').select('*', { count: 'exact', head: true }),
                     supabase.from('coupon_redemptions').select('*', { count: 'exact', head: true }),
-                    supabase.from('profiles').select('trust_points')
+                    supabase.from('profiles').select('gader_points')
                 ]);
 
                 // Calculate global health score based on average trust points
                 let avgTrust = 80;
                 if (profilesRes.data && profilesRes.data.length > 0) {
-                    const totalTrust = profilesRes.data.reduce((acc, curr) => acc + (curr.trust_points || 0), 0);
+                    const totalTrust = profilesRes.data.reduce((acc, curr) => acc + (curr.gader_points || 0), 0);
                     avgTrust = Math.round(totalTrust / profilesRes.data.length);
                     // Clamp to 100 max for visual score
                     avgTrust = Math.min(100, avgTrust);

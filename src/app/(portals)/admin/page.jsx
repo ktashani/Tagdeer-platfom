@@ -29,7 +29,7 @@ export default function AdminDashboard() {
                 const { count: vipCount } = await supabase
                     .from('profiles')
                     .select('*', { count: 'exact', head: true })
-                    .gt('gader', 1000)
+                    .gt('gader_points', 1000)
 
                 // Fetch pending claims count
                 const { count: claimsCount } = await supabase
@@ -63,7 +63,7 @@ export default function AdminDashboard() {
                 let totalCouponsRedeemed = 0;
                 try {
                     const { data: pools } = await supabase
-                        .from('coupon_pools')
+                        .from('platform_coupon_pools')
                         .select('amount, remaining');
                     if (pools) {
                         totalCouponsRedeemed = pools.reduce((sum, p) => sum + ((p.amount || 0) - (p.remaining || 0)), 0);

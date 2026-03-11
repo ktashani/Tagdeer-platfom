@@ -149,19 +149,21 @@ export default function MerchantDashboard() {
                 }
 
                 // Fetch active features for this specific branch
-                const { data: allocations } = await supabase
-                    .from('feature_allocations')
-                    .select('feature_type')
-                    .eq('business_id', myBusiness.id)
-                    .eq('status', 'active');
+                try {
+                    const { data: allocations } = await supabase
+                        .from('feature_allocations')
+                        .select('feature_type')
+                        .eq('business_id', myBusiness.id)
+                        .eq('status', 'active');
 
-                if (allocations) {
-                    setActiveFeatures(allocations.map(a => a.feature_type));
-                }
+                    if (allocations) {
+                        setActiveFeatures(allocations.map(a => a.feature_type));
+                    }
+                } catch (_) { /* table may not exist yet */ }
 
                 // Fetch active campaigns
                 const { data: campaigns } = await supabase
-                    .from('coupon_pools')
+                    .from('platform_coupon_pools')
                     .select('id, title, amount, remaining, status')
                     .eq('business_id', myBusiness.id)
                     .order('created_at', { ascending: false })
