@@ -1,6 +1,7 @@
 'use server'
 import { cookies } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
+import { getCookieDomain } from '@/lib/cookieDomain'
 
 /**
  * Admin login — validates credentials against Supabase Auth,
@@ -59,13 +60,18 @@ export async function loginAdmin(email, password) {
 
         // 3. Set secure admin cookie with the user ID (not just 'true')
         const cookieStore = await cookies()
-        cookieStore.set('admin_auth', userId, {
+        const domain = getCookieDomain()
+        const cookieOptions = {
             maxAge: 60 * 60 * 24, // 1 day
             path: '/',
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-        })
+        }
+        // Only attach domain when deployed (undefined = browser defaults to exact hostname)
+        if (domain) cookieOptions.domain = domain
+
+        cookieStore.set('admin_auth', userId, cookieOptions)
 
         return { success: true }
     } catch (err) {
@@ -76,8 +82,13 @@ export async function loginAdmin(email, password) {
 
 export async function logoutAdmin() {
     const cookieStore = await cookies()
-    cookieStore.delete('admin_auth')
+    const domain = getCookieDomain()
+    const deleteOptions = { path: '/' }
+    if (domain) deleteOptions.domain = domain
+
+    cookieStore.delete({ name: 'admin_auth', ...deleteOptions })
     // Important: The admin login page also signs in via Supabase client-side (supabase.auth.signInWithPassword).
     // The caller must also call supabase.auth.signOut() on the client to clear the Supabase session cookie.
     return { success: true }
 }
+

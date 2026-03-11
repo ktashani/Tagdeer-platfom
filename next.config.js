@@ -28,7 +28,4 @@ export default withSentryConfig(nextConfig, {
 
     // Hides source maps from clients in production
     hideSourceMaps: true,
-
-    // Disables Sentry's automatic instrumentation if no DSN is set
-    disableLogger: true,
 });
