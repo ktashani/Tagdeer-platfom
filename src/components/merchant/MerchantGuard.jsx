@@ -14,6 +14,7 @@ export default function MerchantGuard({ children }) {
     const [subTier, setSubTier] = useState(null)
     const [checkingSub, setCheckingSub] = useState(true)
     const isMounted = useRef(true)
+    const redirecting = useRef(false)
 
     // Cleanup on unmount to prevent state updates on unmounted component
     useEffect(() => {
@@ -45,6 +46,7 @@ export default function MerchantGuard({ children }) {
 
         if (!user) {
             // user is null (confirmed no session) — redirect to login
+            redirecting.current = true;
             router.push('/login?redirect=' + encodeURIComponent(normalizedPath))
             return;
         }
@@ -54,26 +56,38 @@ export default function MerchantGuard({ children }) {
         if (user?.role && user.role !== 'merchant' && !user?.isDevBypass) {
             if (!supabase) {
                 const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                redirecting.current = true;
                 router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
                 return;
             }
             // Fresh DB check to see if role was updated by init-role
+            // Uses AbortController with 5s timeout to prevent hanging queries
             const recheckRole = async () => {
                 try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 5000);
+
                     const { data: profile } = await supabase
                         .from('profiles')
                         .select('role')
                         .eq('id', user.id)
-                        .single();
+                        .single()
+                        .abortSignal(controller.signal);
+
+                    clearTimeout(timeout);
+
                     if (profile?.role === 'merchant') {
                         // Role was updated — allow through
                         if (isMounted.current) setIsAuthorized(true)
                     } else {
                         const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                        redirecting.current = true;
                         router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
                     }
-                } catch {
+                } catch (err) {
+                    console.error('[MerchantGuard] recheckRole failed/aborted:', err);
                     const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                    redirecting.current = true;
                     router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
                 }
             }
@@ -111,6 +125,12 @@ export default function MerchantGuard({ children }) {
         } else if (!isAuthorized && !loading && user !== undefined) {
             // Auth finished, not authorized — stop checking
             if (isMounted.current) setCheckingSub(false)
+        } else {
+            // CATCH-ALL: Covers { isAuthorized:false, user:null } and any
+            // other unhandled state. Prevents permanent checkingSub=true.
+            if (isMounted.current && !loading) {
+                setCheckingSub(false);
+            }
         }
         // Safety timeout: if checkingSub is still true after 8 seconds, force-resolve.
         // This prevents permanent deadlocks from unexpected edge cases.
@@ -127,6 +147,30 @@ export default function MerchantGuard({ children }) {
         }, 8000);
         return () => clearTimeout(safetyTimer);
     }, [isAuthorized, user, supabase, loading])
+
+    // MASTER SAFETY TIMEOUT — Nuclear failsafe.
+    // If ANYTHING keeps the guard locked for 10 seconds, force-unblock both flags.
+    // This covers edge cases where recheckRole() hangs AND the catch-all misses.
+    useEffect(() => {
+        const masterTimeout = setTimeout(() => {
+            if (isMounted.current && (checkingSub || !isAuthorized)) {
+                console.warn('[MerchantGuard] Master timeout: forcing guard to unblock after 10s');
+                setCheckingSub(false);
+                setIsAuthorized(true);
+            }
+        }, 10000);
+        return () => clearTimeout(masterTimeout);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // If a redirect is in progress, show an informative message instead of
+    // an ambiguous spinner. The router.push() may take a moment to navigate.
+    if (redirecting.current) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FB]">
+                <p className="text-slate-500 text-sm">Redirecting to login…</p>
+            </div>
+        )
+    }
 
     if (loading || checkingSub || !isAuthorized) {
         return (
