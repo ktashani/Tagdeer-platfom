@@ -27,10 +27,10 @@ export default function AdminTopNav() {
     const handleLogout = async () => {
         await logoutAdmin()
         if (supabase) await supabase.auth.signOut()
-        window.location.href = '/admin/login'
+        window.location.href = '/login'
     }
 
-    if (pathname === '/admin/login') return null;
+    if (pathname === '/admin/login' || pathname === '/login') return null;
 
     return (
         <>
