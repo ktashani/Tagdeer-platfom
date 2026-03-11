@@ -60,8 +60,25 @@ export function BusinessDataProvider({ children }) {
                     console.warn('Supabase fetch failed, falling back to mock data.', error);
                     return;
                 }
-                if (data) {
-                    const formattedData = data.map(b => {
+
+                // For merchants: also fetch their own businesses regardless of status
+                // so pending/under-review businesses appear in the TopNav dropdown
+                let ownedData = [];
+                if (!isAdmin && user?.id) {
+                    const { data: myOwned } = await supabase
+                        .from('businesses')
+                        .select('*, logs(*), storefronts(slug, logo_url, status)')
+                        .eq('claimed_by', user.id)
+                        .neq('status', 'published'); // Only fetch non-published ones to avoid duplicates
+
+                    ownedData = myOwned || [];
+                }
+
+                // Merge: published businesses + user's own non-published businesses
+                const mergedData = [...(data || []), ...ownedData];
+
+                if (mergedData) {
+                    const formattedData = mergedData.map(b => {
                         const rawLogs = b.logs || [];
                         const derivedRecommends = rawLogs.filter(i => i.interaction_type === 'recommend').length;
                         const derivedComplains = rawLogs.filter(i => i.interaction_type === 'complain').length;
