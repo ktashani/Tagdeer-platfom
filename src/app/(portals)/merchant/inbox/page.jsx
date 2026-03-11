@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EyeOff, Send, Gift, Clock, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { useTagdeer } from '@/context/TagdeerContext';
+import { useActiveBusiness } from '@/context/providers/ActiveBusinessProvider';
 import { SkeletonList } from '@/components/ui/SkeletonLoaders';
 
 export default function MerchantInbox() {
@@ -21,7 +22,7 @@ export default function MerchantInbox() {
     const [showCouponModal, setShowCouponModal] = useState(false);
     const [merchantCoupons, setMerchantCoupons] = useState([]);
 
-    const myBusiness = user && businesses ? businesses.find(b => b.owner_id === user?.id) : null;
+    const { activeBusiness: myBusiness } = useActiveBusiness();
 
     // Fetch active coupons for modal
     useEffect(() => {

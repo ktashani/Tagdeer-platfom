@@ -21,19 +21,17 @@ import {
 } from "@/components/ui/popover";
 import { useState, useRef, useEffect } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
+import { useActiveBusiness } from '@/context/providers/ActiveBusinessProvider';
 
 export default function TopNav() {
     const pathname = usePathname();
     const router = useRouter();
     const { user, businesses, supabase, logout } = useTagdeer();
+    const { activeBusiness, myBusinesses, selectedBusinessId, setSelectedBusinessId } = useActiveBusiness();
 
     const [isStoreMenuOpen, setIsStoreMenuOpen] = useState(false);
     const storeMenuRef = useRef(null);
 
-    // Filter to only businesses owned by the current user
-    const myBusinesses = businesses?.filter(b => b.owner_id === user?.id) || [];
-
-    const [selectedStoreId, setSelectedStoreId] = useState(null);
     const [pendingClaim, setPendingClaim] = useState(null);
     const [claimStatuses, setClaimStatuses] = useState({}); // { businessId: 'pending' | 'approved' | 'missing_docs' }
     const [subTier, setSubTier] = useState('Free');
@@ -75,13 +73,6 @@ export default function TopNav() {
         };
         fetchInboxCount();
     }, [supabase, user, businesses]);
-
-    // Default select the first business when loaded
-    useEffect(() => {
-        if (myBusinesses.length > 0 && !selectedStoreId) {
-            setSelectedStoreId(myBusinesses[0].id);
-        }
-    }, [myBusinesses, selectedStoreId]);
 
     // Fetch claim statuses for all user businesses
     useEffect(() => {
@@ -127,14 +118,14 @@ export default function TopNav() {
         fetchClaimStatuses();
     }, [supabase, user, businesses]);
 
-    const activeStore = myBusinesses?.find(b => b.id === selectedStoreId) || myBusinesses?.[0];
+    const activeStore = activeBusiness;
 
     // Location gating: dynamic based on actual subscription tier
     const isPro = subTier !== 'Free';
     const showAddButton = myBusinesses.length < 1 || isPro;
 
     const handleStoreSelect = (storeId) => {
-        setSelectedStoreId(storeId);
+        setSelectedBusinessId(storeId);
         setIsStoreMenuOpen(false);
     };
 
@@ -267,7 +258,7 @@ export default function TopNav() {
                                 <div className="space-y-2">
                                     {myBusinesses.length > 0 ? (
                                         myBusinesses.map(store => {
-                                            const isActive = store.id === selectedStoreId;
+                                            const isActive = store.id === selectedBusinessId;
                                             const storeClaimStatus = claimStatuses[store.id];
                                             const storeIsPending = storeClaimStatus === 'pending';
                                             const storeIsMissingDocs = storeClaimStatus === 'missing_docs';

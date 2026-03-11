@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useActiveBusiness } from '@/context/providers/ActiveBusinessProvider';
+import { SkeletonMetricGroup, SkeletonCardGrid } from '@/components/ui/SkeletonLoaders';
 import { Badge } from '@/components/ui/badge';
 import { Search, ThumbsUp, ThumbsDown, Activity, Ticket, ArrowUpRight, ArrowDownRight, QrCode, MessageSquare, Flag, Play, Pause, AlertCircle, Clock, ShieldAlert, Store, AlertTriangle, Crown, Check, UploadCloud, File as FileIcon, Loader2 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
@@ -63,6 +65,7 @@ function deriveVotingReasons(logs) {
 
 export default function MerchantDashboard() {
     const { user, businesses, supabase, showToast } = useTagdeer();
+    const { activeBusiness: myBusiness } = useActiveBusiness();
     const router = useRouter();
     const searchParams = useSearchParams();
     const trialCampaign = searchParams.get('trial_campaign');
@@ -87,10 +90,6 @@ export default function MerchantDashboard() {
     // Only render once user loading finishes
     if (user === undefined) return <div className="min-h-screen flex items-center justify-center">Loading Dashboard...</div>;
 
-    // Find the currently authenticated merchant's business
-    // Note: TagdeerContext maps claimed_by → owner_id
-    const myBusiness = businesses.find(b => b.owner_id === user?.id);
-
     // Auto-redirect to settings if arriving via trial campaign link and already has a business
     useEffect(() => {
         if (trialCampaign && myBusiness) {
@@ -105,6 +104,14 @@ export default function MerchantDashboard() {
         if (!supabase || !user) return;
 
         const fetchDashboardData = async () => {
+            // Reset stale state from previous business selection
+            setPendingClaim(null);
+            setPendingClaimId(null);
+            setPendingDisputes([]);
+            setActiveCampaigns([]);
+            setCouponsRedeemed(0);
+            setActiveFeatures([]);
+
             try {
                 // 1. Fetch claim status to check if admin approval is pending
                 // Always fetch the user's latest claim regardless of business linkage
@@ -112,9 +119,10 @@ export default function MerchantDashboard() {
                     .from('business_claims')
                     .select('id, status, claim_status')
                     .eq('user_id', user.id)
+                    .eq('business_id', myBusiness?.id)
                     .order('created_at', { ascending: false })
                     .limit(1)
-                    .single();
+                    .maybeSingle();
 
                 if (claimQueryError && claimQueryError.code !== 'PGRST116') {
                     console.error("Error fetching claim status:", claimQueryError);
@@ -186,7 +194,7 @@ export default function MerchantDashboard() {
         };
 
         fetchDashboardData();
-    }, [supabase, myBusiness?.id, user?.id]);
+    }, [supabase, myBusiness?.id, user?.id, myBusiness]);
 
     // ==========================================
     // DYNAMIC STATES

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Gift, QrCode, Sparkles, MessageCircle, Play, Pause, Trash2, Edit } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { useTagdeer } from '@/context/TagdeerContext';
+import { useActiveBusiness } from '@/context/providers/ActiveBusinessProvider';
 import { useEffect } from 'react';
 import Pagination from '@/components/ui/PaginationNav';
 import { SkeletonCardGrid } from '@/components/ui/SkeletonLoaders';
@@ -21,17 +22,7 @@ export default function CouponCommandCenter() {
     const [currentPage, setCurrentPage] = useState(1);
     const PAGE_SIZE = 8;
 
-    // Support multi-business
-    const myBusinesses = businesses ? businesses.filter(b => b.owner_id === user?.id || b.claimed_by === user?.id) : [];
-    const [selectedBusinessId, setSelectedBusinessId] = useState('');
-
-    useEffect(() => {
-        if (myBusinesses.length > 0 && !selectedBusinessId) {
-            setSelectedBusinessId(myBusinesses[0].id);
-        }
-    }, [myBusinesses, selectedBusinessId]);
-
-    const myBusiness = myBusinesses.find(b => b.id === selectedBusinessId) || myBusinesses[0];
+    const { activeBusiness: myBusiness, myBusinesses, selectedBusinessId, setSelectedBusinessId } = useActiveBusiness();
 
     const initialCouponState = {
         title: '',

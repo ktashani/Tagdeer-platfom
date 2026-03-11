@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Crown, Building, Trash2, CheckCircle2, ArrowUpRight, Loader2, Sparkles, Tag } from "lucide-react";
 import { useTagdeer } from '@/context/TagdeerContext';
+import { useActiveBusiness } from '@/context/providers/ActiveBusinessProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Globe } from 'lucide-react';
 
@@ -20,8 +21,7 @@ export default function MerchantSettings() {
     const searchParams = useSearchParams();
     const trialCampaignId = searchParams.get('trial_campaign');
 
-    // Dynamic Business Context Search
-    const myBusiness = businesses?.find(b => b.owner_id === user?.id) || null;
+    const { activeBusiness: myBusiness } = useActiveBusiness();
 
     // Account Level
     const [accountTier, setAccountTier] = useState('Free'); // 'Free', 'Pro', 'Enterprise'

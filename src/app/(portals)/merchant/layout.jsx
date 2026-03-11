@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import MerchantGuard from '@/components/merchant/MerchantGuard';
 import TopNav from '@/components/merchant/TopNav';
+import { ActiveBusinessProvider } from '@/context/providers/ActiveBusinessProvider';
 
 export default function MerchantLayout({ children }) {
     const pathname = usePathname();
@@ -18,10 +19,12 @@ export default function MerchantLayout({ children }) {
             <title>Tagdeer Merchant Portal</title>
             <div className="min-h-screen bg-[#F8F9FB] text-slate-900 font-sans">
                 <MerchantGuard>
-                    {!hideNav && <TopNav />}
-                    <main className="p-4 md:p-8 max-w-[1400px] mx-auto">
-                        {children}
-                    </main>
+                    <ActiveBusinessProvider>
+                        {!hideNav && <TopNav />}
+                        <main className="p-4 md:p-8 max-w-[1400px] mx-auto">
+                            {children}
+                        </main>
+                    </ActiveBusinessProvider>
                 </MerchantGuard>
             </div>
         </>
