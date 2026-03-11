@@ -92,15 +92,23 @@ export async function middleware(request) {
 
             const isAuthenticated = !!user && !error
 
+            // Normalize pathname for public route comparison.
+            // On the subdomain, /onboarding and /merchant/onboarding should both be public.
+            const normalizedPathname = pathname.startsWith('/merchant')
+                ? pathname.replace(/^\/merchant/, '') || '/'
+                : pathname;
+
+            const isPublicRoute = ['/login', '/onboarding', '/reset-password'].includes(normalizedPathname);
+
             // Allow unauthenticated access to public pages
-            if (!isAuthenticated && pathname !== '/login' && pathname !== '/onboarding' && pathname !== '/reset-password') {
+            if (!isAuthenticated && !isPublicRoute) {
                 const loginUrl = request.nextUrl.clone();
                 loginUrl.pathname = '/login';
                 return NextResponse.redirect(loginUrl);
             }
 
             // Redirect authenticated users away from login page
-            if (isAuthenticated && pathname === '/login') {
+            if (isAuthenticated && normalizedPathname === '/login') {
                 const dashboardUrl = request.nextUrl.clone();
                 dashboardUrl.pathname = '/dashboard';
                 return NextResponse.redirect(dashboardUrl);

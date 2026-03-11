@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useTagdeer } from '@/context/TagdeerContext'
 import { Loader2, Ban, AlertTriangle, Mail } from 'lucide-react'
@@ -13,72 +13,80 @@ export default function MerchantGuard({ children }) {
     const [isAuthorized, setIsAuthorized] = useState(false)
     const [subTier, setSubTier] = useState(null)
     const [checkingSub, setCheckingSub] = useState(true)
+    const isMounted = useRef(true)
+
+    // Cleanup on unmount to prevent state updates on unmounted component
+    useEffect(() => {
+        return () => { isMounted.current = false }
+    }, [])
 
     useEffect(() => {
-        if (!loading) {
-            // Don't guard the login or onboarding page itself
-            // On subdomain (merchant.tagdeer.app), usePathname() returns '/login'
-            // On path-based (localhost:3000/merchant/login), it returns '/merchant/login'
-            if (pathname === '/merchant/login' || pathname === '/login' || pathname === '/merchant/onboarding' || pathname === '/onboarding') {
-                setIsAuthorized(true)
-                return
-            }
+        // CRITICAL: Wait for auth to fully resolve.
+        // `user` starts as `undefined` (not yet checked), then becomes
+        // null (no session) or an object (session found).
+        // We must NOT act on `undefined` — only on null or object.
+        if (loading || user === undefined) {
+            return; // Still loading — do nothing, keep showing spinner
+        }
 
-            // Normalize the path for the redirect param to prevent double /merchant prefixes
-            // when the middleware rewrites it on the subdomain.
-            const normalizedPath = pathname.startsWith('/merchant')
-                ? pathname.replace(/^\/merchant/, '') || '/'
-                : pathname
+        // Don't guard the login or onboarding page itself
+        // On subdomain (merchant.tagdeer.app), usePathname() returns '/login'
+        // On path-based (localhost:3000/merchant/login), it returns '/merchant/login'
+        if (pathname === '/merchant/login' || pathname === '/login' || pathname === '/merchant/onboarding' || pathname === '/onboarding') {
+            if (isMounted.current) setIsAuthorized(true)
+            return
+        }
 
-            if (!user) {
-                router.push('/login?redirect=' + encodeURIComponent(normalizedPath))
+        // Normalize the path for the redirect param to prevent double /merchant prefixes
+        // when the middleware rewrites it on the subdomain.
+        const normalizedPath = pathname.startsWith('/merchant')
+            ? pathname.replace(/^\/merchant/, '') || '/'
+            : pathname
+
+        if (!user) {
+            // user is null (confirmed no session) — redirect to login
+            router.push('/login?redirect=' + encodeURIComponent(normalizedPath))
+            return;
+        }
+
+        // If user has a non-merchant role, re-check the DB in case init-role
+        // just ran but React state hasn't caught up yet (race condition from callback)
+        if (user?.role && user.role !== 'merchant' && !user?.isDevBypass) {
+            if (!supabase) {
+                const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
                 return;
             }
-
-            // If user has a non-merchant role, re-check the DB in case init-role
-            // just ran but React state hasn't caught up yet (race condition from callback)
-            if (user?.role && user.role !== 'merchant' && !user?.isDevBypass) {
-                if (!supabase) {
-                    const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
-                    router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
-                    return;
-                }
-                // Fresh DB check to see if role was updated by init-role
-                const recheckRole = async () => {
-                    try {
-                        const { data: profile } = await supabase
-                            .from('profiles')
-                            .select('role')
-                            .eq('id', user.id)
-                            .single();
-                        if (profile?.role === 'merchant') {
-                            // Role was updated — allow through
-                            setIsAuthorized(true)
-                        } else {
-                            const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
-                            router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
-                        }
-                    } catch {
+            // Fresh DB check to see if role was updated by init-role
+            const recheckRole = async () => {
+                try {
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('role')
+                        .eq('id', user.id)
+                        .single();
+                    if (profile?.role === 'merchant') {
+                        // Role was updated — allow through
+                        if (isMounted.current) setIsAuthorized(true)
+                    } else {
                         const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
                         router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
                     }
+                } catch {
+                    const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                    router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
                 }
-                recheckRole()
-                return;
             }
-
-            // Allow authenticated merchants through
-            if (user?.status === 'Banned' || user?.status === 'Restricted') {
-                // Banned/Restricted merchants are blocked — handled in render below
-                setIsAuthorized(true)
-            } else {
-                setIsAuthorized(true)
-            }
+            recheckRole()
+            return;
         }
+
+        // Allow authenticated merchants through
+        if (isMounted.current) setIsAuthorized(true)
     }, [user, loading, router, pathname, supabase])
 
     useEffect(() => {
-        if (isAuthorized && user) {
+        if (isAuthorized && user && supabase) {
             const checkSub = async () => {
                 try {
                     const { data, error } = await supabase
@@ -88,21 +96,36 @@ export default function MerchantGuard({ children }) {
                         .eq('status', 'Active')
                         .maybeSingle();
 
-                    setSubTier(data?.tier || 'Free');
+                    if (isMounted.current) setSubTier(data?.tier || 'Free');
                 } catch (err) {
                     console.error("Subscription check error:", err);
-                    setSubTier('Free');
+                    if (isMounted.current) setSubTier('Free');
                 } finally {
-                    setCheckingSub(false);
+                    if (isMounted.current) setCheckingSub(false);
                 }
             }
             checkSub()
         } else if (isAuthorized && !user) {
             // Login/onboarding page with no user — skip subscription check
-            setCheckingSub(false)
-        } else if (!isAuthorized && !loading) {
-            setCheckingSub(false)
+            if (isMounted.current) setCheckingSub(false)
+        } else if (!isAuthorized && !loading && user !== undefined) {
+            // Auth finished, not authorized — stop checking
+            if (isMounted.current) setCheckingSub(false)
         }
+        // Safety timeout: if checkingSub is still true after 8 seconds, force-resolve.
+        // This prevents permanent deadlocks from unexpected edge cases.
+        const safetyTimer = setTimeout(() => {
+            if (isMounted.current) {
+                setCheckingSub(prev => {
+                    if (prev) {
+                        console.warn('[MerchantGuard] Safety timeout: checkingSub forced to false after 8s');
+                        return false;
+                    }
+                    return prev;
+                });
+            }
+        }, 8000);
+        return () => clearTimeout(safetyTimer);
     }, [isAuthorized, user, supabase, loading])
 
     if (loading || checkingSub || !isAuthorized) {
