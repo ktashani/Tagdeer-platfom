@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, MessageSquare, Ticket, Settings, Bell, ChevronDown, Store, Plus, CheckCircle2 } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Ticket, Settings, Bell, ChevronDown, Store, Plus, CheckCircle2, Lock } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -19,21 +19,20 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useActiveBusiness } from '@/context/providers/ActiveBusinessProvider';
 
 export default function TopNav() {
     const pathname = usePathname();
     const router = useRouter();
-    const { user, businesses, supabase, logout } = useTagdeer();
-    const { activeBusiness, myBusinesses, selectedBusinessId, setSelectedBusinessId } = useActiveBusiness();
+    const { user, businesses, supabase, logout, showToast } = useTagdeer();
+    const { activeBusiness, myBusinesses, selectedBusinessId, setSelectedBusinessId, claimStatuses } = useActiveBusiness();
 
     const [isStoreMenuOpen, setIsStoreMenuOpen] = useState(false);
     const storeMenuRef = useRef(null);
 
-    const [pendingClaim, setPendingClaim] = useState(null);
-    const [claimStatuses, setClaimStatuses] = useState({}); // { businessId: 'pending' | 'approved' | 'missing_docs' }
+    // claimStatuses is now provided by ActiveBusinessProvider via useActiveBusiness()
     const [subTier, setSubTier] = useState('Free');
 
     useEffect(() => {
@@ -74,51 +73,29 @@ export default function TopNav() {
         fetchInboxCount();
     }, [supabase, user, businesses]);
 
-    // Fetch claim statuses for all user businesses
-    useEffect(() => {
-        if (!supabase || !user) return;
-
-        const fetchClaimStatuses = async () => {
-            try {
-                const { data } = await supabase
-                    .from('business_claims')
-                    .select('business_id, status, claim_status')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false });
-
-                if (data) {
-                    const statusMap = {};
-                    data.forEach(c => {
-                        // Only store the first (most recent) claim per business
-                        if (!statusMap[c.business_id]) {
-                            statusMap[c.business_id] = c.status || c.claim_status || 'pending';
-                        }
-                    });
-                    setClaimStatuses(statusMap);
-
-                    // Set pendingClaim if no approved businesses
-                    const approvedBusinessIds = Object.entries(statusMap)
-                        .filter(([, s]) => s === 'approved')
-                        .map(([id]) => id);
-
-                    if (approvedBusinessIds.length === 0 && data.length > 0) {
-                        const firstClaim = data[0];
-                        const bInfo = businesses?.find(b => b.id === firstClaim.business_id);
-                        setPendingClaim({
-                            name: bInfo?.name || 'Pending Business',
-                            region: bInfo?.region || 'In Review',
-                            status: firstClaim.status || firstClaim.claim_status
-                        });
-                    }
-                }
-            } catch (err) {
-                // Not found or error
-            }
+    // Derive the pending claim for the header display (when user has no approved businesses)
+    const pendingClaim = useMemo(() => {
+        if (myBusinesses.length > 0) return null;
+        // Check if user has any claims at all
+        const claimEntries = Object.entries(claimStatuses);
+        if (claimEntries.length === 0) return null;
+        const [bizId, status] = claimEntries[0];
+        const bInfo = businesses?.find(b => b.id === bizId);
+        return {
+            name: bInfo?.name || 'Pending Business',
+            region: bInfo?.region || 'In Review',
+            status: status
         };
-        fetchClaimStatuses();
-    }, [supabase, user, businesses]);
+    }, [myBusinesses, claimStatuses, businesses]);
 
     const activeStore = activeBusiness;
+
+    // Business gating: lock business-dependent nav items when no approved business
+    const isBusinessLocked = useMemo(() => {
+        if (!activeBusiness) return true;
+        const status = claimStatuses[activeBusiness.id];
+        return status === 'pending' || status === 'missing_docs';
+    }, [activeBusiness, claimStatuses]);
 
     // Location gating: dynamic based on actual subscription tier
     const isPro = subTier !== 'Free';
@@ -143,15 +120,16 @@ export default function TopNav() {
     const basePath = pathname.startsWith('/merchant') ? '/merchant' : '';
 
     const navItems = [
-        { href: `${basePath}/dashboard`, icon: LayoutDashboard, label: 'Home' },
+        { href: `${basePath}/dashboard`, icon: LayoutDashboard, label: 'Home', requiresBusiness: true },
         {
             href: `${basePath}/inbox`,
             icon: MessageSquare,
             label: 'Inbox',
-            badge: inboxCount > 0 ? String(inboxCount) : null // Real count from pending resolutions
+            badge: inboxCount > 0 ? String(inboxCount) : null, // Real count from pending resolutions
+            requiresBusiness: true
         },
-        { href: `${basePath}/coupons`, icon: Ticket, label: 'Coupons' },
-        { href: `${basePath}/settings`, icon: Settings, label: 'Settings' },
+        { href: `${basePath}/coupons`, icon: Ticket, label: 'Coupons', requiresBusiness: true },
+        { href: `${basePath}/settings`, icon: Settings, label: 'Settings', requiresBusiness: false },
     ];
 
     return (
@@ -176,6 +154,22 @@ export default function TopNav() {
                 {navItems.map((item) => {
                     const isActive = pathname.startsWith(item.href);
                     const Icon = item.icon;
+                    const isLocked = item.requiresBusiness && isBusinessLocked;
+
+                    if (isLocked) {
+                        return (
+                            <button
+                                key={item.href}
+                                onClick={() => showToast?.('Your business is still under review. This feature will unlock once approved.')}
+                                className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full transition-all duration-200 opacity-40 cursor-not-allowed relative group"
+                                title={`${item.label} — Locked until business is approved`}
+                            >
+                                <Icon className="w-5 h-5 text-slate-500" />
+                                <Lock className="w-3 h-3 text-slate-500 absolute -top-0.5 -right-0.5" />
+                            </button>
+                        );
+                    }
+
                     return (
                         <Link
                             key={item.href}
@@ -194,7 +188,7 @@ export default function TopNav() {
                                 </Badge>
                             )}
                         </Link>
-                    )
+                    );
                 })}
             </div>
 
@@ -285,13 +279,6 @@ export default function TopNav() {
                                                 </button>
                                             );
                                         })
-                                    ) : pendingClaim ? (
-                                        <div className="w-full px-5 py-4 text-left flex justify-between items-center rounded-xl bg-[#1A1C23] border border-amber-500/30 opacity-80 cursor-not-allowed">
-                                            <div className="flex flex-col items-start w-full">
-                                                <p className="text-lg font-bold text-slate-300">{pendingClaim.name}</p>
-                                                <p className="text-sm text-amber-500 mt-1">{pendingClaim.status === 'missing_docs' ? 'Action Required' : 'Approval Pending'}</p>
-                                            </div>
-                                        </div>
                                     ) : (
                                         <div className="w-full px-5 py-6 text-center rounded-xl border border-dashed border-[#2A2D35]">
                                             <p className="text-slate-500 text-sm">No connected businesses</p>

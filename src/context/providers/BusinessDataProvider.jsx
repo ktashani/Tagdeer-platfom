@@ -64,6 +64,7 @@ export function BusinessDataProvider({ children }) {
                 // For merchants: also fetch their own businesses regardless of status
                 // so pending/under-review businesses appear in the TopNav dropdown
                 let ownedData = [];
+                let claimInitiatedData = [];
                 if (!isAdmin && user?.id) {
                     const { data: myOwned } = await supabase
                         .from('businesses')
@@ -72,10 +73,40 @@ export function BusinessDataProvider({ children }) {
                         .neq('status', 'published'); // Only fetch non-published ones to avoid duplicates
 
                     ownedData = myOwned || [];
+
+                    // Also fetch businesses where user has a business_claims row
+                    // but isn't the claimed_by owner (pending claims, rejected then re-claimed, etc.)
+                    try {
+                        const { data: claimRows } = await supabase
+                            .from('business_claims')
+                            .select('business_id')
+                            .eq('user_id', user.id);
+
+                        if (claimRows && claimRows.length > 0) {
+                            const claimBizIds = claimRows.map(c => c.business_id);
+                            // Fetch these businesses (skip ones we already have)
+                            const existingIds = new Set([
+                                ...(data || []).map(b => b.id),
+                                ...ownedData.map(b => b.id)
+                            ]);
+                            const missingIds = claimBizIds.filter(id => !existingIds.has(id));
+
+                            if (missingIds.length > 0) {
+                                const { data: claimBiz } = await supabase
+                                    .from('businesses')
+                                    .select('*, logs(*), storefronts(slug, logo_url, status)')
+                                    .in('id', missingIds);
+
+                                claimInitiatedData = claimBiz || [];
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[BusinessDataProvider] Failed to fetch claim-initiated businesses:', e);
+                    }
                 }
 
-                // Merge: published businesses + user's own non-published businesses
-                const mergedData = [...(data || []), ...ownedData];
+                // Merge: published businesses + user's own non-published + claim-initiated businesses
+                const mergedData = [...(data || []), ...ownedData, ...claimInitiatedData];
 
                 if (mergedData) {
                     const formattedData = mergedData.map(b => {

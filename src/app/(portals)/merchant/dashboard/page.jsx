@@ -121,12 +121,19 @@ export default function MerchantDashboard() {
 
             try {
                 // 1. Fetch claim status to check if admin approval is pending
-                // Always fetch the user's latest claim regardless of business linkage
-                const { data: claimData, error: claimQueryError } = await supabase
+                // If myBusiness exists, scope to that business; otherwise fetch the
+                // user's most recent claim across all businesses so the pending-
+                // approval UI still renders correctly for first-time merchants.
+                let claimQuery = supabase
                     .from('business_claims')
                     .select('id, status, claim_status')
-                    .eq('user_id', user.id)
-                    .eq('business_id', myBusiness?.id)
+                    .eq('user_id', user.id);
+
+                if (myBusiness?.id) {
+                    claimQuery = claimQuery.eq('business_id', myBusiness.id);
+                }
+
+                const { data: claimData, error: claimQueryError } = await claimQuery
                     .order('created_at', { ascending: false })
                     .limit(1)
                     .maybeSingle();

@@ -6,8 +6,10 @@ import { useTagdeer } from '@/context/TagdeerContext';
 const ActiveBusinessContext = createContext();
 
 export function ActiveBusinessProvider({ children }) {
-    const { user, businesses, loading } = useTagdeer();
+    const { user, businesses, loading, supabase } = useTagdeer();
     const [selectedBusinessId, setSelectedBusinessId] = useState(null);
+    const [claimStatuses, setClaimStatuses] = useState({}); // { businessId: 'pending' | 'approved' | 'rejected' | 'missing_docs' }
+    const [claimedBusinessIds, setClaimedBusinessIds] = useState([]); // business IDs from business_claims
 
     // Businesses are loading if:
     // 1. Auth is still loading (user hasn't resolved), OR
@@ -30,11 +32,70 @@ export function ActiveBusinessProvider({ children }) {
 
     const isLoadingBusinesses = loading || (!!user && businesses.length === 0 && businessFetchGrace);
 
-    // Filter to businesses owned/claimed by the current user
+    // Fetch claim statuses from business_claims table
+    // This tells us which businesses the user has claimed (even if not yet approved)
+    useEffect(() => {
+        if (!supabase || !user) return;
+
+        const fetchClaimStatuses = async () => {
+            try {
+                const { data } = await supabase
+                    .from('business_claims')
+                    .select('business_id, status, claim_status')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false });
+
+                if (data) {
+                    const statusMap = {};
+                    const claimBizIds = [];
+                    data.forEach(c => {
+                        // Only store the first (most recent) claim per business
+                        if (!statusMap[c.business_id]) {
+                            statusMap[c.business_id] = c.status || c.claim_status || 'pending';
+                            claimBizIds.push(c.business_id);
+                        }
+                    });
+                    setClaimStatuses(statusMap);
+                    setClaimedBusinessIds(claimBizIds);
+                }
+            } catch (err) {
+                // Silently fail — dropdown still works with owned businesses
+                console.warn('[ActiveBusinessProvider] Failed to fetch claim statuses:', err);
+            }
+        };
+        fetchClaimStatuses();
+    }, [supabase, user, businesses]);
+
+    // Filter to businesses owned/claimed by the current user,
+    // PLUS businesses where the user has a business_claims row (even if not yet approved)
     const myBusinesses = useMemo(() => {
         if (!businesses || !user) return [];
-        return businesses.filter(b => b.owner_id === user.id || b.claimed_by === user?.id);
-    }, [businesses, user]);
+
+        // Start with businesses where the user is the owner (claimed_by = user.id)
+        const ownedSet = new Set();
+        const result = [];
+
+        businesses.forEach(b => {
+            if (b.owner_id === user.id || b.claimed_by === user?.id) {
+                ownedSet.add(b.id);
+                result.push(b);
+            }
+        });
+
+        // Add businesses from business_claims that aren't already included
+        // (covers cases where claimed_by isn't set on the business yet)
+        claimedBusinessIds.forEach(bizId => {
+            if (!ownedSet.has(bizId)) {
+                const biz = businesses.find(b => b.id === bizId);
+                if (biz) {
+                    ownedSet.add(bizId);
+                    result.push(biz);
+                }
+            }
+        });
+
+        return result;
+    }, [businesses, user, claimedBusinessIds]);
 
     // Auto-select first business when list populates and nothing is selected
     useEffect(() => {
@@ -54,7 +115,8 @@ export function ActiveBusinessProvider({ children }) {
             myBusinesses,
             selectedBusinessId,
             setSelectedBusinessId,
-            isLoadingBusinesses
+            isLoadingBusinesses,
+            claimStatuses
         }}>
             {children}
         </ActiveBusinessContext.Provider>
