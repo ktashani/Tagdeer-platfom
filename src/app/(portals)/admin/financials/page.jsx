@@ -30,6 +30,7 @@ export default function FinancialsPage() {
     const [selectedTxn, setSelectedTxn] = useState(null)
     const [activeTab, setActiveTab] = useState('queue') // queue, subs, reports, trial_campaigns
     const [isConfirming, setIsConfirming] = useState(false)
+    const [gatewayFilter, setGatewayFilter] = useState('all')
 
     // Expandable merchant detail state
     const [expandedMerchant, setExpandedMerchant] = useState(null) // profileId
@@ -59,6 +60,7 @@ export default function FinancialsPage() {
                     amount: `${t.amount} LYD`,
                     duration: t.duration,
                     paymentMethod: t.payment_method,
+                    gateway: t.payment_gateway,
                     date: new Date(t.created_at).toLocaleDateString(),
                     screenshotUrl: t.screenshot_url || "https://placehold.co/400x600?text=No+Receipt",
                     status: t.status
@@ -275,6 +277,10 @@ export default function FinancialsPage() {
     };
 
 
+    const filteredTransfers = gatewayFilter === 'all'
+        ? transfers
+        : transfers.filter(t => t.gateway === gatewayFilter);
+
     return (
         <div className="animate-in fade-in duration-500 min-h-[calc(100vh-8rem)] flex flex-col">
 
@@ -321,15 +327,25 @@ export default function FinancialsPage() {
                 {activeTab === 'queue' && (
                     <>
                         <div className={`transition-all duration-300 flex flex-col bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden ${selectedTxn ? 'w-1/2' : 'w-full'}`}>
-                            <div className="p-4 border-b border-slate-700/50 bg-slate-800/50 shrink-0">
+                            <div className="p-4 border-b border-slate-700/50 bg-slate-800/50 shrink-0 flex justify-between items-center">
                                 <h3 className="font-semibold text-white">Pending Upgrade Requests</h3>
+                                <select
+                                    value={gatewayFilter}
+                                    onChange={e => setGatewayFilter(e.target.value)}
+                                    className="text-sm bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-white focus:outline-none focus:border-emerald-500"
+                                >
+                                    <option value="all">All Gateways</option>
+                                    <option value="manual_bank">Bank Transfer</option>
+                                    <option value="crypto_usdt">USDT</option>
+                                    <option value="tlync_lyd">Tlync</option>
+                                </select>
                             </div>
                             <div className="flex-1 overflow-y-auto p-4 space-y-3">
                                 {isLoading ? (
                                     <SkeletonTable rows={4} cols={4} variant="dark" />
-                                ) : transfers.length === 0 ? (
-                                    <div className="text-center p-8 text-slate-500">No pending transfers.</div>
-                                ) : transfers.map(txn => (
+                                ) : filteredTransfers.length === 0 ? (
+                                    <div className="text-center p-8 text-slate-500">No pending transfers matching filter.</div>
+                                ) : filteredTransfers.map(txn => (
                                     <div
                                         key={txn.id}
                                         onClick={() => setSelectedTxn(txn)}
