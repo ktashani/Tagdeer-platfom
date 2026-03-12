@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Store, UploadCloud, AlertCircle, Clock, Check, Crown, ShieldAlert, ShieldCheck, CreditCard, CheckCircle2, User, FileText, Search, MapPin, Lock } from 'lucide-react';
+import { Store, UploadCloud, AlertCircle, Clock, Check, Crown, ShieldAlert, ShieldCheck, CreditCard, CheckCircle2, User, FileText, Search, MapPin, Lock, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { getPresignedUploadUrl } from '@/app/actions/storage';
 
@@ -116,16 +116,39 @@ export default function MerchantOnboarding() {
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
-    // Step 2: Shields (0 = None, 1 = Trust[20 LYD], 2 = Fatora[50 LYD])
     const [shieldLevel, setShieldLevel] = useState(0);
 
     // Step 3: Checkout
-    const [paymentMethod, setPaymentMethod] = useState('online'); // 'online' or 'manual'
+    const [activeGateways, setActiveGateways] = useState([]);
+    const [txHash, setTxHash] = useState(''); // For crypto gateway
+    const [paymentMethod, setPaymentMethod] = useState('manual_bank');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Pricing Math
     const shieldPrice = shieldLevel === 1 ? shieldPricing.trust : (shieldLevel === 2 ? shieldPricing.fatora : 0);
     const total = shieldPrice;
+
+    useEffect(() => {
+        if (!supabase) return;
+        const fetchGateways = async () => {
+            const { data } = await supabase
+                .from('platform_config')
+                .select('value')
+                .eq('key', 'payment_gateways')
+                .maybeSingle();
+
+            if (data?.value) {
+                setActiveGateways(data.value.filter(gw => gw.isActive));
+            }
+        };
+        fetchGateways();
+    }, [supabase]);
+
+    useEffect(() => {
+        if (activeGateways.length > 0 && !activeGateways.find(g => g.id === paymentMethod)) {
+            setPaymentMethod(activeGateways[0].id);
+        }
+    }, [activeGateways, paymentMethod]);
 
     // Business search with debounce
     const searchBusinesses = useCallback(async (query) => {
@@ -281,16 +304,22 @@ export default function MerchantOnboarding() {
             // 4. Record the requested Financial Upgrade (if applicable)
             if (shieldLevel > 0) {
                 const amount = shieldLevel === 1 ? shieldPricing.trust : shieldPricing.fatora;
+                const selectedGw = activeGateways.find(g => g.id === paymentMethod) || { id: 'manual_bank', currency: 'LYD', type: 'manual' };
+                const isCrypto = selectedGw.type === 'crypto';
+                const exchangeRate = isCrypto ? (selectedGw.config?.exchange_rate_lyd_per_usdt || 6.2) : null;
+
                 await supabase.from('transactions').insert([{
                     business_id: businessId,
                     owner_id: activeUser.id,
                     amount: amount,
-                    status: paymentMethod === 'manual' ? 'pending' : 'completed',
-                    payment_method: paymentMethod,
+                    status: 'pending', // All gateways start as pending for admin review
+                    payment_method: selectedGw.type,
                     requested_tier: shieldLevel === 1 ? 'Trust Shield Addon' : 'Fatora Shield Addon',
                     duration: '1 Month',
-                    currency: 'LYD',
-                    payment_gateway: paymentMethod === 'manual' ? 'manual_bank' : 'manual_bank'
+                    currency: selectedGw.currency,
+                    payment_gateway: selectedGw.id,
+                    gateway_reference: isCrypto ? txHash : null,
+                    exchange_rate: exchangeRate
                 }]);
             }
 
@@ -597,36 +626,83 @@ export default function MerchantOnboarding() {
                                     <div className="space-y-4">
                                         <Label className="text-base font-bold text-slate-700 dark:text-slate-300 px-1 block">{t('payment_method')}</Label>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div
-                                                onClick={() => setPaymentMethod('online')}
-                                                className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col gap-3 group ${paymentMethod === 'online' ? 'border-blue-600 bg-blue-50/30' : 'border-slate-100 dark:border-slate-800 hover:border-slate-300'}`}
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${paymentMethod === 'online' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
-                                                        <CreditCard className="w-6 h-6" />
+                                            {activeGateways.map(gw => (
+                                                <div
+                                                    key={gw.id}
+                                                    onClick={() => setPaymentMethod(gw.id)}
+                                                    className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col gap-3 group ${paymentMethod === gw.id ? 'border-blue-600 bg-blue-50/30 dark:bg-blue-950/20' : 'border-slate-100 dark:border-slate-800 hover:border-slate-300'}`}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${paymentMethod === gw.id ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                                                            {gw.type === 'manual' && <FileText className="w-6 h-6" />}
+                                                            {gw.type === 'crypto' && <Wallet className="w-6 h-6" />}
+                                                            {gw.type === 'api' && <CreditCard className="w-6 h-6" />}
+                                                        </div>
+                                                        <div className={`w-5 h-5 rounded-full border-2 p-1 flex items-center justify-center ${paymentMethod === gw.id ? 'border-blue-600' : 'border-slate-300'}`}>
+                                                            {paymentMethod === gw.id && <div className="w-full h-full bg-blue-600 rounded-full" />}
+                                                        </div>
                                                     </div>
-                                                    <div className={`w-5 h-5 rounded-full border-2 p-1 flex items-center justify-center ${paymentMethod === 'online' ? 'border-blue-600' : 'border-slate-300'}`}>
-                                                        {paymentMethod === 'online' && <div className="w-full h-full bg-blue-600 rounded-full" />}
-                                                    </div>
-                                                </div>
-                                                <span className={`font-bold ${paymentMethod === 'online' ? 'text-blue-900 dark:text-blue-400' : 'text-slate-600'}`}>{t('pay_online')}</span>
-                                            </div>
-                                            <div
-                                                onClick={() => setPaymentMethod('manual')}
-                                                className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col gap-3 group ${paymentMethod === 'manual' ? 'border-blue-600 bg-blue-50/30' : 'border-slate-100 dark:border-slate-800 hover:border-slate-300'}`}
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${paymentMethod === 'manual' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
-                                                        <FileText className="w-6 h-6" />
-                                                    </div>
-                                                    <div className={`w-5 h-5 rounded-full border-2 p-1 flex items-center justify-center ${paymentMethod === 'manual' ? 'border-blue-600' : 'border-slate-300'}`}>
-                                                        {paymentMethod === 'manual' && <div className="w-full h-full bg-blue-600 rounded-full" />}
+                                                    <div>
+                                                        <span className={`font-bold block ${paymentMethod === gw.id ? 'text-blue-900 dark:text-blue-400' : 'text-slate-600'}`}>
+                                                            {lang === 'ar' ? gw.name_ar : gw.name}
+                                                        </span>
+                                                        <span className="text-xs text-slate-400">{gw.currency}</span>
                                                     </div>
                                                 </div>
-                                                <span className={`font-bold ${paymentMethod === 'manual' ? 'text-blue-900 dark:text-blue-400' : 'text-slate-600'}`}>{t('manual_billing')}</span>
-                                            </div>
+                                            ))}
                                         </div>
                                     </div>
+
+                                    {/* Gateway-Specific Checkout Info */}
+                                    {paymentMethod === 'manual_bank' && (() => {
+                                        const bankGw = activeGateways.find(g => g.id === 'manual_bank');
+                                        return bankGw ? (
+                                            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 space-y-3">
+                                                <h4 className="font-bold text-amber-800 dark:text-amber-400 text-sm">Bank Transfer Details</h4>
+                                                <div className="text-sm space-y-1">
+                                                    <p><strong>Bank:</strong> {bankGw.config?.bank_name}</p>
+                                                    <p><strong>Account:</strong> <span className="font-mono">{bankGw.config?.account_number}</span></p>
+                                                    <p className="text-xs text-amber-600 dark:text-amber-400">{bankGw.config?.instructions}</p>
+                                                </div>
+                                            </div>
+                                        ) : null;
+                                    })()}
+
+                                    {paymentMethod === 'crypto_usdt' && (() => {
+                                        const cryptoGw = activeGateways.find(g => g.id === 'crypto_usdt');
+                                        const rate = cryptoGw?.config?.exchange_rate_lyd_per_usdt || 6.2;
+                                        const usdtAmount = (total / rate).toFixed(2);
+                                        return cryptoGw ? (
+                                            <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-5 space-y-4">
+                                                <h4 className="font-bold text-purple-800 dark:text-purple-400 text-sm">USDT Payment (TRC-20)</h4>
+                                                <div className="bg-white dark:bg-slate-900 rounded-xl p-4 text-center">
+                                                    <p className="text-3xl font-black text-purple-700 dark:text-purple-300">{usdtAmount} USDT</p>
+                                                    <p className="text-xs text-slate-500 mt-1">≈ {total} LYD @ {rate} LYD/USDT</p>
+                                                </div>
+                                                <div className="text-sm space-y-2">
+                                                    <p><strong>Wallet:</strong> <span className="font-mono text-xs break-all">{cryptoGw.config?.wallet_address}</span></p>
+                                                    <p><strong>Network:</strong> {cryptoGw.config?.network || 'TRC-20'}</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-purple-700 dark:text-purple-300 uppercase">Transaction Hash</label>
+                                                    <input
+                                                        value={txHash}
+                                                        onChange={e => setTxHash(e.target.value)}
+                                                        placeholder="Paste your TX hash here..."
+                                                        className="w-full bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800 rounded-lg px-4 py-2 text-sm font-mono"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ) : null;
+                                    })()}
+
+                                    {paymentMethod === 'tlync_lyd' && (
+                                        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-5 text-center">
+                                            <h4 className="font-bold text-blue-800 dark:text-blue-400 text-sm mb-2">Tlync Online Payment</h4>
+                                            <p className="text-sm text-slate-500">You will be redirected to Tlync's secure payment page after submitting.</p>
+                                            <p className="text-xs text-blue-500 mt-2 italic">Integration pending — gateway is not yet active.</p>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="lg:col-span-2">

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Grid, MapPin, DollarSign, Lock, Plus, Edit2, Check, X, ChevronRight, Save, Trash2, Users, AlertTriangle, ShieldAlert, Tag } from 'lucide-react'
+import { Grid, MapPin, DollarSign, Lock, Plus, Edit2, Check, X, ChevronRight, Save, Trash2, Users, AlertTriangle, ShieldAlert, Tag, CreditCard } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function SettingsPage() {
@@ -27,6 +27,7 @@ export default function SettingsPage() {
     const [shieldPricing, setShieldPricing] = useState({ trust: 20, fatora: 50 })
     const [tierPricing, setTierPricing] = useState([])
     const [adminUsers, setAdminUsers] = useState([])
+    const [paymentGateways, setPaymentGateways] = useState([])
 
     // Ribbon configuration state
     const RIBBON_COLORS = ['red', 'green', 'blue', 'amber', 'purple', 'pink', 'orange'];
@@ -41,12 +42,19 @@ export default function SettingsPage() {
         colors: RIBBON_COLORS
     });
 
-    // Load ribbon config from platform_config
+    // Load config from platform_config
     useEffect(() => {
         if (!supabase) return;
         (async () => {
             const { data } = await supabase.from('platform_config').select('value').eq('key', 'ribbon_config').maybeSingle();
             if (data?.value) setRibbonConfig(prev => ({ ...prev, ...data.value }));
+
+            const { data: gatewaysConfig } = await supabase
+                .from('platform_config')
+                .select('value')
+                .eq('key', 'payment_gateways')
+                .maybeSingle();
+            if (gatewaysConfig?.value) setPaymentGateways(gatewaysConfig.value);
         })();
     }, [supabase]);
 
@@ -215,6 +223,22 @@ export default function SettingsPage() {
         }
     };
 
+    const handleSaveGateways = async () => {
+        setIsSaving(true);
+        try {
+            const { error } = await supabase
+                .from('platform_config')
+                .upsert({ key: 'payment_gateways', value: paymentGateways }, { onConflict: 'key' });
+            if (error) throw error;
+            showToast('Payment gateways saved!');
+        } catch (err) {
+            console.error(err);
+            showToast('Failed to save gateways.', 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     if (configLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-950">
@@ -280,6 +304,14 @@ export default function SettingsPage() {
                     >
                         <div className="flex items-center gap-3"><Lock className="w-5 h-5" /> Admin Access</div>
                         {activeTab === 'admins' && <ChevronRight className="w-4 h-4 text-slate-500" />}
+                    </button>
+
+                    <button
+                        onClick={() => setActiveTab('gateways')}
+                        className={`flex items-center justify-between p-3 rounded-xl transition-all ${activeTab === 'gateways' ? 'bg-slate-800 text-white font-semibold border-l-4 border-emerald-500 shadow-md' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 border-l-4 border-transparent'}`}
+                    >
+                        <div className="flex items-center gap-3"><CreditCard className="w-5 h-5" /> Payment Gateways</div>
+                        {activeTab === 'gateways' && <ChevronRight className="w-4 h-4 text-slate-500" />}
                     </button>
                 </div>
 
