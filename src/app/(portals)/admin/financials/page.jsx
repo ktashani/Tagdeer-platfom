@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Fragment } from 'react'
-import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, DollarSign, ExternalLink, ShieldCheck, Loader2, ChevronDown, Building, Tag, Store } from 'lucide-react'
+import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, DollarSign, ExternalLink, ShieldCheck, Loader2, ChevronDown, Building, Tag, Store, XCircle, AlertTriangle } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useTagdeer } from '@/context/TagdeerContext'
 import { Copy } from 'lucide-react'
@@ -189,6 +189,38 @@ export default function FinancialsPage() {
         }
         setIsLoading(false)
     }
+
+    const handleSubscriptionAction = async () => {
+        if (!showActionModal) return;
+        setIsActioning(true);
+
+        const rpcName = showActionModal.type === 'suspend'
+            ? 'admin_suspend_subscription'
+            : showActionModal.type === 'reinstate'
+            ? 'admin_reinstate_subscription'
+            : 'admin_terminate_subscription';
+
+        const { error } = await supabase.rpc(rpcName, {
+            p_subscription_id: showActionModal.subId,
+            p_reason: actionReason || null
+        });
+
+        if (error) {
+            console.error(error);
+            showToast(`Failed to ${showActionModal.type} subscription.`, 'error');
+        } else {
+            showToast(`Subscription ${showActionModal.type}d successfully.`);
+            // Update local state
+            setSubscriptions(prev => prev.map(s =>
+                s.id === showActionModal.subId
+                    ? { ...s, status: showActionModal.type === 'suspend' ? 'Suspended' : showActionModal.type === 'reinstate' ? 'Active' : 'Terminated' }
+                    : s
+            ));
+            setShowActionModal(null);
+            setActionReason('');
+        }
+        setIsActioning(false);
+    };
 
     const handleCreateCampaign = async () => {
         if (!campaignForm.name) return showToast("Campaign name is required", "error")
@@ -468,11 +500,35 @@ export default function FinancialsPage() {
                                                             <button onClick={() => {
                                                                 setTrialForm(prev => ({ ...prev, profileId: sub.profileId }))
                                                                 setShowTrialModal(true)
-                                                            }} className="text-emerald-400 hover:text-emerald-300 font-medium transition-colors">Grant Trial</button>
-                                                        ) : sub.isTrial ? (
-                                                            <button onClick={() => handleRevokeTrial(sub.profileId)} className="text-amber-500 hover:text-amber-400 font-medium transition-colors">Revoke Trial</button>
+                                                            }} className="text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20">Grant Trial</button>
+                                                        ) : sub.isTrial && sub.status === 'Active' ? (
+                                                            <button onClick={() => handleRevokeTrial(sub.profileId)} className="text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-400 hover:bg-amber-500/20">Revoke Trial</button>
                                                         ) : (
-                                                            <button className="text-slate-400 hover:text-white font-medium transition-colors">Manual Extend</button>
+                                                            <button className="text-xs px-2 py-1 rounded bg-slate-500/10 text-slate-400 hover:bg-slate-500/20">Extend</button>
+                                                        )}
+                                                        {(sub.status === 'Active' || sub.status === 'Expiring Soon') && sub.tier !== 'Free' && (
+                                                            <button
+                                                                onClick={() => setShowActionModal({ type: 'suspend', subId: sub.id, merchant: sub.merchant })}
+                                                                className="text-xs px-2 py-1 rounded bg-orange-500/10 text-orange-400 hover:bg-orange-500/20"
+                                                            >
+                                                                Suspend
+                                                            </button>
+                                                        )}
+                                                        {sub.status === 'Suspended' && (
+                                                            <button
+                                                                onClick={() => setShowActionModal({ type: 'reinstate', subId: sub.id, merchant: sub.merchant })}
+                                                                className="text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                                            >
+                                                                Reinstate
+                                                            </button>
+                                                        )}
+                                                        {sub.status !== 'Terminated' && sub.status !== 'Free' && sub.tier !== 'Free' && (
+                                                            <button
+                                                                onClick={() => setShowActionModal({ type: 'terminate', subId: sub.id, merchant: sub.merchant })}
+                                                                className="text-xs px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                                                            >
+                                                                Terminate
+                                                            </button>
                                                         )}
                                                         <button
                                                             onClick={() => toggleMerchantDetail(sub.profileId)}
@@ -688,6 +744,11 @@ export default function FinancialsPage() {
                                 <div className="text-4xl font-bold text-white mb-2">71.6 <span className="text-xl text-slate-500">LYD</span></div>
                                 <div className="text-slate-400 text-sm font-medium">Across all paid accounts</div>
                             </div>
+                            <div className="bg-slate-800/50 border border-indigo-500/30 p-6 rounded-2xl">
+                                <h3 className="text-sm font-medium text-slate-400 mb-2">ERP Sync Queue</h3>
+                                <div className="text-4xl font-bold text-white mb-2">—</div>
+                                <div className="text-indigo-400 text-sm font-medium">Not connected (Odoo integration pending)</div>
+                            </div>
                         </div>
 
                         <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-6 h-64 flex flex-col items-center justify-center text-slate-500">
@@ -734,6 +795,68 @@ export default function FinancialsPage() {
                             <button onClick={() => setShowTrialModal(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-2 rounded-lg transition-colors border border-slate-700">Cancel</button>
                             <button disabled={isGrantingTrial} onClick={handleGrantTrial} className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)] disabled:opacity-50">
                                 {isGrantingTrial ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CheckCircle2 className="w-4 h-4" /> Grant Trial</>}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Subscription Action Modal (Suspend/Reinstate/Terminate) */}
+            {showActionModal && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in">
+                    <div className={`bg-slate-900 border rounded-2xl w-full max-w-md p-6 shadow-2xl ${showActionModal.type === 'terminate' ? 'border-red-500/30' :
+                        showActionModal.type === 'suspend' ? 'border-orange-500/30' : 'border-emerald-500/30'
+                        }`}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${showActionModal.type === 'terminate' ? 'bg-red-500/10' :
+                                showActionModal.type === 'suspend' ? 'bg-orange-500/10' : 'bg-emerald-500/10'
+                                }`}>
+                                {showActionModal.type === 'terminate' && <XCircle className="w-5 h-5 text-red-400" />}
+                                {showActionModal.type === 'suspend' && <AlertTriangle className="w-5 h-5 text-orange-400" />}
+                                {showActionModal.type === 'reinstate' && <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold text-white capitalize">{showActionModal.type} Subscription</h2>
+                                <p className="text-sm text-slate-400">{showActionModal.merchant}</p>
+                            </div>
+                        </div>
+
+                        {showActionModal.type === 'terminate' && (
+                            <div className="bg-red-950/30 border border-red-900/50 rounded-xl p-3 mb-4 text-xs text-red-400">
+                                ⚠️ This action is <strong>permanent and irreversible</strong>. The merchant will lose all premium features immediately.
+                            </div>
+                        )}
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Reason</label>
+                                <textarea
+                                    value={actionReason}
+                                    onChange={e => setActionReason(e.target.value)}
+                                    placeholder={`Reason for ${showActionModal.type}...`}
+                                    rows={3}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500 resize-none"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">Logged in the immutable audit trail.</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 flex gap-3">
+                            <button
+                                onClick={() => { setShowActionModal(null); setActionReason(''); }}
+                                className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-2.5 rounded-lg border border-slate-700"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                disabled={isActioning}
+                                onClick={handleSubscriptionAction}
+                                className={`flex-1 font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50 ${showActionModal.type === 'terminate' ? 'bg-red-500 hover:bg-red-400 text-white' :
+                                    showActionModal.type === 'suspend' ? 'bg-orange-500 hover:bg-orange-400 text-white' :
+                                        'bg-emerald-500 hover:bg-emerald-400 text-white'
+                                    }`}
+                            >
+                                {isActioning ? <Loader2 className="w-4 h-4 animate-spin" /> : `Confirm ${showActionModal.type.charAt(0).toUpperCase() + showActionModal.type.slice(1)}`}
                             </button>
                         </div>
                     </div>
