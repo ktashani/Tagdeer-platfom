@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, Fragment } from 'react'
-import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, DollarSign, ExternalLink, ShieldCheck, Loader2, ChevronDown, Building, Tag, Store } from 'lucide-react'
+import { Wallet, CreditCard, Image as ImageIcon, CheckCircle2, TrendingUp, DollarSign, ExternalLink, ShieldCheck, Loader2, ChevronDown, Building, Tag, Store, XCircle, ScrollText, AlertTriangle } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useTagdeer } from '@/context/TagdeerContext'
 import { Copy } from 'lucide-react'
@@ -28,8 +28,17 @@ export default function FinancialsPage() {
     const [isCreatingCampaign, setIsCreatingCampaign] = useState(false)
 
     const [selectedTxn, setSelectedTxn] = useState(null)
-    const [activeTab, setActiveTab] = useState('queue') // queue, subs, reports, trial_campaigns
+    const [activeTab, setActiveTab] = useState('queue') // queue, subs, reports, trial_campaigns, audit
     const [isConfirming, setIsConfirming] = useState(false)
+
+    // Reject flow state
+    const [showRejectModal, setShowRejectModal] = useState(false)
+    const [rejectReason, setRejectReason] = useState('')
+    const [isRejecting, setIsRejecting] = useState(false)
+
+    // Audit trail state
+    const [auditLog, setAuditLog] = useState([])
+    const [isLoadingAudit, setIsLoadingAudit] = useState(false)
 
     // Expandable merchant detail state
     const [expandedMerchant, setExpandedMerchant] = useState(null) // profileId
@@ -56,7 +65,12 @@ export default function FinancialsPage() {
                     business: t.businesses?.name || 'Unknown',
                     ownerEmail: t.profiles?.email || 'Unknown',
                     requestedTier: t.requested_tier,
-                    amount: `${t.amount} LYD`,
+                    amount: `${t.amount} ${t.currency || 'LYD'}`,
+                    rawAmount: t.amount,
+                    currency: t.currency || 'LYD',
+                    gateway: t.payment_gateway || 'manual_bank',
+                    gatewayRef: t.gateway_reference,
+                    exchangeRate: t.exchange_rate,
                     duration: t.duration,
                     paymentMethod: t.payment_method,
                     date: new Date(t.created_at).toLocaleDateString(),
@@ -107,7 +121,7 @@ export default function FinancialsPage() {
                         profileId: profile.id,
                         merchant: profile.full_name || profile.email,
                         businessNames: businessNames,
-                        tier: sub.tier === 'Tier 1' ? 'Pro' : sub.tier === 'Tier 2' ? 'Enterprise' : sub.tier,
+                        tier: sub.tier,
                         expires: new Date(sub.expires_at).toLocaleDateString(),
                         status: sub.status,
                         isTrial: sub.is_trial,
@@ -140,6 +154,48 @@ export default function FinancialsPage() {
         }
         setIsConfirming(false);
     }
+
+    const handleRejectPayment = async (id) => {
+        setIsRejecting(true);
+        const { error } = await supabase.rpc('admin_reject_payment', { p_txn_id: id, p_reason: rejectReason || null });
+
+        if (error) {
+            console.error(error);
+            showToast("Failed to reject payment.", "error");
+        } else {
+            showToast("Payment rejected.");
+            setTransfers(transfers.filter(t => t.id !== id));
+            setSelectedTxn(null);
+            setShowRejectModal(false);
+            setRejectReason('');
+        }
+        setIsRejecting(false);
+    }
+
+    const fetchAuditLog = async () => {
+        setIsLoadingAudit(true);
+        const { data, error } = await supabase
+            .from('payment_audit_log')
+            .select('*, profiles(full_name, email)')
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+        if (!error && data) setAuditLog(data);
+        setIsLoadingAudit(false);
+    }
+
+    // Computed revenue metrics
+    const computedMRR = subscriptions
+        .filter(s => s.tier !== 'Free' && s.status === 'Active')
+        .reduce((sum, s) => sum + (parseFloat(s.quotas?.price) || 0), 0);
+    const activePaid = subscriptions.filter(s => s.tier !== 'Free' && s.status === 'Active').length;
+    const computedARPU = activePaid > 0 ? (computedMRR / activePaid).toFixed(1) : '0';
+
+    const GATEWAY_LABELS = {
+        manual_bank: { label: 'Bank Transfer', color: 'text-amber-400 bg-amber-400/10' },
+        crypto_usdt: { label: 'USDT', color: 'text-purple-400 bg-purple-400/10' },
+        tlync_lyd: { label: 'Tlync', color: 'text-blue-400 bg-blue-400/10' }
+    };
 
     const handleGrantTrial = async () => {
         if (!trialForm.profileId) return showToast("Select a merchant", "error")
@@ -311,6 +367,12 @@ export default function FinancialsPage() {
                     >
                         <TrendingUp className="w-4 h-4" /> Revenue Reports
                     </button>
+                    <button
+                        onClick={() => { setActiveTab('audit'); fetchAuditLog(); }}
+                        className={`px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${activeTab === 'audit' ? 'bg-red-500/10 text-red-400 shadow-sm border border-red-500/20' : 'text-slate-400 hover:text-slate-200'}`}
+                    >
+                        <ScrollText className="w-4 h-4" /> Audit Trail
+                    </button>
                 </div>
             </div>
 
@@ -344,7 +406,16 @@ export default function FinancialsPage() {
                                         </div>
                                         <p className="text-sm text-slate-400 mb-2">Requesting <strong className="text-emerald-400">{txn.requestedTier}</strong> for {txn.duration}</p>
                                         <div className="flex justify-between items-center text-xs text-slate-500">
-                                            <span className="bg-slate-800 px-2 py-1 rounded">{txn.paymentMethod}</span>
+                                            <div className="flex gap-2">
+                                                <span className={`px-2 py-1 rounded font-medium ${GATEWAY_LABELS[txn.gateway]?.color || 'bg-slate-800 text-slate-400'}`}>
+                                                    {GATEWAY_LABELS[txn.gateway]?.label || txn.paymentMethod}
+                                                </span>
+                                                {txn.currency !== 'LYD' && (
+                                                    <span className="bg-purple-500/10 text-purple-400 px-2 py-1 rounded font-medium">
+                                                        {txn.currency}{txn.exchangeRate ? ` @${txn.exchangeRate}` : ''}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <span>{txn.date}</span>
                                         </div>
                                         <span className="text-xs text-slate-500 mt-2 block">{txn.id}</span>
@@ -381,9 +452,24 @@ export default function FinancialsPage() {
                                             <div className="col-span-2 pt-3 border-t border-slate-800 mt-2">
                                                 <div className="text-slate-500 mb-1 font-medium text-xs uppercase tracking-wider">Payment Details</div>
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-white font-medium">{selectedTxn.paymentMethod}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`px-2 py-1 rounded text-xs font-medium ${GATEWAY_LABELS[selectedTxn.gateway]?.color || 'bg-slate-800 text-slate-400'}`}>
+                                                            {GATEWAY_LABELS[selectedTxn.gateway]?.label || selectedTxn.paymentMethod}
+                                                        </span>
+                                                        <span className="text-white font-medium">{selectedTxn.currency}</span>
+                                                    </div>
                                                     <span className="text-xl font-bold text-emerald-400">{selectedTxn.amount}</span>
                                                 </div>
+                                                {selectedTxn.gatewayRef && (
+                                                    <div className="mt-2 text-xs text-slate-400">
+                                                        <span className="text-slate-500">Ref:</span> <span className="font-mono">{selectedTxn.gatewayRef}</span>
+                                                    </div>
+                                                )}
+                                                {selectedTxn.exchangeRate && (
+                                                    <div className="mt-1 text-xs text-purple-400">
+                                                        Exchange Rate: 1 USDT = {selectedTxn.exchangeRate} LYD
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -402,12 +488,19 @@ export default function FinancialsPage() {
                                     </div>
 
                                 </div>
-                                <div className="p-6 border-t border-slate-700 bg-slate-800 shrink-0">
+                                <div className="p-6 border-t border-slate-700 bg-slate-800 shrink-0 space-y-3">
                                     <button
                                         onClick={() => handleConfirmPayment(selectedTxn.id)}
-                                        className="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-bold py-4 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                                        disabled={isConfirming}
+                                        className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-bold py-4 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
                                     >
-                                        <CheckCircle2 className="w-5 h-5" /> Confirm Payment & Upgrade Account
+                                        {isConfirming ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />} Confirm Payment & Upgrade Account
+                                    </button>
+                                    <button
+                                        onClick={() => setShowRejectModal(true)}
+                                        className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 border border-red-500/30"
+                                    >
+                                        <XCircle className="w-5 h-5" /> Reject Payment
                                     </button>
                                 </div>
                             </div>
@@ -675,17 +768,17 @@ export default function FinancialsPage() {
                             <div className="bg-slate-800/50 border border-emerald-500/30 p-6 rounded-2xl relative overflow-hidden">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
                                 <h3 className="text-sm font-medium text-slate-400 mb-2">Total MRR (Monthly Recurring Revenue)</h3>
-                                <div className="text-4xl font-bold text-white mb-2">24,500 <span className="text-xl text-slate-500">LYD</span></div>
-                                <div className="text-emerald-400 text-sm font-medium flex items-center gap-1"><TrendingUp className="w-4 h-4" /> +15% vs last month</div>
+                                <div className="text-4xl font-bold text-white mb-2">{computedMRR.toLocaleString()} <span className="text-xl text-slate-500">LYD</span></div>
+                                <div className="text-slate-400 text-sm font-medium">From active Pro & Enterprise subscriptions</div>
                             </div>
                             <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl">
                                 <h3 className="text-sm font-medium text-slate-400 mb-2">Active Paid Accounts</h3>
-                                <div className="text-4xl font-bold text-white mb-2">342</div>
+                                <div className="text-4xl font-bold text-white mb-2">{activePaid}</div>
                                 <div className="text-slate-400 text-sm font-medium">Accounts on Pro or Enterprise</div>
                             </div>
                             <div className="bg-slate-800/50 border border-slate-700 p-6 rounded-2xl">
                                 <h3 className="text-sm font-medium text-slate-400 mb-2">ARPU (Avg Rev Per User)</h3>
-                                <div className="text-4xl font-bold text-white mb-2">71.6 <span className="text-xl text-slate-500">LYD</span></div>
+                                <div className="text-4xl font-bold text-white mb-2">{computedARPU} <span className="text-xl text-slate-500">LYD</span></div>
                                 <div className="text-slate-400 text-sm font-medium">Across all paid accounts</div>
                             </div>
                         </div>
@@ -694,6 +787,74 @@ export default function FinancialsPage() {
                             <TrendingUp className="w-12 h-12 text-slate-600 mb-3" />
                             <p className="font-medium text-slate-400">Revenue Chart Placeholder</p>
                             <p className="text-sm mt-1">Monthly collection visualization goes here.</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* 4. Audit Trail */}
+                {activeTab === 'audit' && (
+                    <div className="w-full bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden flex flex-col">
+                        <div className="p-4 border-b border-slate-700/50 bg-slate-800/50 flex justify-between items-center shrink-0">
+                            <h3 className="font-semibold text-white flex items-center gap-2"><ScrollText className="w-4 h-4 text-red-400" /> Immutable Audit Trail</h3>
+                            <button onClick={fetchAuditLog} className="text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition-colors font-medium">Refresh</button>
+                        </div>
+                        <div className="flex-1 overflow-auto">
+                            <table className="w-full text-left text-sm text-slate-400 min-w-[700px]">
+                                <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50 sticky top-0 z-10">
+                                    <tr>
+                                        <th className="px-4 py-3 font-medium text-slate-300">Timestamp</th>
+                                        <th className="px-4 py-3 font-medium text-slate-300">Action</th>
+                                        <th className="px-4 py-3 font-medium text-slate-300">Entity</th>
+                                        <th className="px-4 py-3 font-medium text-slate-300">Status Change</th>
+                                        <th className="px-4 py-3 font-medium text-slate-300">Performed By</th>
+                                        <th className="px-4 py-3 font-medium text-slate-300">Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {isLoadingAudit ? (
+                                        <tr><td colSpan="6" className="p-0"><SkeletonTable rows={6} cols={6} variant="dark" /></td></tr>
+                                    ) : auditLog.length === 0 ? (
+                                        <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">No audit entries found.</td></tr>
+                                    ) : auditLog.map(entry => {
+                                        const actionColors = {
+                                            approved: 'text-emerald-400 bg-emerald-400/10',
+                                            rejected: 'text-red-400 bg-red-400/10',
+                                            activated: 'text-blue-400 bg-blue-400/10',
+                                            expired: 'text-amber-400 bg-amber-400/10',
+                                            suspended: 'text-orange-400 bg-orange-400/10',
+                                            terminated: 'text-red-500 bg-red-500/10',
+                                            created: 'text-slate-300 bg-slate-700'
+                                        };
+                                        return (
+                                            <tr key={entry.id} className="border-b border-slate-700/50 hover:bg-slate-800/50">
+                                                <td className="px-4 py-3 text-xs font-mono text-slate-500">
+                                                    {new Date(entry.created_at).toLocaleString()}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${actionColors[entry.action] || 'text-slate-400 bg-slate-800'}`}>
+                                                        {entry.action}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className="text-xs text-slate-500">{entry.entity_type}</span>
+                                                    <span className="block text-xs font-mono text-slate-600 truncate max-w-[120px]" title={entry.entity_id}>{entry.entity_id?.slice(0, 8)}...</span>
+                                                </td>
+                                                <td className="px-4 py-3 text-xs">
+                                                    {entry.old_status && <span className="text-red-400">{entry.old_status}</span>}
+                                                    {entry.old_status && entry.new_status && <span className="text-slate-600 mx-1">→</span>}
+                                                    {entry.new_status && <span className="text-emerald-400">{entry.new_status}</span>}
+                                                </td>
+                                                <td className="px-4 py-3 text-xs text-slate-400">
+                                                    {entry.profiles?.full_name || entry.profiles?.email || 'System'}
+                                                </td>
+                                                <td className="px-4 py-3 text-xs text-slate-500 max-w-[200px] truncate" title={entry.reason}>
+                                                    {entry.reason || '—'}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}
@@ -804,6 +965,53 @@ export default function FinancialsPage() {
                             <button onClick={() => setShowCreateCampaignModal(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-2 rounded-lg transition-colors border border-slate-700">Cancel</button>
                             <button disabled={isCreatingCampaign} onClick={handleCreateCampaign} className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-medium py-2 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(99,102,241,0.2)] disabled:opacity-50">
                                 {isCreatingCampaign ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Generate Link'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Reject Payment Modal */}
+            {showRejectModal && selectedTxn && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center animate-in fade-in">
+                    <div className="bg-slate-900 border border-red-500/30 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center">
+                                <XCircle className="w-5 h-5 text-red-400" />
+                            </div>
+                            <div>
+                                <h2 className="text-xl font-bold text-white">Reject Payment</h2>
+                                <p className="text-sm text-slate-400">{selectedTxn.business} — {selectedTxn.amount}</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Rejection Reason</label>
+                                <textarea
+                                    value={rejectReason}
+                                    onChange={e => setRejectReason(e.target.value)}
+                                    placeholder="e.g., Receipt doesn't match amount, incorrect bank account, suspected fraud..."
+                                    rows={4}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:border-red-500 resize-none placeholder:text-slate-600"
+                                />
+                                <p className="text-xs text-slate-500 mt-1">This reason will be logged in the audit trail.</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 flex gap-3">
+                            <button
+                                onClick={() => { setShowRejectModal(false); setRejectReason(''); }}
+                                className="flex-1 bg-slate-800 hover:bg-slate-700 text-white font-medium py-2.5 rounded-lg transition-colors border border-slate-700"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                disabled={isRejecting}
+                                onClick={() => handleRejectPayment(selectedTxn.id)}
+                                className="flex-1 bg-red-500 hover:bg-red-400 text-white font-bold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isRejecting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Rejection'}
                             </button>
                         </div>
                     </div>

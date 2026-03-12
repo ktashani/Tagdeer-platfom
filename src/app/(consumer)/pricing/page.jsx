@@ -204,6 +204,18 @@ export default function PricingPage() {
                                         <span className={`text-5xl font-black ${isPopular ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                             {lang === 'ar' ? 'مجاني' : 'Free'}
                                         </span>
+                                    ) : tier.isFreebie ? (
+                                        <div className="flex items-baseline gap-3 flex-wrap">
+                                            <span className={`text-3xl font-bold line-through ${isPopular ? 'text-indigo-300/50' : 'text-slate-400 dark:text-slate-600'}`}>
+                                                {tier.originalPrice || tier.price} <span className="text-lg">{lang === 'ar' ? 'د.ل' : 'LYD'}</span>
+                                            </span>
+                                            <span className={`text-5xl font-black ${isPopular ? 'text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                                {lang === 'ar' ? 'مجاني' : 'Free'}
+                                            </span>
+                                            <span className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg">
+                                                🎁 {lang === 'ar' ? 'عرض خاص' : 'LIMITED OFFER'}
+                                            </span>
+                                        </div>
                                     ) : (
                                         <>
                                             <span className={`text-5xl font-black ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>

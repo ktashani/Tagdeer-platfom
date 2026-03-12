@@ -23,6 +23,15 @@ export default function MerchantSettings() {
 
     const { activeBusiness: myBusiness, claimStatuses } = useActiveBusiness();
 
+    const STATUS_BADGES = {
+        'Active': { label: 'Active', class: 'bg-emerald-100 text-emerald-700' },
+        'Expiring Soon': { label: 'Expiring Soon', class: 'bg-amber-100 text-amber-700' },
+        'Grace Period': { label: 'Grace Period', class: 'bg-red-100 text-red-700' },
+        'Pending': { label: 'Awaiting Payment', class: 'bg-blue-100 text-blue-700' },
+        'Suspended': { label: 'Suspended', class: 'bg-red-100 text-red-700' },
+        'Terminated': { label: 'Terminated', class: 'bg-slate-100 text-slate-700' }
+    };
+
     // Business gating: lock business-specific tabs when claim is pending
     const isBusinessLocked = useMemo(() => {
         if (!myBusiness) return true;
@@ -62,7 +71,7 @@ export default function MerchantSettings() {
                     .from('subscriptions')
                     .select('*')
                     .eq('profile_id', user.id)
-                    .eq('status', 'Active')
+                    .in('status', ['Active', 'Expiring Soon', 'Grace Period', 'Pending'])
                     .single();
 
                 // Calculate Quota Usage and Addons
@@ -95,16 +104,23 @@ export default function MerchantSettings() {
                     setSubscription(data);
 
                     // Client-side expiry fallback
-                    const expiresAt = new Date(data.expires_at)
-                    if (expiresAt < new Date() && data.status === 'Active') {
-                        await supabase
-                            .from('subscriptions')
-                            .update({ status: 'Expired' })
-                            .eq('id', data.id)
-                        setAccountTier('Free')
-                        data.status = 'Expired' // Update local ref
+                    if (data.status === 'Active') {
+                        const expiresAt = new Date(data.expires_at);
+                        if (expiresAt < new Date()) {
+                            await supabase
+                                .from('subscriptions')
+                                .update({ status: 'Expired' })
+                                .eq('id', data.id);
+                            setAccountTier('Free');
+                        } else {
+                            setAccountTier(data.tier);
+                        }
+                    } else if (data.status === 'Pending') {
+                        setAccountTier('Pending');
+                    } else if (data.status === 'Grace Period' || data.status === 'Expiring Soon') {
+                        setAccountTier(data.tier); // Still show tier features during grace
                     } else {
-                        setAccountTier(data.tier);
+                        setAccountTier('Free');
                     }
                 } else {
                     setAccountTier('Free');
@@ -246,17 +262,43 @@ export default function MerchantSettings() {
         }
     };
 
+    const handleTierUpgrade = async (tier) => {
+        if (tier.isFreebie) {
+            // Bypass payment — create subscription directly
+            const { error } = await supabase.from('subscriptions').upsert({
+                profile_id: user.id,
+                tier: tier.name,
+                status: 'Active',
+                quotas: tier.allocations || {},
+                is_trial: false,
+                started_at: new Date().toISOString(),
+                expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+            }, { onConflict: 'profile_id' });
+    
+            if (!error) {
+                showToast('Tier activated! Enjoy your free access. 🎁');
+                window.location.reload();
+            } else {
+                showToast('Failed to activate tier.', 'error');
+            }
+            return;
+        }
+        // ... existing payment flow
+    };
+
     const requestAddonPurchase = async (addonName) => {
         if (!user || !supabase || !myBusiness) return;
         try {
             const { error } = await supabase.from('transactions').insert([{
                 owner_id: user.id,
                 business_id: myBusiness.id,
-                amount: 0, // Admin can set actual price upon review if not strictly defined locally
+                amount: 0,
                 status: 'pending',
                 payment_method: 'manual',
                 requested_tier: `${addonName} Addon`,
-                duration: '1 Month'
+                duration: '1 Month',
+                currency: 'LYD',
+                payment_gateway: 'manual_bank'
             }]);
             if (error) throw error;
             if (showToast) showToast(`Purchase request for ${addonName} Addon submitted. Pending bank transfer approval.`, 'success');
@@ -653,6 +695,11 @@ export default function MerchantSettings() {
                                         <CardTitle className="flex items-center gap-2 text-xl">
                                             Merchant Subscription Tier
                                             {accountTier === 'Enterprise' && <Crown className="w-5 h-5 text-purple-500" />}
+                                            {subscription?.status && STATUS_BADGES[subscription.status] && (
+                                                <Badge className={`${STATUS_BADGES[subscription.status].class} border-0`}>
+                                                    {STATUS_BADGES[subscription.status].label}
+                                                </Badge>
+                                            )}
                                         </CardTitle>
                                         <CardDescription className="mt-1">
                                             Determines your global platform capabilities, loyalty campaigns, and team size.
@@ -680,9 +727,17 @@ export default function MerchantSettings() {
                                                                 {isEnterprise && <Crown className="w-4 h-4 text-purple-500" />}
                                                                 {tier.name}
                                                             </h3>
-                                                            <p className={`text-sm font-semibold ${isEnterprise ? 'text-purple-600' : isPro ? 'text-blue-600' : 'text-slate-500'}`}>
-                                                                {tier.price} LYD / month
-                                                            </p>
+                                                            {tier.isFreebie ? (
+                                                                <div className="flex items-baseline gap-2">
+                                                                    <span className="text-lg line-through text-slate-400">{tier.originalPrice || tier.price} LYD</span>
+                                                                    <span className="text-2xl font-black text-emerald-600">Free</span>
+                                                                    <Badge className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white border-0 text-xs">🎁 LIMITED OFFER</Badge>
+                                                                </div>
+                                                            ) : (
+                                                                <p className={`text-sm font-semibold ${isEnterprise ? 'text-purple-600' : isPro ? 'text-blue-600' : 'text-slate-500'}`}>
+                                                                    {tier.price} LYD / month
+                                                                </p>
+                                                            )}
                                                         </div>
                                                         {isActiveTier && <CheckCircle2 className={`w-5 h-5 ${isEnterprise ? 'text-purple-600' : isPro ? 'text-blue-600' : 'text-slate-600'}`} />}
                                                     </div>
@@ -695,6 +750,7 @@ export default function MerchantSettings() {
                                                     </ul>
                                                     {!isActiveTier && (
                                                         <Button
+                                                            onClick={() => handleTierUpgrade(tier)}
                                                             variant={isPro ? "default" : "outline"}
                                                             size="sm"
                                                             className={`w-full mt-4 ${isEnterprise

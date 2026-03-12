@@ -287,8 +287,10 @@ export default function MerchantOnboarding() {
                     amount: amount,
                     status: paymentMethod === 'manual' ? 'pending' : 'completed',
                     payment_method: paymentMethod,
-                    requested_tier: shieldLevel === 1 ? 'Tier 1' : 'Tier 2',
-                    duration: '1 Month'
+                    requested_tier: shieldLevel === 1 ? 'Trust Shield Addon' : 'Fatora Shield Addon',
+                    duration: '1 Month',
+                    currency: 'LYD',
+                    payment_gateway: paymentMethod === 'manual' ? 'manual_bank' : 'manual_bank'
                 }]);
             }
 

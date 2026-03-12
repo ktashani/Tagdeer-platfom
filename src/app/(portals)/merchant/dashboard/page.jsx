@@ -86,6 +86,7 @@ export default function MerchantDashboard() {
 
     // Feature State
     const [activeFeatures, setActiveFeatures] = useState([]);
+    const [dashboardSubscription, setDashboardSubscription] = useState(null);
 
     // Only render once user and business data loading finishes
     if (user === undefined || isLoadingBusinesses) {
@@ -148,6 +149,23 @@ export default function MerchantDashboard() {
                         setPendingClaim(status);
                         setPendingClaimId(claimData.id); // store ID to update later
                     }
+                }
+
+                // Fetch subscription status for lifecycle-aware UI
+                const { data: subData } = await supabase
+                    .from('subscriptions')
+                    .select('status, tier, expires_at')
+                    .eq('profile_id', user.id)
+                    .maybeSingle();
+
+                if (subData) {
+                    // If subscription is Suspended, override the mock state
+                    if (subData.status === 'Suspended') {
+                        // The existing SUSPENDED render block (line 449) handles this
+                        // We just need to set business status to trigger it
+                    }
+                    // Store subscription for the welcome bar
+                    setDashboardSubscription(subData);
                 }
 
                 if (!myBusiness) return; // Only fetch campaigns/disputes if business is approved/linked
@@ -225,6 +243,10 @@ export default function MerchantDashboard() {
         currentMockState = MOCK_STATES.RESTRICTED;
     } else if (myBusiness.status === 'pending_review') {
         currentMockState = MOCK_STATES.PENDING_APPROVAL;
+    } else if (dashboardSubscription?.status === 'Suspended') {
+        currentMockState = MOCK_STATES.SUSPENDED;
+    } else if (dashboardSubscription?.status === 'Terminated') {
+        currentMockState = MOCK_STATES.SUSPENDED; // Re-use suspended UI with different copy
     }
 
     // Derived Metrics
@@ -561,6 +583,39 @@ export default function MerchantDashboard() {
         <div className="space-y-8 animate-in fade-in duration-300 relative">
 
             {/* Placeholder for future tier upsell */}
+
+            {/* Subscription Lifecycle Banner */}
+            {dashboardSubscription && ['Expiring Soon', 'Grace Period', 'Pending'].includes(dashboardSubscription.status) && (
+                <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+                    dashboardSubscription.status === 'Expiring Soon'
+                        ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
+                        : dashboardSubscription.status === 'Grace Period'
+                        ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800'
+                        : 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800'
+                }`}>
+                    <div className="flex items-center gap-3">
+                        <AlertTriangle className={`w-5 h-5 ${
+                            dashboardSubscription.status === 'Expiring Soon' ? 'text-amber-500' :
+                            dashboardSubscription.status === 'Grace Period' ? 'text-red-500' : 'text-blue-500'
+                        }`} />
+                        <div>
+                            <p className="font-bold text-sm">
+                                {dashboardSubscription.status === 'Expiring Soon'
+                                    ? `Subscription expires on ${new Date(dashboardSubscription.expires_at).toLocaleDateString()}`
+                                    : dashboardSubscription.status === 'Grace Period'
+                                    ? 'Your subscription has expired! Renew now to keep your features.'
+                                    : 'Payment submitted — awaiting admin confirmation.'
+                                }
+                            </p>
+                        </div>
+                    </div>
+                    {dashboardSubscription.status !== 'Pending' && (
+                        <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white rounded-full" onClick={() => router.push('/merchant/settings')}>
+                            Renew Now
+                        </Button>
+                    )}
+                </div>
+            )}
 
             {/* 1. Welcome & Search Bar */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">

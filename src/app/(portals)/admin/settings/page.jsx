@@ -584,11 +584,30 @@ export default function SettingsPage() {
                                                                 type="number"
                                                                 value={tier.price}
                                                                 onChange={e => handleTierChange(tier.id, 'price', parseInt(e.target.value) || 0)}
-                                                                className="w-24 bg-slate-900 border border-slate-600 rounded p-2 text-white text-xl font-bold text-right focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                                                className={`w-24 bg-slate-900 border border-slate-600 rounded p-2 text-xl font-bold text-right focus:outline-none focus:ring-1 focus:ring-emerald-500 ${tier.isFreebie ? 'text-slate-500 line-through' : 'text-white'}`}
+                                                                disabled={tier.isFreebie}
                                                             />
                                                             <span className="text-slate-400 font-bold">LYD / mo</span>
                                                         </div>
+                                                        {tier.isFreebie && (
+                                                            <div className="text-[10px] text-emerald-400 font-bold bg-emerald-400/10 px-2 py-0.5 rounded animate-pulse">
+                                                                🎁 FREEBIE MODE ACTIVE
+                                                            </div>
+                                                        )}
                                                         <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (!tier.isFreebie) {
+                                                                        handleTierChange(tier.id, 'originalPrice', tier.price);
+                                                                        handleTierChange(tier.id, 'isFreebie', true);
+                                                                    } else {
+                                                                        handleTierChange(tier.id, 'isFreebie', false);
+                                                                    }
+                                                                }}
+                                                                className={`text-xs px-3 py-1.5 rounded font-bold transition-all ${tier.isFreebie ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/50' : 'bg-slate-700 text-slate-400 hover:text-slate-200'}`}
+                                                            >
+                                                                {tier.isFreebie ? '🎁 Freebie ON' : 'Set Freebie'}
+                                                            </button>
                                                             <button
                                                                 onClick={() => handleTierChange(tier.id, 'isActive', !tier.isActive)}
                                                                 className={`text-xs px-3 py-1.5 rounded font-bold transition-all ${tier.isActive ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'}`}
