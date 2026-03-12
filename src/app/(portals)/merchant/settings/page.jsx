@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -21,7 +21,14 @@ export default function MerchantSettings() {
     const searchParams = useSearchParams();
     const trialCampaignId = searchParams.get('trial_campaign');
 
-    const { activeBusiness: myBusiness } = useActiveBusiness();
+    const { activeBusiness: myBusiness, claimStatuses } = useActiveBusiness();
+
+    // Business gating: lock business-specific tabs when claim is pending
+    const isBusinessLocked = useMemo(() => {
+        if (!myBusiness) return true;
+        const status = claimStatuses[myBusiness.id];
+        return status === 'pending' || status === 'missing_docs';
+    }, [myBusiness, claimStatuses]);
 
     // Account Level
     const [accountTier, setAccountTier] = useState('Free'); // 'Free', 'Pro', 'Enterprise'
@@ -587,16 +594,17 @@ export default function MerchantSettings() {
                         </TabsTrigger>
                         <TabsTrigger
                             value="business"
-                            className="w-full justify-start py-3 px-4 rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm border border-transparent data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800 transition-all font-medium"
+                            className={`w-full justify-start py-3 px-4 rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm border border-transparent data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800 transition-all font-medium relative ${isBusinessLocked ? 'opacity-50' : ''}`}
                         >
                             <Store className="w-4 h-4 mr-3 opacity-70" /> Business Settings
+                            {isBusinessLocked && <Lock className="w-3 h-3 absolute right-4 text-amber-500" />}
                         </TabsTrigger>
                         <TabsTrigger
                             value="team"
-                            className="w-full justify-start py-3 px-4 rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm border border-transparent data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800 transition-all font-medium relative"
+                            className={`w-full justify-start py-3 px-4 rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-slate-900 data-[state=active]:shadow-sm border border-transparent data-[state=active]:border-slate-200 dark:data-[state=active]:border-slate-800 transition-all font-medium relative ${isBusinessLocked ? 'opacity-50' : ''}`}
                         >
                             <UserPlus className="w-4 h-4 mr-3 opacity-70" /> Team Management
-                            {accountTier === 'Free' && <Lock className="w-3 h-3 absolute right-4 text-slate-400" />}
+                            {(accountTier === 'Free' || isBusinessLocked) && <Lock className={`w-3 h-3 absolute right-4 ${isBusinessLocked ? 'text-amber-500' : 'text-slate-400'}`} />}
                         </TabsTrigger>
                     </TabsList>
 
@@ -820,6 +828,26 @@ export default function MerchantSettings() {
                             TAB 2: BUSINESS SETTINGS (CONTEXTUAL)
                         ========================================== */}
                         <TabsContent value="business" className="space-y-6 m-0 animate-in fade-in duration-300 outline-none">
+
+                            {isBusinessLocked ? (
+                                <Card className="border-dashed border-2 border-amber-300 bg-amber-50/30 dark:bg-amber-950/10 text-center py-16">
+                                    <CardContent className="flex flex-col items-center justify-center space-y-4">
+                                        <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/40 text-amber-600 rounded-full flex items-center justify-center">
+                                            <Lock className="w-8 h-8" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xl font-bold">Business Settings Locked</h3>
+                                            <p className="text-slate-500 mt-2 max-w-md mx-auto">
+                                                Your business claim is currently under review. These settings will unlock once your business is approved by the Tagdeer admin team.
+                                            </p>
+                                        </div>
+                                        <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300">
+                                            Pending Approval
+                                        </Badge>
+                                    </CardContent>
+                                </Card>
+                            ) : (
+                            <>
 
                             <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 rounded-xl p-4 flex items-center gap-3">
                                 <Building className="w-5 h-5 text-indigo-600" />
@@ -1150,6 +1178,8 @@ export default function MerchantSettings() {
                                 </Card>
                             )}
 
+                            </>
+                            )}
                         </TabsContent>
 
                         {/* ==========================================
@@ -1157,7 +1187,24 @@ export default function MerchantSettings() {
                         ========================================== */}
                         <TabsContent value="team" className="space-y-6 m-0 animate-in fade-in duration-300 outline-none">
 
-                            {accountTier === 'Free' ? (
+                            {isBusinessLocked ? (
+                                <Card className="border-dashed border-2 border-amber-300 bg-amber-50/30 dark:bg-amber-950/10 text-center py-16">
+                                    <CardContent className="flex flex-col items-center justify-center space-y-4">
+                                        <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/40 text-amber-600 rounded-full flex items-center justify-center">
+                                            <Lock className="w-8 h-8" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xl font-bold">Team Management Locked</h3>
+                                            <p className="text-slate-500 mt-2 max-w-md mx-auto">
+                                                Team management requires an approved business. Once your business claim is verified, you can invite and manage team members.
+                                            </p>
+                                        </div>
+                                        <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300">
+                                            Pending Approval
+                                        </Badge>
+                                    </CardContent>
+                                </Card>
+                            ) : accountTier === 'Free' ? (
                                 <Card className="border-dashed border-2 bg-slate-50/50 dark:bg-slate-900/20 text-center py-12">
                                     <CardContent className="flex flex-col items-center justify-center space-y-4">
                                         <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/50 text-blue-600 rounded-full flex items-center justify-center">
