@@ -6,6 +6,7 @@ RETURNS INTEGER AS $$
 DECLARE
     v_count INTEGER := 0;
     v_row RECORD;
+    v_rows INTEGER;
 BEGIN
     -- 1. Grace Period → Free (grace expired, revoke to Free tier)
     FOR v_row IN
@@ -46,7 +47,8 @@ BEGIN
     SET status = 'Expired'
     WHERE status = 'Active'
       AND expires_at < NOW();
-    GET DIAGNOSTICS v_count = v_count + ROW_COUNT;
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    v_count := v_count + v_rows;
 
     -- 4. Active → Expiring Soon (within 7 days)
     UPDATE public.subscriptions
