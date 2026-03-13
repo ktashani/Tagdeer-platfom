@@ -22,9 +22,7 @@ const BusinessDataContext = createContext();
 export function BusinessDataProvider({ children }) {
     const { user, supabase, lang } = useAuth();
 
-    const [businesses, setBusinesses] = useState(
-        (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') ? INITIAL_BUSINESSES : []
-    );
+    const [businesses, setBusinesses] = useState([]);
 
     useEffect(() => {
         const fetchBusinesses = async () => {
@@ -33,7 +31,7 @@ export function BusinessDataProvider({ children }) {
                 const ADMIN_ROLES = ['super_admin', 'admin', 'assistant_admin', 'support_agent'];
                 const isAdmin = ADMIN_ROLES.includes(user?.role) || user?.userId === 'ADMIN-MOCK' || user?.isDevBypass;
 
-                let query = supabase.from('businesses').select('*, logs(id, interaction_type, reason_text, created_at, trust_points, is_verified, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)').limit(200);
+                let query = supabase.from('businesses').select('*, logs(id, interaction_type, reason_text, created_at, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)').limit(200);
                 if (!isAdmin) {
                     query = query.eq('status', 'published');
                 }
@@ -57,7 +55,8 @@ export function BusinessDataProvider({ children }) {
                 } catch (e) { /* safe to ignore */ }
 
                 if (error) {
-                    console.warn('Supabase fetch failed, falling back to mock data.', error);
+                    console.error('Supabase businesses fetch failed:', error);
+                    setBusinesses([]);
                     return;
                 }
 
@@ -68,7 +67,7 @@ export function BusinessDataProvider({ children }) {
                 if (!isAdmin && user?.id) {
                     const { data: myOwned } = await supabase
                         .from('businesses')
-                        .select('*, logs(id, interaction_type, reason_text, created_at, trust_points, is_verified, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)')
+                        .select('*, logs(id, interaction_type, reason_text, created_at, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)')
                         .eq('claimed_by', user.id)
                         .neq('status', 'published'); // Only fetch non-published ones to avoid duplicates
 
@@ -94,7 +93,7 @@ export function BusinessDataProvider({ children }) {
                             if (missingIds.length > 0) {
                                 const { data: claimBiz } = await supabase
                                     .from('businesses')
-                                    .select('*, logs(id, interaction_type, reason_text, created_at, trust_points, is_verified, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)')
+                                    .select('*, logs(id, interaction_type, reason_text, created_at, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)')
                                     .in('id', missingIds);
 
                                 claimInitiatedData = claimBiz || [];
@@ -150,8 +149,7 @@ export function BusinessDataProvider({ children }) {
                                     text: log.reason_text || (log.interaction_type === 'recommend' ? 'User recommended' : 'User complained'),
                                     date: new Date(log.created_at).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US'),
                                     created_at: log.created_at,
-                                    trust_points: log.trust_points || null,
-                                    is_verified: log.is_verified || false,
+                                    is_verified: !!log.profile_id,
                                     helpful_votes: log.helpful_votes || 0,
                                     unhelpful_votes: log.unhelpful_votes || 0,
                                     fingerprint: log.fingerprint,
@@ -218,8 +216,8 @@ export function BusinessDataProvider({ children }) {
                                             type: newLog.interaction_type,
                                             text: newLog.reason_text || (newLog.interaction_type === 'recommend' ? 'User recommended' : 'User complained'),
                                             date: new Date(newLog.created_at).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US'),
-                                            trust_points: newLog.trust_points || null,
-                                            is_verified: newLog.is_verified || false,
+                                            created_at: newLog.created_at,
+                                            is_verified: !!newLog.profile_id,
                                             helpful_votes: newLog.helpful_votes || 0,
                                             unhelpful_votes: newLog.unhelpful_votes || 0,
                                             fingerprint: newLog.fingerprint,
