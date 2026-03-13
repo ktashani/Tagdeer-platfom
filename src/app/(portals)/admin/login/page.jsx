@@ -31,17 +31,14 @@ export default function AdminLogin() {
             }
 
             // Step 2: Client-side — sign in via Supabase so AuthProvider sees the session.
-            // With @supabase/ssr, this writes session tokens to cookies (not localStorage),
-            // making them available to the middleware on the next request.
-            // We MUST await this before redirecting.
+            // This is fire-and-forget: the admin_auth cookie is the primary auth mechanism.
+            // We intentionally do NOT await this because @supabase/ssr's session lock can
+            // deadlock when the onAuthStateChange handler (syncUserProfile) runs synchronously.
+            // The redirect will happen immediately after the server action succeeds.
             if (supabase) {
-                try {
-                    await supabase.auth.signInWithPassword({ email, password })
-                } catch (supabaseErr) {
-                    // Non-fatal: admin_auth cookie is the primary auth mechanism.
-                    // Supabase session is optional for admin — it only powers TagdeerContext.
-                    console.warn('Client-side Supabase sign-in failed (non-fatal):', supabaseErr.message)
-                }
+                supabase.auth.signInWithPassword({ email, password }).catch((err) => {
+                    console.warn('Client-side Supabase sign-in failed (non-fatal):', err.message)
+                })
             }
 
             // Step 3: Hard redirect. Use bare path (no /admin prefix) because the
