@@ -13,6 +13,7 @@ export default function MerchantGuard({ children }) {
     const [isAuthorized, setIsAuthorized] = useState(false)
     const [subTier, setSubTier] = useState(null)
     const [checkingSub, setCheckingSub] = useState(true)
+    const [forceUnblock, setForceUnblock] = useState(false)
     const isMounted = useRef(true)
     const redirecting = useRef(false)
 
@@ -157,6 +158,7 @@ export default function MerchantGuard({ children }) {
                 console.warn('[MerchantGuard] Master timeout: forcing guard to unblock after 10s');
                 setCheckingSub(false);
                 setIsAuthorized(true);
+                setForceUnblock(true);
             }
         }, 10000);
         return () => clearTimeout(masterTimeout);
@@ -172,7 +174,7 @@ export default function MerchantGuard({ children }) {
         )
     }
 
-    if (loading || checkingSub || !isAuthorized) {
+    if ((loading || checkingSub || !isAuthorized) && !forceUnblock) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FB]">
                 <Loader2 className="h-8 w-8 animate-spin border-blue-600" />

@@ -37,6 +37,11 @@ export default function FinancialsPage() {
     const [rejectReason, setRejectReason] = useState('')
     const [isRejecting, setIsRejecting] = useState(false)
 
+    // Subscription action modal state (suspend / reinstate / terminate)
+    const [showActionModal, setShowActionModal] = useState(null)    // { type, subId, merchant }
+    const [isActioning, setIsActioning] = useState(false)
+    const [actionReason, setActionReason] = useState('')
+
     // Audit trail state
     const [auditLog, setAuditLog] = useState([])
     const [isLoadingAudit, setIsLoadingAudit] = useState(false)
