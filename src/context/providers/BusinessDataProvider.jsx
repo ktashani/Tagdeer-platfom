@@ -33,7 +33,7 @@ export function BusinessDataProvider({ children }) {
                 const ADMIN_ROLES = ['super_admin', 'admin', 'assistant_admin', 'support_agent'];
                 const isAdmin = ADMIN_ROLES.includes(user?.role) || user?.userId === 'ADMIN-MOCK' || user?.isDevBypass;
 
-                let query = supabase.from('businesses').select('*, logs(*), storefronts(slug, logo_url, status)').limit(200);
+                let query = supabase.from('businesses').select('*, logs(id, interaction_type, reason_text, created_at, trust_points, is_verified, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)').limit(200);
                 if (!isAdmin) {
                     query = query.eq('status', 'published');
                 }
@@ -68,7 +68,7 @@ export function BusinessDataProvider({ children }) {
                 if (!isAdmin && user?.id) {
                     const { data: myOwned } = await supabase
                         .from('businesses')
-                        .select('*, logs(*), storefronts(slug, logo_url, status)')
+                        .select('*, logs(id, interaction_type, reason_text, created_at, trust_points, is_verified, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)')
                         .eq('claimed_by', user.id)
                         .neq('status', 'published'); // Only fetch non-published ones to avoid duplicates
 
@@ -94,7 +94,7 @@ export function BusinessDataProvider({ children }) {
                             if (missingIds.length > 0) {
                                 const { data: claimBiz } = await supabase
                                     .from('businesses')
-                                    .select('*, logs(*), storefronts(slug, logo_url, status)')
+                                    .select('*, logs(id, interaction_type, reason_text, created_at, trust_points, is_verified, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)')
                                     .in('id', missingIds);
 
                                 claimInitiatedData = claimBiz || [];

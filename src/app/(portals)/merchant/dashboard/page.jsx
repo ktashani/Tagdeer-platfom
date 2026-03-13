@@ -201,10 +201,10 @@ export default function MerchantDashboard() {
                     }
                 } catch (_) { /* table may not exist yet */ }
 
-                // Fetch active campaigns
+                // Fetch active campaigns from merchant_coupons (platform_coupon_pools was dropped)
                 const { data: campaigns } = await supabase
-                    .from('platform_coupon_pools')
-                    .select('id, title, amount, remaining, status')
+                    .from('merchant_coupons')
+                    .select('id, title, initial_quantity, claimed_count, status')
                     .eq('business_id', myBusiness.id)
                     .order('created_at', { ascending: false })
                     .limit(5);
@@ -212,12 +212,12 @@ export default function MerchantDashboard() {
                 if (campaigns) {
                     setActiveCampaigns(campaigns.map(c => ({
                         name: c.title || 'Campaign',
-                        redeemed: `${(c.amount || 0) - (c.remaining || 0)}/${c.amount || 0}`,
-                        status: c.status === 'active' ? 'Active' : (c.remaining === 0 ? 'Exhausted' : 'Paused')
+                        redeemed: `${c.claimed_count || 0}/${c.initial_quantity || 0}`,
+                        status: c.status === 'active' ? 'Active' : (c.claimed_count >= (c.initial_quantity || 0) ? 'Exhausted' : 'Paused')
                     })));
 
                     // Sum redeemed coupons
-                    const totalRedeemed = campaigns.reduce((sum, c) => sum + ((c.amount || 0) - (c.remaining || 0)), 0);
+                    const totalRedeemed = campaigns.reduce((sum, c) => sum + (c.claimed_count || 0), 0);
                     setCouponsRedeemed(totalRedeemed);
                 }
             } catch (err) {

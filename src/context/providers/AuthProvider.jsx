@@ -41,7 +41,15 @@ export function AuthProvider({ children }) {
         if (!supabase) return;
 
         const checkInitialSession = async () => {
+            // Safety: if getSession() hangs (e.g. SSR cookie lock), force-resolve after 5s
+            const sessionTimeout = setTimeout(() => {
+                console.warn('[AuthProvider] getSession() timeout after 5s — forcing loading=false');
+                setLoading(false);
+            }, 5000);
+
             const { data: { session } } = await supabase.auth.getSession();
+            clearTimeout(sessionTimeout);
+
             if (session) {
                 await syncUserProfile(session.user);
             } else {
