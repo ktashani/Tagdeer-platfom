@@ -46,11 +46,11 @@ export default function SetPasswordPrompt({ onSetPassword, onSkip }) {
         setIsLoading(true);
         try {
             await onSetPassword(password);
+            // onSetPassword handles the redirect via window.location.href
+            // The toast below may flash briefly before navigation
             toast.success("Password set successfully! Redirecting...");
-            // Give a brief moment for the toast to show, then redirect
-            setTimeout(() => {
-                if (onSkip) onSkip();
-            }, 1000);
+            // Safety: if redirect doesn't fire within 2s, reset the button
+            setTimeout(() => setIsLoading(false), 2000);
         } catch (err) {
             toast.error(err.message || "Failed to set password");
             setIsLoading(false);

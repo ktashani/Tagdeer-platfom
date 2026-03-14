@@ -224,12 +224,16 @@ export default function MerchantLogin() {
      * Step 3: Set password after first OTP login
      */
     const handleSetPassword = async (newPassword) => {
+        // setMerchantPassword may throw — SetPasswordPrompt catches it
         await setMerchantPassword(newPassword);
-        navigateForward('/dashboard');
+        // On success, use hard redirect to sync auth cookies + middleware
+        const dashPath = trialCampaign ? `/dashboard?trial_campaign=${trialCampaign}` : '/dashboard';
+        window.location.href = dashPath;
     };
 
     const handleSkipPassword = () => {
-        navigateForward('/dashboard');
+        const dashPath = trialCampaign ? `/dashboard?trial_campaign=${trialCampaign}` : '/dashboard';
+        window.location.href = dashPath;
     };
 
     // Show a clean loading state during the redirect to prevent UI flashing
