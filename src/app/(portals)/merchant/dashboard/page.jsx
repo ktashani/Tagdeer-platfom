@@ -88,16 +88,6 @@ export default function MerchantDashboard() {
     const [activeFeatures, setActiveFeatures] = useState([]);
     const [dashboardSubscription, setDashboardSubscription] = useState(null);
 
-    // Only render once user and business data loading finishes
-    if (user === undefined || isLoadingBusinesses) {
-        return (
-            <div className="space-y-6 p-8">
-                <SkeletonStats count={5} variant="light" />
-                <SkeletonCardGrid count={3} />
-            </div>
-        );
-    }
-
     // Auto-redirect to settings if arriving via trial campaign link and already has a business
     useEffect(() => {
         if (trialCampaign && myBusiness) {
@@ -161,7 +151,7 @@ export default function MerchantDashboard() {
                 if (subData) {
                     // If subscription is Suspended, override the mock state
                     if (subData.status === 'Suspended') {
-                        // The existing SUSPENDED render block (line 449) handles this
+                        // The existing SUSPENDED render block handles this
                         // We just need to set business status to trigger it
                     }
                     // Store subscription for the welcome bar
@@ -227,6 +217,18 @@ export default function MerchantDashboard() {
 
         fetchDashboardData();
     }, [supabase, myBusiness?.id, user?.id, myBusiness]);
+
+    // ==========================================
+    // LOADING GUARD (must be AFTER all hooks)
+    // ==========================================
+    if (user === undefined || isLoadingBusinesses) {
+        return (
+            <div className="space-y-6 p-8">
+                <SkeletonStats count={5} variant="light" />
+                <SkeletonCardGrid count={3} />
+            </div>
+        );
+    }
 
     // ==========================================
     // DYNAMIC STATES
