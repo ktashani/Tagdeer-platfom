@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
 
 const ActiveBusinessContext = createContext();
@@ -109,6 +109,30 @@ export function ActiveBusinessProvider({ children }) {
         return myBusinesses.find(b => b.id === selectedBusinessId) || myBusinesses[0] || null;
     }, [myBusinesses, selectedBusinessId]);
 
+    // Count of active + pending claims for quota enforcement
+    const pendingClaimCount = useMemo(() => {
+        return Object.values(claimStatuses).filter(
+            s => s === 'pending' || s === 'approved'
+        ).length;
+    }, [claimStatuses]);
+
+    // Check if a business has an existing pending/approved claim from ANY user
+    const isBusinessClaimedByOther = useCallback(async (businessId) => {
+        if (!supabase) return false;
+        const { count } = await supabase
+            .from('business_claims')
+            .select('id', { count: 'exact', head: true })
+            .eq('business_id', businessId)
+            .in('status', ['pending', 'approved']);
+        return (count || 0) > 0;
+    }, [supabase]);
+
+    // Optimistic lock: instantly update local state after a claim submission
+    const addOptimisticClaim = useCallback((businessId) => {
+        setClaimStatuses(prev => ({ ...prev, [businessId]: 'pending' }));
+        setClaimedBusinessIds(prev => [...prev, businessId]);
+    }, []);
+
     return (
         <ActiveBusinessContext.Provider value={{
             activeBusiness,
@@ -116,7 +140,10 @@ export function ActiveBusinessProvider({ children }) {
             selectedBusinessId,
             setSelectedBusinessId,
             isLoadingBusinesses,
-            claimStatuses
+            claimStatuses,
+            pendingClaimCount,
+            isBusinessClaimedByOther,
+            addOptimisticClaim
         }}>
             {children}
         </ActiveBusinessContext.Provider>

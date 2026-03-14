@@ -56,12 +56,16 @@ export default function MerchantOnboarding() {
     useEffect(() => {
         if (!user || !supabase) return;
         const checkQuota = async () => {
-            const [subsRes, bizCountRes] = await Promise.all([
+            const [subsRes, bizCountRes, pendingCountRes] = await Promise.all([
                 supabase.from('subscriptions').select('quotas').eq('profile_id', user.id).eq('status', 'Active').maybeSingle(),
-                supabase.from('businesses').select('id', { count: 'exact', head: true }).eq('claimed_by', user.id)
+                supabase.from('businesses').select('id', { count: 'exact', head: true }).eq('claimed_by', user.id),
+                supabase.from('business_claims').select('id', { count: 'exact', head: true })
+                    .eq('user_id', user.id).in('status', ['pending'])
             ]);
 
-            const used = bizCountRes.count || 0;
+            const activeCount = bizCountRes.count || 0;
+            const pendingCount = pendingCountRes.count || 0;
+            const used = activeCount + pendingCount;
             const max = subsRes.data?.quotas?.max_locations || 1; // Default Free tier is 1
 
             setQuotaData({ used, max });
@@ -182,8 +186,26 @@ export default function MerchantOnboarding() {
         return () => clearTimeout(timer);
     }, [businessSearch, searchBusinesses]);
 
-    const selectExistingBusiness = (business) => {
-        if (business.claimed_by) return; // Can't select claimed businesses
+    const selectExistingBusiness = async (business) => {
+        if (business.claimed_by) return; // Already claimed (approved)
+
+        // Check if ANY user has a pending/approved claim for this business
+        try {
+            const { count } = await supabase
+                .from('business_claims')
+                .select('id', { count: 'exact', head: true })
+                .eq('business_id', business.id)
+                .in('status', ['pending', 'approved']);
+
+            if ((count || 0) > 0) {
+                toast.error(lang === 'ar' ? 'هذا النشاط لديه طلب مطالبة معلق بالفعل.' : 'This business already has a pending claim.');
+                return;
+            }
+        } catch (err) {
+            console.warn('Claim conflict check failed:', err);
+            // Proceed anyway — DB trigger will catch it
+        }
+
         setSelectedExisting(business);
         setBusinessData({
             name: business.name,
@@ -300,7 +322,19 @@ export default function MerchantOnboarding() {
                     mime_type: fileMetadata.type
                 }], { onConflict: 'business_id,user_id' });
 
-            if (claimError) throw new Error("Claim submission failed: " + claimError.message);
+            if (claimError) {
+                if (claimError.message?.includes('CLAIM_CONFLICT')) {
+                    throw new Error(lang === 'ar'
+                        ? 'هذا النشاط لديه طلب مطالبة معلق بالفعل من تاجر آخر.'
+                        : 'This business already has a pending claim from another merchant.');
+                }
+                if (claimError.message?.includes('QUOTA_EXCEEDED')) {
+                    throw new Error(lang === 'ar'
+                        ? 'لقد وصلت إلى الحد الأقصى لعدد المواقع في باقتك. قم بترقية باقتك للمطالبة بمواقع أكثر.'
+                        : 'You have reached your tier limit. Upgrade your plan to claim more businesses.');
+                }
+                throw new Error("Claim submission failed: " + claimError.message);
+            }
 
             // 4. Record the requested Financial Upgrade (if applicable)
             // Skip transaction creation entirely for zero-cost onboarding
@@ -353,6 +387,11 @@ export default function MerchantOnboarding() {
             // the claim via admin_resolve_claim RPC — not here during onboarding.
 
             setStep(4);
+
+            // Optimistic UI lock — exhaust quota locally so re-entering onboarding is blocked
+            setQuotaData(prev => prev ? { ...prev, used: prev.used + 1 } : prev);
+            setHasQuota(false);
+
             if (showToast) showToast(t('registration_submitted') || 'Registration submitted successfully!');
         } catch (error) {
             console.error(error);

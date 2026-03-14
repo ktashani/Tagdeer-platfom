@@ -19,12 +19,20 @@ export default function AdminGuard({ children }) {
     const [checking, setChecking] = useState(true)
 
     useEffect(() => {
+        // Safety timeout: if check-auth takes longer than 8s, force render
+        const safetyTimer = setTimeout(() => {
+            console.warn('[AdminGuard] Safety timeout: forcing guard open after 8s');
+            setIsAuthorized(true);
+            setChecking(false);
+        }, 8000);
+
         // Don't guard the login page itself.
         // On subdomain: usePathname() returns '/login'
         // On path-based (localhost): returns '/admin/login'
         if (pathname === '/admin/login' || pathname === '/login') {
             setIsAuthorized(true)
             setChecking(false)
+            clearTimeout(safetyTimer)
             return
         }
 
@@ -32,35 +40,47 @@ export default function AdminGuard({ children }) {
 
         const checkAdminAuth = async () => {
             try {
+                console.log('[AdminGuard] Checking auth for pathname:', pathname)
                 const res = await fetch('/api/admin/check-auth', {
                     credentials: 'include',
                     // Cache-bust to avoid stale 401s after a fresh login
                     headers: { 'Cache-Control': 'no-cache' }
                 })
                 if (!isMounted) return
+                console.log('[AdminGuard] check-auth response status:', res.status)
 
                 if (res.ok) {
                     const data = await res.json()
+                    console.log('[AdminGuard] check-auth response data:', JSON.stringify(data))
                     if (data.authenticated) {
                         setIsAuthorized(true)
                     } else {
+                        console.warn('[AdminGuard] REJECTED — check-auth returned authenticated:false')
                         router.replace('/login?redirect=' + encodeURIComponent(pathname))
                     }
                 } else {
+                    console.warn('[AdminGuard] REJECTED — check-auth returned non-OK status:', res.status)
                     router.replace('/login?redirect=' + encodeURIComponent(pathname))
                 }
-            } catch {
+            } catch (err) {
+                console.error('[AdminGuard] REJECTED — fetch error:', err)
                 if (isMounted) {
                     router.replace('/login?redirect=' + encodeURIComponent(pathname))
                 }
             } finally {
-                if (isMounted) setChecking(false)
+                if (isMounted) {
+                    setChecking(false)
+                    clearTimeout(safetyTimer)
+                }
             }
         }
 
         checkAdminAuth()
 
-        return () => { isMounted = false }
+        return () => {
+            isMounted = false
+            clearTimeout(safetyTimer)
+        }
     }, [pathname, router])
 
     if (checking || !isAuthorized) {

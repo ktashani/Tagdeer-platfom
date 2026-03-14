@@ -30,25 +30,24 @@ export default function AdminLogin() {
                 return
             }
 
-            // Step 2: Client-side — sign in via Supabase so AuthProvider sees the session.
-            // This is fire-and-forget: the admin_auth cookie is the primary auth mechanism.
-            // We intentionally do NOT await this because @supabase/ssr's session lock can
-            // deadlock when the onAuthStateChange handler (syncUserProfile) runs synchronously.
-            // The redirect will happen immediately after the server action succeeds.
+            // Step 2: Strict await — sign in via Supabase so the SSR session cookie is set.
+            // This MUST complete before we redirect, otherwise the browser won't have
+            // the Supabase cookie and the middleware/AdminGuard will reject the request.
             if (supabase) {
-                supabase.auth.signInWithPassword({ email, password }).catch((err) => {
-                    console.warn('Client-side Supabase sign-in failed (non-fatal):', err.message)
+                const { error: signInError } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
                 })
+                if (signInError) {
+                    setError(signInError.message || 'Supabase authentication failed.')
+                    setIsLoading(false)
+                    return
+                }
             }
 
-            // Step 3: Hard redirect. Use bare path (no /admin prefix) because the
-            // middleware rewrites / → /admin on the admin subdomain.
-            const rawRedirect = searchParams.get('redirect') || '/'
-            // Strip /admin prefix if present to prevent double-prefixing on subdomain
-            const redirectPath = rawRedirect.startsWith('/admin')
-                ? rawRedirect.replace(/^\/admin/, '') || '/'
-                : rawRedirect
-            window.location.href = redirectPath
+            // Step 3: Hard redirect. window.location.href forces a full page reload,
+            // ensuring the browser attaches the newly minted cookies to the next request.
+            window.location.href = '/admin'
         } catch (err) {
             setError('An error occurred. Please try again.')
             setIsLoading(false)

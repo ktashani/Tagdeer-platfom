@@ -51,9 +51,11 @@ export async function middleware(request) {
         if (!pathname.startsWith('/_next') && !pathname.includes('api')) {
             const authCookie = request.cookies.get('admin_auth');
             const isAuthenticated = !!authCookie?.value;
+            console.log('[Middleware:Admin]', pathname, '| admin_auth:', isAuthenticated ? 'PRESENT' : 'MISSING')
 
             // Redirect to login if not authenticated and trying to access protected route
             if (!isAuthenticated && pathname !== '/login') {
+                console.warn('[Middleware:Admin] BOUNCING to /login — no admin_auth cookie for', pathname)
                 const loginUrl = request.nextUrl.clone();
                 loginUrl.pathname = '/login';
                 return NextResponse.redirect(loginUrl);
