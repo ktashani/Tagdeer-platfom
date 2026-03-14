@@ -36,35 +36,43 @@ export function AuthProvider({ children }) {
         setTimeout(() => setToastMessage(''), 4000);
     };
 
-    // ── Session Sync ──
-    // We rely solely on onAuthStateChange rather than getSession().
-    // Reason: @supabase/ssr shares an internal auth lock between getSession()
-    // and onAuthStateChange, causing a mutual deadlock on the SSR client.
-    // The INITIAL_SESSION event provides the same session data synchronously
-    // on subscription, without the lock contention.
+    // ── Phase 1: Session Sync (SYNCHRONOUS — no database calls) ──
+    // CRITICAL: The @supabase/ssr client holds an internal auth lock while the
+    // onAuthStateChange callback executes. Any Supabase database query inside
+    // here would internally call getSession() to attach the Bearer token,
+    // which needs the same lock → permanent deadlock.
+    // Solution: Extract user from the session JWT synchronously, set loading=false,
+    // then fetch the full profile in Phase 2 (separate useEffect).
     useEffect(() => {
         if (!supabase) return;
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
-                console.log('Supabase Auth Event:', event, session?.user?.email);
+        const handleAuthChange = (event, session) => {
+            console.log('Supabase Auth Event:', event, session?.user?.email);
 
-                if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-                    if (session?.user) {
-                        await syncUserProfile(session.user);
-                    } else {
-                        // No session — clear user state
-                        setUser(null);
-                        localStorage.removeItem('tagdeer-user');
-                        setLoading(false);
-                    }
-                } else if (event === 'SIGNED_OUT') {
-                    setUser(null);
-                    localStorage.removeItem('tagdeer-user');
-                    setLoading(false);
-                }
+            if (session?.user) {
+                const su = session.user;
+                setUser(prev => {
+                    // Don't overwrite an already-enriched profile with minimal data
+                    if (prev?.id === su.id && prev?.gader !== undefined) return prev;
+                    return {
+                        id: su.id,
+                        email: su.email,
+                        phone: su.phone,
+                        role: prev?.id === su.id ? (prev?.role || 'consumer') : 'consumer',
+                        full_name: prev?.id === su.id ? (prev?.full_name || su.email?.split('@')[0] || 'User') : (su.email?.split('@')[0] || 'User'),
+                        isDevBypass: false,
+                    };
+                });
+                setLoading(false);
+            } else if (event === 'SIGNED_OUT' || event === 'INITIAL_SESSION') {
+                // SIGNED_OUT or INITIAL_SESSION with no session = not logged in
+                setUser(null);
+                localStorage.removeItem('tagdeer-user');
+                setLoading(false);
             }
-        );
+        };
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(handleAuthChange);
 
         // Safety: if no auth event fires within 5s, force-resolve loading
         const safetyTimer = setTimeout(() => {
@@ -83,52 +91,67 @@ export function AuthProvider({ children }) {
         };
     }, [supabase]);
 
-    const syncUserProfile = async (supabaseUser) => {
-        try {
-            const { data: profile, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', supabaseUser.id)
-                .single();
+    // ── Phase 2: Profile Enrichment (ASYNC — runs after auth lock releases) ──
+    // This fires when Phase 1 sets user.id. By this time the onAuthStateChange
+    // callback has returned and the auth lock is released, so database queries
+    // can safely call getSession() internally.
+    useEffect(() => {
+        if (!supabase || !user?.id) return;
+        // Skip if profile is already enriched (has gader data from a previous fetch)
+        if (user.gader !== undefined) return;
 
-            if (error && error.code !== 'PGRST116') {
-                console.error("Sync Profile Error (Postgrest):", error);
-                console.error("Sync Profile Error Details:", JSON.stringify(error));
+        let cancelled = false;
+
+        const enrichProfile = async () => {
+            try {
+                console.log('[AuthProvider] Phase 2: enriching profile for', user.id.substring(0, 8) + '...');
+                const { data: profile, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single();
+
+                if (cancelled) return;
+
+                if (error && error.code !== 'PGRST116') {
+                    console.error('Profile enrichment error:', error);
+                }
+
+                if (profile) {
+                    setUser(prev => {
+                        if (!prev || prev.id !== profile.id) return prev;
+                        const enriched = {
+                            ...prev,
+                            phone: profile.phone || prev.phone,
+                            userId: profile.user_id || `AUTH-${prev.id.substring(0, 5).toUpperCase()}`,
+                            gader: profile.gader_points || 0,
+                            vipTier: profile.vip_tier || 'Bronze',
+                            full_name: profile.full_name || prev.email?.split('@')[0] || 'Tagdeer User',
+                            role: profile.role || 'consumer',
+                            status: profile.status || 'Active',
+                            has_password: profile.has_password || false,
+                            weekly_log_count: profile.weekly_log_count || 0,
+                            coupon_difficulty_level: profile.coupon_difficulty_level || 0,
+                        };
+                        localStorage.setItem('tagdeer-user', JSON.stringify(enriched));
+                        return enriched;
+                    });
+                } else {
+                    // No profile row — mark as enriched with defaults so we don't re-fetch
+                    setUser(prev => prev ? { ...prev, gader: 0, vipTier: 'Bronze' } : prev);
+                }
+            } catch (err) {
+                console.error('Profile enrichment exception:', err);
+                // Mark as enriched with defaults to prevent infinite re-fetch loop
+                if (!cancelled) {
+                    setUser(prev => prev ? { ...prev, gader: 0, vipTier: 'Bronze' } : prev);
+                }
             }
+        };
 
-            const userObj = {
-                id: supabaseUser.id,
-                email: supabaseUser.email,
-                phone: profile?.phone || supabaseUser.phone,
-                userId: profile?.user_id || `AUTH-${supabaseUser.id.substring(0, 5).toUpperCase()}`,
-                gader: profile?.gader_points || 0,
-                vipTier: profile?.vip_tier || 'Bronze',
-                full_name: profile?.full_name || supabaseUser.email?.split('@')[0] || 'Tagdeer User',
-                role: profile?.role || 'consumer',
-                status: profile?.status || 'Active',
-                has_password: profile?.has_password || false,
-                weekly_log_count: profile?.weekly_log_count || 0,
-                coupon_difficulty_level: profile?.coupon_difficulty_level || 0,
-                isDevBypass: false
-            };
-
-            setUser(userObj);
-            localStorage.setItem('tagdeer-user', JSON.stringify(userObj));
-        } catch (err) {
-            console.error("Exception syncing profile:", err);
-            if (err.name === 'AbortError') {
-                console.warn("Profile sync aborted (likely due to lock/steal).");
-            }
-            const fallbackUser = {
-                id: supabaseUser.id,
-                email: supabaseUser.email,
-                role: 'consumer'
-            };
-            setUser(fallbackUser);
-        } finally {
-            setLoading(false);
-        }
-    };
+        enrichProfile();
+        return () => { cancelled = true; };
+    }, [supabase, user?.id, user?.gader]);
 
     // Persist user to localStorage
     useEffect(() => {
