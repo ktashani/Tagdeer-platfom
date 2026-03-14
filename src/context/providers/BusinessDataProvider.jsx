@@ -3,20 +3,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthProvider';
 
-const INITIAL_BUSINESSES = [
-    { id: 1, name: "Al-Madina Tech", region: "Tripoli", category: "Electronics", recommends: 145, complains: 12, isShielded: true, source: "Google", logs: [] },
-    {
-        id: 2, name: "Benghazi Builders Co.", region: "Benghazi", category: "Construction", recommends: 89, complains: 45, isShielded: false, source: "Facebook",
-        logs: [{ id: 101, type: 'recommend', text: 'Fast and reliable building materials. Great service.', date: '2026-02-18' }]
-    },
-    { id: 3, name: "Tripoli Central Clinic", region: "Tripoli", category: "Healthcare", recommends: 320, complains: 5, isShielded: true, source: "Google", logs: [] },
-    {
-        id: 4, name: "Omar's Auto Repair", region: "Benghazi", category: "Automotive", recommends: 34, complains: 8, isShielded: false, source: "Manual",
-        logs: [{ id: 102, type: 'complain', text: 'Overcharged me for a simple oil change. Needs improvement.', date: '2026-02-20' }]
-    },
-    { id: 5, name: "Sahara Logistics", region: "Tripoli", category: "Services", recommends: 210, complains: 55, isShielded: true, source: "Google", logs: [] },
-];
-
 const BusinessDataContext = createContext();
 
 export function BusinessDataProvider({ children }) {
@@ -160,7 +146,8 @@ export function BusinessDataProvider({ children }) {
                     setBusinesses(formattedData);
                 }
             } catch (err) {
-                console.error(err);
+                console.error('[BusinessDataProvider] Fetch error:', err);
+                setBusinesses([]);
             }
         };
         fetchBusinesses();

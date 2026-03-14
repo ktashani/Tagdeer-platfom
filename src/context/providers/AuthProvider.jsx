@@ -37,44 +37,50 @@ export function AuthProvider({ children }) {
     };
 
     // ── Session Sync ──
+    // We rely solely on onAuthStateChange rather than getSession().
+    // Reason: @supabase/ssr shares an internal auth lock between getSession()
+    // and onAuthStateChange, causing a mutual deadlock on the SSR client.
+    // The INITIAL_SESSION event provides the same session data synchronously
+    // on subscription, without the lock contention.
     useEffect(() => {
         if (!supabase) return;
 
-        const checkInitialSession = async () => {
-            // Safety: if getSession() hangs (e.g. SSR cookie lock), force-resolve after 5s
-            const sessionTimeout = setTimeout(() => {
-                console.warn('[AuthProvider] getSession() timeout after 5s — forcing loading=false');
-                setLoading(false);
-            }, 5000);
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+                console.log('Supabase Auth Event:', event, session?.user?.email);
 
-            const { data: { session } } = await supabase.auth.getSession();
-            clearTimeout(sessionTimeout);
-
-            if (session) {
-                await syncUserProfile(session.user);
-            } else {
-                // If there is no Supabase session, explicitly clear any stale localStorage
-                // user data. This prevents the "ghost session" flash where the UI briefly
-                // thinks someone is logged in before the next routing check boots them out.
-                setUser(null);
-                localStorage.removeItem('tagdeer-user');
+                if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+                    if (session?.user) {
+                        await syncUserProfile(session.user);
+                    } else {
+                        // No session — clear user state
+                        setUser(null);
+                        localStorage.removeItem('tagdeer-user');
+                        setLoading(false);
+                    }
+                } else if (event === 'SIGNED_OUT') {
+                    setUser(null);
+                    localStorage.removeItem('tagdeer-user');
+                    setLoading(false);
+                }
             }
-            setLoading(false);
+        );
+
+        // Safety: if no auth event fires within 5s, force-resolve loading
+        const safetyTimer = setTimeout(() => {
+            setLoading(prev => {
+                if (prev) {
+                    console.warn('[AuthProvider] No auth event within 5s — forcing loading=false');
+                    return false;
+                }
+                return prev;
+            });
+        }, 5000);
+
+        return () => {
+            subscription.unsubscribe();
+            clearTimeout(safetyTimer);
         };
-
-        checkInitialSession();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            console.log("Supabase Auth Event:", event, session?.user?.email);
-            if (event === 'SIGNED_IN' && session) {
-                await syncUserProfile(session.user);
-            } else if (event === 'SIGNED_OUT') {
-                setUser(null);
-                localStorage.removeItem('tagdeer-user');
-            }
-        });
-
-        return () => subscription.unsubscribe();
     }, [supabase]);
 
     const syncUserProfile = async (supabaseUser) => {
