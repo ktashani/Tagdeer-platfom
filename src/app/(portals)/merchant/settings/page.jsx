@@ -16,7 +16,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Globe } from 'lucide-react';
 
 export default function MerchantSettings() {
-    const { user, businesses, supabase, showToast, setUser, tierPricing = [] } = useTagdeer();
+    const { user, businesses, supabase, showToast, setUser, tierPricing = [], lang = 'en' } = useTagdeer();
     const router = useRouter();
     const searchParams = useSearchParams();
     const trialCampaignId = searchParams.get('trial_campaign');
@@ -739,6 +739,10 @@ export default function MerchantSettings() {
                                             const isEnterprise = tier.id?.toLowerCase().includes('enterprise');
                                             const isPro = tier.id?.toLowerCase().includes('pro');
 
+                                            const displayFeatures = lang === 'ar' && tier.features_ar?.length > 0
+                                                ? tier.features_ar
+                                                : tier.features || [];
+
                                             return (
                                                 <div
                                                     key={tier.id}
@@ -751,7 +755,7 @@ export default function MerchantSettings() {
                                                         <div>
                                                             <h3 className="font-bold flex items-center gap-2">
                                                                 {isEnterprise && <Crown className="w-4 h-4 text-purple-500" />}
-                                                                {tier.name}
+                                                                {lang === 'ar' && tier.name_ar ? tier.name_ar : tier.name}
                                                             </h3>
                                                             {tier.isFreebie ? (
                                                                 <div className="flex items-baseline gap-2">
@@ -761,14 +765,14 @@ export default function MerchantSettings() {
                                                                 </div>
                                                             ) : (
                                                                 <p className={`text-sm font-semibold ${isEnterprise ? 'text-purple-600' : isPro ? 'text-blue-600' : 'text-slate-500'}`}>
-                                                                    {tier.price} LYD / month
+                                                                    {tier.price} {lang === 'ar' ? 'د.ل / شهرياً' : 'LYD / month'}
                                                                 </p>
                                                             )}
                                                         </div>
                                                         {isActiveTier && <CheckCircle2 className={`w-5 h-5 ${isEnterprise ? 'text-purple-600' : isPro ? 'text-blue-600' : 'text-slate-600'}`} />}
                                                     </div>
                                                     <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-2 mt-4 flex-1">
-                                                        {tier.features?.map((feature, fIdx) => (
+                                                        {displayFeatures.map((feature, fIdx) => (
                                                             <li key={fIdx} className="flex items-center gap-2">
                                                                 <CheckCircle2 className="w-3 h-3 text-emerald-500" /> {feature}
                                                             </li>
@@ -784,7 +788,7 @@ export default function MerchantSettings() {
                                                                 : isPro ? 'bg-blue-600 hover:bg-blue-700 text-white border-0' : 'border-slate-200 text-slate-700 hover:bg-slate-50'
                                                                 }`}
                                                         >
-                                                            Upgrade to {tier.name}
+                                                            {lang === 'ar' ? 'ترقية إلى' : 'Upgrade to'} {lang === 'ar' && tier.name_ar ? tier.name_ar : tier.name}
                                                         </Button>
                                                     )}
                                                 </div>

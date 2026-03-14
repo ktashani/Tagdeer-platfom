@@ -1,19 +1,26 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { getServerUser } from '@/lib/serverAuth';
 
 /**
  * POST /api/merchant/set-password
- * Sets a password for a merchant using the admin API.
- * This works even without an active Supabase Auth session (e.g. after WhatsApp OTP login).
- * 
- * Body: { email, password }
+ * Sets a password for the currently authenticated merchant.
+ * Requires a valid Supabase session — the password is set for the session user's email only.
+ *
+ * Body: { password }
  */
 export async function POST(req) {
     try {
-        const { email, password } = await req.json();
+        // Auth gate: require a valid Supabase session
+        const sessionUser = await getServerUser();
+        if (!sessionUser) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
 
-        if (!email || !password) {
-            return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
+        const { password } = await req.json();
+
+        if (!password) {
+            return NextResponse.json({ error: 'Password is required' }, { status: 400 });
         }
 
         if (password.length < 6) {
@@ -31,102 +38,22 @@ export async function POST(req) {
             auth: { autoRefreshToken: false, persistSession: false }
         });
 
-        let authUser = null;
-        let userId = null;
-
-        // 1. Look up user ID from profiles table first (fast, O(1) lookup)
-        const { data: profile } = await supabaseAdmin
-            .from('profiles')
-            .select('id')
-            .eq('email', email.toLowerCase().trim())
-            .maybeSingle();
-
-        if (profile?.id) {
-            // Found in profiles — get the full auth user by ID
-            const { data: { user: foundUser }, error: getUserErr } = await supabaseAdmin.auth.admin.getUserById(profile.id);
-            if (!getUserErr && foundUser) {
-                authUser = foundUser;
-                userId = foundUser.id;
-            }
-        }
-
-        // 2. If auth user doesn't exist, create them
-        if (!authUser) {
-            const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-                email: email.toLowerCase().trim(),
-                password, // Set password directly during creation
-                email_confirm: true, // Auto-confirm since they're already verified via OTP
-            });
-
-            if (createError) {
-                console.error('Create user error:', createError);
-                return NextResponse.json({ error: createError.message }, { status: 500 });
-            }
-            userId = newUser.user.id;
-            authUser = newUser.user; // Assign the newly created user
-
-            // ✅ BUG-06 FIX: Poll for profile creation with exponential backoff
-            let profileReady = false;
-            for (let attempt = 0; attempt < 5; attempt++) {
-                const { data: checkProfile } = await supabaseAdmin
-                    .from('profiles')
-                    .select('id')
-                    .eq('id', userId)
-                    .maybeSingle();
-
-                if (checkProfile) {
-                    profileReady = true;
-                    break;
-                }
-                // Exponential backoff: 200ms, 400ms, 800ms, 1600ms, 3200ms
-                await new Promise(r => setTimeout(r, 200 * Math.pow(2, attempt)));
-            }
-
-            if (!profileReady) {
-                // Trigger didn't create the profile — create it explicitly
-                const { error: insertError } = await supabaseAdmin
-                    .from('profiles')
-                    .insert({
-                        id: userId,
-                        email: email.toLowerCase().trim(),
-                        role: 'merchant',
-                        has_password: true,
-                    });
-
-                if (insertError) {
-                    console.error('Profile insert fallback error:', insertError);
-                }
-            } else {
-                // Profile exists — just update the role and password flag
-                const { error: profileError } = await supabaseAdmin
-                    .from('profiles')
-                    .update({ role: 'merchant', has_password: true })
-                    .eq('id', userId);
-
-                if (profileError) {
-                    console.error('Profile update error:', profileError);
-                }
-            }
-
-            return NextResponse.json({ success: true, created: true });
-        }
-
-        // 2. User exists — update their password via admin API
+        // Update the authenticated user's password via admin API
         const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-            authUser.id,
+            sessionUser.id,
             { password }
         );
 
         if (updateError) {
             console.error('Admin update password error:', updateError);
-            return NextResponse.json({ error: updateError.message }, { status: 500 });
+            return NextResponse.json({ error: 'Failed to set password' }, { status: 500 });
         }
 
-        // 3. Mark has_password = true in profiles
+        // Mark has_password = true in profiles
         const { error: profileError } = await supabaseAdmin
             .from('profiles')
             .update({ has_password: true })
-            .eq('id', authUser.id);
+            .eq('id', sessionUser.id);
 
         if (profileError) {
             console.error('Profile update error:', profileError);

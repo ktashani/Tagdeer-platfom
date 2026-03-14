@@ -1,7 +1,7 @@
 'use server'
 
-import { cookies } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
+import { verifyAdmin as verifyAdminAuth } from '@/lib/adminAuth'
 
 /**
  * Creates a Supabase admin client using the service role key.
@@ -21,14 +21,15 @@ function getAdminSupabase() {
 }
 
 /**
- * Verifies the admin cookie before executing any admin action.
+ * Verifies the admin cookie by cross-referencing the UUID against the DB.
+ * Delegates to the canonical verifyAdmin() in @/lib/adminAuth.
  */
 async function verifyAdmin() {
-    const cookieStore = await cookies()
-    const adminCookie = cookieStore.get('admin_auth')
-    if (!adminCookie || adminCookie.value !== 'true') {
+    const admin = await verifyAdminAuth()
+    if (!admin) {
         throw new Error('Unauthorized: Admin session invalid')
     }
+    return admin
 }
 
 /**

@@ -13,7 +13,6 @@ export default function MerchantGuard({ children }) {
     const [isAuthorized, setIsAuthorized] = useState(false)
     const [subTier, setSubTier] = useState(null)
     const [checkingSub, setCheckingSub] = useState(true)
-    const [forceUnblock, setForceUnblock] = useState(false)
     const isMounted = useRef(true)
     const redirecting = useRef(false)
 
@@ -149,16 +148,14 @@ export default function MerchantGuard({ children }) {
         return () => clearTimeout(safetyTimer);
     }, [isAuthorized, user, supabase, loading])
 
-    // MASTER SAFETY TIMEOUT — Nuclear failsafe.
-    // If ANYTHING keeps the guard locked for 10 seconds, force-unblock both flags.
-    // This covers edge cases where recheckRole() hangs AND the catch-all misses.
+    // MASTER SAFETY TIMEOUT — Prevents permanent spinner.
+    // If ANYTHING keeps the guard locked for 10 seconds, stop the spinner
+    // but do NOT grant access — the user will see the redirect or blocked state.
     useEffect(() => {
         const masterTimeout = setTimeout(() => {
             if (isMounted.current && (checkingSub || !isAuthorized)) {
-                console.warn('[MerchantGuard] Master timeout: forcing guard to unblock after 10s');
+                console.warn('[MerchantGuard] Master timeout: stopping spinner after 10s (not granting access)');
                 setCheckingSub(false);
-                setIsAuthorized(true);
-                setForceUnblock(true);
             }
         }, 10000);
         return () => clearTimeout(masterTimeout);
@@ -181,7 +178,7 @@ export default function MerchantGuard({ children }) {
         )
     }
 
-    if ((loading || checkingSub || !isAuthorized) && !forceUnblock) {
+    if (loading || checkingSub || !isAuthorized) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FB]">
                 <Loader2 className="h-8 w-8 animate-spin border-blue-600" />

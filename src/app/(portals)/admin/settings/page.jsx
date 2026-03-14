@@ -186,6 +186,9 @@ export default function SettingsPage() {
         const newTier = {
             id: `tier_${Date.now()}`,
             name: 'New Tier',
+            name_ar: 'باقة جديدة',
+            description: 'Short description for pricing page',
+            description_ar: 'الوصف المختصر لصفحة الباقات',
             price: 0,
             duration: 'monthly',
             allocations: {
@@ -196,6 +199,7 @@ export default function SettingsPage() {
                 gader_points: 5
             },
             features: ['New Feature'],
+            features_ar: ['ميزة جديدة'],
             isActive: true,
             isPopular: false
         }
@@ -504,7 +508,17 @@ export default function SettingsPage() {
                                                                 value={tier.name}
                                                                 onChange={e => handleTierChange(tier.id, 'name', e.target.value)}
                                                                 className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white font-bold text-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                                                                placeholder="Tier Name"
+                                                                placeholder="Tier Name (EN)"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={tier.name_ar || ''}
+                                                                onChange={e => handleTierChange(tier.id, 'name_ar', e.target.value)}
+                                                                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white font-bold text-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                                                dir="rtl"
+                                                                placeholder="اسم الباقة (AR)"
                                                             />
                                                             <button
                                                                 onClick={() => handleTierChange(tier.id, 'isPopular', !tier.isPopular)}

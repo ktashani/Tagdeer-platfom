@@ -9,7 +9,13 @@
 -- so we use a DO block to check first)
 DO $$
 BEGIN
-    IF NOT EXISTS (
+    -- Only add constraint if the column exists
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+        AND table_name = 'merchant_coupons'
+        AND column_name = 'serial_code'
+    ) AND NOT EXISTS (
         SELECT 1 FROM pg_constraint
         WHERE conname = 'unique_serial_code'
     ) THEN

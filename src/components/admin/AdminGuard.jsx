@@ -19,11 +19,11 @@ export default function AdminGuard({ children }) {
     const [checking, setChecking] = useState(true)
 
     useEffect(() => {
-        // Safety timeout: if check-auth takes longer than 8s, force render
+        // Safety timeout: if check-auth takes longer than 8s, redirect to login
         const safetyTimer = setTimeout(() => {
-            console.warn('[AdminGuard] Safety timeout: forcing guard open after 8s');
-            setIsAuthorized(true);
+            console.warn('[AdminGuard] Safety timeout: redirecting to login after 8s');
             setChecking(false);
+            router.replace('/login');
         }, 8000);
 
         // Don't guard the login page itself.

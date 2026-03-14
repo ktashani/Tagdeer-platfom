@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { getPresignedViewUrl } from '@/app/actions/storage';
+import { verifyAdmin } from '@/lib/adminAuth';
 
 /**
  * GET /api/admin/claims
@@ -11,10 +11,9 @@ import { getPresignedViewUrl } from '@/app/actions/storage';
  */
 export async function GET() {
     try {
-        // Verify admin cookie (stores admin's UUID, not 'true')
-        const cookieStore = await cookies();
-        const adminCookie = cookieStore.get('admin_auth');
-        if (!adminCookie?.value || adminCookie.value === 'true') {
+        // Verify admin cookie UUID against the database
+        const admin = await verifyAdmin();
+        if (!admin) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 

@@ -1,10 +1,46 @@
 import { createClient } from '@supabase/supabase-js';
+import { headers } from 'next/headers';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!supabaseServiceKey) {
     console.error('CRITICAL: SUPABASE_SERVICE_ROLE_KEY not configured for check-password API');
 }
+
+/**
+ * In-memory sliding-window rate limiter.
+ * Max 5 requests per IP per 60-second window.
+ */
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 5;
+const rateLimitMap = new Map(); // Map<ip, number[]>
+
+function isRateLimited(ip) {
+    const now = Date.now();
+    const timestamps = rateLimitMap.get(ip) || [];
+    // Evict entries outside the window
+    const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+    if (recent.length >= RATE_LIMIT_MAX) {
+        rateLimitMap.set(ip, recent);
+        return true;
+    }
+    recent.push(now);
+    rateLimitMap.set(ip, recent);
+    return false;
+}
+
+// Periodic cleanup to prevent memory leaks (every 5 minutes)
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, timestamps] of rateLimitMap) {
+        const recent = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW_MS);
+        if (recent.length === 0) {
+            rateLimitMap.delete(ip);
+        } else {
+            rateLimitMap.set(ip, recent);
+        }
+    }
+}, 5 * 60_000);
 
 /**
  * POST /api/merchant/check-password
@@ -16,6 +52,19 @@ if (!supabaseServiceKey) {
  */
 export async function POST(request) {
     try {
+        // Rate limiting by IP
+        const headersList = await headers();
+        const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim()
+            || headersList.get('x-real-ip')
+            || 'unknown';
+
+        if (isRateLimited(ip)) {
+            return Response.json(
+                { hasPassword: false, userExists: false },
+                { status: 429 }
+            );
+        }
+
         const { email } = await request.json();
 
         if (!email || typeof email !== 'string') {

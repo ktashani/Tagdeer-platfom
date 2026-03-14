@@ -192,7 +192,7 @@ export default function PricingPage() {
 
                                 <div className="mb-6">
                                     <h3 className={`text-2xl font-bold mb-2 ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
-                                        {tier.name}
+                                        {lang === 'ar' && tier.name_ar ? tier.name_ar : tier.name}
                                     </h3>
                                     <p className={`${isPopular ? 'text-indigo-200' : 'text-slate-500 dark:text-slate-400'} text-sm`}>
                                         {getTierDescription(tier, idx)}
