@@ -166,6 +166,13 @@ export default function MerchantGuard({ children }) {
 
     // If a redirect is in progress, show an informative message instead of
     // an ambiguous spinner. The router.push() may take a moment to navigate.
+    // BUT: if we've already landed on the login/onboarding page, clear the flag
+    // so the actual login form renders instead of hanging on this message.
+    const isPublicRoute = pathname === '/merchant/login' || pathname === '/login'
+        || pathname === '/merchant/onboarding' || pathname === '/onboarding';
+    if (redirecting.current && isPublicRoute) {
+        redirecting.current = false;
+    }
     if (redirecting.current) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FB]">
