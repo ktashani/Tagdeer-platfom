@@ -283,7 +283,33 @@ export default function MerchantSettings() {
             }
             return;
         }
-        // ... existing payment flow
+
+        // Paid tier upgrade — create pending transaction for admin review
+        if (!myBusiness) {
+            showToast('Please select a business first.', 'error');
+            return;
+        }
+
+        try {
+            const { error } = await supabase.from('transactions').insert([{
+                owner_id: user.id,
+                business_id: myBusiness.id,
+                amount: tier.price || 0,
+                status: 'pending',
+                payment_method: 'manual',
+                requested_tier: tier.name,
+                upgrade_from_tier: accountTier || 'Free',
+                duration: '1 Month',
+                currency: 'LYD',
+                payment_gateway: 'manual_bank'
+            }]);
+
+            if (error) throw error;
+            showToast(`Upgrade request to ${tier.name} submitted! Your current plan remains active while we verify your payment.`, 'success');
+        } catch (err) {
+            console.error('Tier upgrade request error:', err);
+            showToast('Failed to submit upgrade request.', 'error');
+        }
     };
 
     const requestAddonPurchase = async (addonName) => {

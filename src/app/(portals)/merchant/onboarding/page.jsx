@@ -123,6 +123,7 @@ export default function MerchantOnboarding() {
     const [txHash, setTxHash] = useState(''); // For crypto gateway
     const [paymentMethod, setPaymentMethod] = useState('manual_bank');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [receiptFile, setReceiptFile] = useState(null); // Bank transfer receipt
 
     // Pricing Math
     const shieldPrice = shieldLevel === 1 ? shieldPricing.trust : (shieldLevel === 2 ? shieldPricing.fatora : 0);
@@ -302,11 +303,35 @@ export default function MerchantOnboarding() {
             if (claimError) throw new Error("Claim submission failed: " + claimError.message);
 
             // 4. Record the requested Financial Upgrade (if applicable)
-            if (shieldLevel > 0) {
+            // Skip transaction creation entirely for zero-cost onboarding
+            if (total > 0 && shieldLevel > 0) {
                 const amount = shieldLevel === 1 ? shieldPricing.trust : shieldPricing.fatora;
                 const selectedGw = activeGateways.find(g => g.id === paymentMethod) || { id: 'manual_bank', currency: 'LYD', type: 'manual' };
                 const isCrypto = selectedGw.type === 'crypto';
                 const exchangeRate = isCrypto ? (selectedGw.config?.exchange_rate_lyd_per_usdt || 6.2) : null;
+
+                // Upload receipt if provided (bank transfer)
+                let receiptUrl = null;
+                if (receiptFile) {
+                    try {
+                        const receiptUpload = await getPresignedUploadUrl({
+                            folder: 'payment_receipts',
+                            filename: receiptFile.name,
+                            contentType: receiptFile.type || 'image/jpeg'
+                        });
+                        if (receiptUpload?.success && receiptUpload.uploadUrl) {
+                            await fetch(receiptUpload.uploadUrl, {
+                                method: 'PUT',
+                                body: receiptFile,
+                                headers: { 'Content-Type': receiptFile.type || 'image/jpeg' }
+                            });
+                            receiptUrl = receiptUpload.objectKey;
+                        }
+                    } catch (uploadErr) {
+                        console.error('Receipt upload error:', uploadErr);
+                        // Non-fatal: transaction still created, admin can request receipt later
+                    }
+                }
 
                 await supabase.from('transactions').insert([{
                     business_id: businessId,
@@ -319,7 +344,8 @@ export default function MerchantOnboarding() {
                     currency: selectedGw.currency,
                     payment_gateway: selectedGw.id,
                     gateway_reference: isCrypto ? txHash : null,
-                    exchange_rate: exchangeRate
+                    exchange_rate: exchangeRate,
+                    screenshot_url: receiptUrl
                 }]);
             }
 
@@ -623,6 +649,15 @@ export default function MerchantOnboarding() {
                                         </div>
                                     </div>
 
+                                    {/* Zero-Cost Bypass: skip payment UI entirely when total is 0 */}
+                                    {total === 0 ? (
+                                        <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-6 text-center">
+                                            <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto mb-3" />
+                                            <p className="font-bold text-emerald-800 dark:text-emerald-300 text-lg">{lang === 'ar' ? 'لا يتطلب دفع' : 'No payment required'}</p>
+                                            <p className="text-sm text-emerald-600 dark:text-emerald-400 mt-1">{lang === 'ar' ? 'سيتم تقديم طلبك للمراجعة بدون تكلفة.' : 'Your claim will be submitted for admin review at no cost.'}</p>
+                                        </div>
+                                    ) : (
+                                        <>
                                     <div className="space-y-4">
                                         <Label className="text-base font-bold text-slate-700 dark:text-slate-300 px-1 block">{t('payment_method')}</Label>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -657,12 +692,59 @@ export default function MerchantOnboarding() {
                                     {paymentMethod === 'manual_bank' && (() => {
                                         const bankGw = activeGateways.find(g => g.id === 'manual_bank');
                                         return bankGw ? (
-                                            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 space-y-3">
-                                                <h4 className="font-bold text-amber-800 dark:text-amber-400 text-sm">Bank Transfer Details</h4>
-                                                <div className="text-sm space-y-1">
-                                                    <p><strong>Bank:</strong> {bankGw.config?.bank_name}</p>
-                                                    <p><strong>Account:</strong> <span className="font-mono">{bankGw.config?.account_number}</span></p>
-                                                    <p className="text-xs text-amber-600 dark:text-amber-400">{bankGw.config?.instructions}</p>
+                                            <div className="space-y-4">
+                                                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 space-y-3">
+                                                    <h4 className="font-bold text-amber-800 dark:text-amber-400 text-sm">Bank Transfer Details</h4>
+                                                    <div className="text-sm space-y-1">
+                                                        <p><strong>Bank:</strong> {bankGw.config?.bank_name}</p>
+                                                        <p><strong>Account:</strong> <span className="font-mono">{bankGw.config?.account_number}</span></p>
+                                                        <p className="text-xs text-amber-600 dark:text-amber-400">{bankGw.config?.instructions}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Receipt Upload */}
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                        {lang === 'ar' ? 'ارفع إيصال التحويل' : 'Upload Transfer Receipt'}
+                                                    </Label>
+                                                    <div
+                                                        className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-colors ${
+                                                            receiptFile
+                                                                ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-950/20'
+                                                                : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 hover:bg-blue-50/30'
+                                                        }`}
+                                                        onClick={() => document.getElementById('receipt-upload').click()}
+                                                    >
+                                                        <input
+                                                            id="receipt-upload"
+                                                            type="file"
+                                                            accept="image/*,.pdf"
+                                                            className="hidden"
+                                                            onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+                                                        />
+                                                        {receiptFile ? (
+                                                            <div className="flex items-center justify-center gap-3">
+                                                                <FileText className="w-5 h-5 text-blue-600 shrink-0" />
+                                                                <span className="font-medium text-blue-700 dark:text-blue-300 truncate max-w-[200px]">{receiptFile.name}</span>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); setReceiptFile(null); }}
+                                                                    className="text-red-400 hover:text-red-600 text-xs font-bold shrink-0"
+                                                                >
+                                                                    {lang === 'ar' ? 'إزالة' : 'Remove'}
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                                                                <p className="text-sm text-slate-500">
+                                                                    {lang === 'ar' ? 'اضغط لرفع الإيصال (صورة أو PDF)' : 'Click to upload receipt (image or PDF)'}
+                                                                </p>
+                                                                <p className="text-xs text-slate-400 mt-1">
+                                                                    {lang === 'ar' ? 'الحد الأقصى 5MB' : 'Max 5MB'}
+                                                                </p>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         ) : null;
@@ -702,6 +784,8 @@ export default function MerchantOnboarding() {
                                             <p className="text-sm text-slate-500">You will be redirected to Tlync's secure payment page after submitting.</p>
                                             <p className="text-xs text-blue-500 mt-2 italic">Integration pending — gateway is not yet active.</p>
                                         </div>
+                                    )}
+                                        </>
                                     )}
                                 </div>
 
