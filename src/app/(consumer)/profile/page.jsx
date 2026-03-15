@@ -35,6 +35,13 @@ export default function ProfilePage() {
     const [gender, setGender] = useState(user?.gender || '');
     const [isSaving, setIsSaving] = useState(false);
 
+    // Email state — read from DB profile_email first, then auth session fallback
+    const savedEmail = user?.profile_email || null;
+    const [email, setEmail] = useState(savedEmail || user?.email || '');
+    const [emailStep, setEmailStep] = useState(savedEmail ? 'verified' : 'idle'); // idle, otp, saving, verified
+    const [emailOtp, setEmailOtp] = useState('');
+    const [emailError, setEmailError] = useState('');
+
     // Real Log History State
     const [historyLogs, setHistoryLogs] = useState([]);
     const [isLoadingLogs, setIsLoadingLogs] = useState(true);
@@ -124,13 +131,6 @@ export default function ProfilePage() {
 
     // Derive a clean phone number (exclude emails that may leak into profile.phone)
     const safePhone = (user?.phone && !user.phone.includes('@')) ? user.phone : null;
-
-    // Email state — read from DB profile_email first, then auth session fallback
-    const savedEmail = user?.profile_email || null;
-    const [email, setEmail] = useState(savedEmail || user?.email || '');
-    const [emailStep, setEmailStep] = useState(savedEmail ? 'verified' : 'idle'); // idle, otp, saving, verified
-    const [emailOtp, setEmailOtp] = useState('');
-    const [emailError, setEmailError] = useState('');
 
     // Protect route
     useEffect(() => {

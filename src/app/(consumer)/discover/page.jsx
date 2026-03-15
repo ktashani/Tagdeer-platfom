@@ -10,7 +10,7 @@ import { SkeletonCardGrid } from '@/components/ui/SkeletonLoaders';
 function DiscoverContent() {
     const {
         t, lang, isRTL, businesses, anonInteractions, refreshAnonInteractions,
-        showToast, setShowLimitModal, setVoteModal, setVoteReason, user,
+        showToast, setShowLimitModal, setShowLoginModal, setVoteModal, setVoteReason, user,
         categories = [], regions = [], supabase
     } = useTagdeer();
 
