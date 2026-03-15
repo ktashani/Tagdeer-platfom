@@ -76,7 +76,10 @@ export default function RequestsPage() {
         try {
             const res = await fetch('/api/admin/claims/update', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'TagdeerAdmin'
+                },
                 body: JSON.stringify({ claimId: id, status: newStatus })
             });
 

@@ -5,6 +5,7 @@ import { ThumbsUp, ThumbsDown, Loader2, ShieldAlert, LogIn } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext';
 import { getDeviceFingerprint } from '@/lib/fingerprint';
 import { calculateVoteWeight } from '@/lib/trustEngine';
+import { useVoteSubmission } from '@/hooks/useVoteSubmission';
 
 /**
  * InlineReviewBlock — Storefront voting component.
@@ -16,8 +17,15 @@ export function InlineReviewBlock({ businessId, business, isRTL, theme }) {
         user, supabase, lang,
         anonInteractions, setAnonInteractions,
         showToast, setShowLimitModal, setShowLoginModal,
-        refreshAnonInteractions
+        refreshAnonInteractions, setBusinesses
     } = useTagdeer();
+
+    const { submitVote: executeVote } = useVoteSubmission({
+        user, supabase, lang,
+        anonInteractions, setAnonInteractions,
+        setUser: () => {}, // InlineReviewBlock doesn't need to update user in parent
+        showToast, setShowLimitModal, setBusinesses
+    });
 
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
@@ -92,102 +100,21 @@ export function InlineReviewBlock({ businessId, business, isRTL, theme }) {
         setError('');
 
         try {
-            const fingerprint = getDeviceFingerprint();
-            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            const success = await executeVote(
+                businessId,
+                selectedType,
+                reasonText || '',
+                business?.isClaimed || false
+            );
 
-            // ── Step 0: Server-side anonymous limit ──
-            if (!user) {
-                const { count: anonTotal, error: anonErr } = await supabase
-                    .from('logs')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('fingerprint', fingerprint)
-                    .gte('created_at', twentyFourHoursAgo);
-
-                if (!anonErr && anonTotal >= 3) {
-                    setShowLimitModal(true);
-                    setLoading(false);
-                    return;
-                }
+            if (success) {
+                const fingerprint = getDeviceFingerprint();
+                const weight = calculateVoteWeight(user, 0);
+                setImpactWeight(weight);
+                setSuccess(true);
+            } else {
+                // Vote was blocked (cooldown, limit, etc.) — toast already shown by hook
             }
-
-            // ── Step 1: 24-Hour Same-Business Cooldown ──
-            const cooldownQuery = user?.id
-                ? supabase.from('logs').select('*', { count: 'exact', head: true })
-                    .eq('business_id', businessId)
-                    .eq('profile_id', user.id)
-                    .gte('created_at', twentyFourHoursAgo)
-                : supabase.from('logs').select('*', { count: 'exact', head: true })
-                    .eq('business_id', businessId)
-                    .eq('fingerprint', fingerprint)
-                    .gte('created_at', twentyFourHoursAgo);
-
-            const { count: recentCount, error: cooldownErr } = await cooldownQuery;
-
-            if (!cooldownErr && recentCount > 0) {
-                showToast(t.cooldown);
-                setLoading(false);
-                return;
-            }
-
-            // ── Step 2: Diminishing Returns (30-day count) ──
-            const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-            const diminishingQuery = user?.id
-                ? supabase.from('logs').select('*', { count: 'exact', head: true })
-                    .eq('business_id', businessId)
-                    .eq('profile_id', user.id)
-                    .gte('created_at', thirtyDaysAgo)
-                : supabase.from('logs').select('*', { count: 'exact', head: true })
-                    .eq('business_id', businessId)
-                    .eq('fingerprint', fingerprint)
-                    .gte('created_at', thirtyDaysAgo);
-
-            const { count: pastVoteCount, error: dimErr } = await diminishingQuery;
-            const safeCount = (!dimErr && pastVoteCount) ? pastVoteCount : 0;
-
-            // ── Step 3: Calculate Dynamic Weight ──
-            const weight = calculateVoteWeight(user, safeCount);
-            setImpactWeight(weight);
-
-            // ── Step 4: Insert into main logs table ──
-            const { error: insertErr } = await supabase.from('logs').insert([{
-                business_id: businessId,
-                interaction_type: selectedType,
-                reason_text: reasonText || null,
-                profile_id: user?.id || null,
-                fingerprint: fingerprint,
-                weight: weight
-            }]);
-
-            if (insertErr) {
-                console.error("Storefront vote insert error:", insertErr);
-                setError(t.error);
-                setLoading(false);
-                return;
-            }
-
-            // ✅ BUG-01 FIX: Award Gader Points atomically via RPC
-            if (user?.id) {
-                try {
-                    const earnedPoints = Math.max(5, Math.min(25, Math.round(weight * 10)));
-                    await supabase.rpc('increment_gader_points', {
-                        p_profile_id: user.id,
-                        p_amount: earnedPoints,
-                    });
-                } catch (e) {
-                    console.error('Error awarding points:', e);
-                }
-            }
-
-            // Track anonymous vote count
-            if (!user) {
-                const currentCount = parseInt(localStorage.getItem('trust_ledger_interactions') || '0');
-                const newCount = currentCount + 1;
-                setAnonInteractions(newCount);
-                localStorage.setItem('trust_ledger_interactions', newCount.toString());
-            }
-
-            setSuccess(true);
         } catch (err) {
             console.error('Error submitting review:', err);
             setError(t.error);

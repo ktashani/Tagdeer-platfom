@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { verifyAdmin } from '@/lib/adminAuth';
+import { validateCsrfHeader } from '@/lib/csrf';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -11,6 +12,11 @@ export async function POST(req) {
         const admin = await verifyAdmin();
         if (!admin) {
             return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // CSRF protection
+        if (!validateCsrfHeader(req)) {
+            return NextResponse.json({ success: false, error: 'Invalid request origin' }, { status: 403 });
         }
 
         const body = await req.json();

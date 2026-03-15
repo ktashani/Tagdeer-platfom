@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { getDeviceFingerprint } from '@/lib/fingerprint';
 import { calculateVoteWeight } from '@/lib/trustEngine';
+import { useVoteSubmission } from '@/hooks/useVoteSubmission';
 import { Navigation } from '@/components/Navigation/Navigation';
 import { VoteModal } from '@/components/Modals/VoteModal';
 import { PreRegModal } from '@/components/Modals/PreRegModal';
@@ -11,34 +12,10 @@ import { LimitModal } from '@/components/Modals/LimitModal';
 import { VerifySoonModal } from '@/components/Modals/VerifySoonModal';
 import { LoginModal } from '@/components/Auth/LoginModal';
 import { Toast } from '@/components/Toast';
-import { Facebook, Twitter, BadgeCheck } from 'lucide-react';
+import { BadgeCheck } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-
-function Footer({ t }) {
-    return (
-        <footer className="bg-slate-900 text-slate-400 py-12 border-t border-slate-800">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-6">
-                <div className="flex items-center gap-2">
-                    <BadgeCheck className="h-8 w-8 text-green-500" />
-                    <span className="font-bold text-xl text-white">Tagdeer</span>
-                </div>
-                <div className="flex gap-4 items-center text-sm">
-                    <Link href="/discover" className="hover:text-white transition-colors">Discover</Link>
-                    <Link href="/about" className="hover:text-white transition-colors">About</Link>
-                    <Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link>
-                    <a href="/merchant/login" className="hover:text-white transition-colors font-medium text-blue-400 hover:text-blue-300">Merchant Login</a>
-                </div>
-                <div className="flex flex-col items-center md:items-end gap-2">
-                    <Link href="/privacy" className="text-sm hover:text-white transition-colors">
-                        Privacy Policy | سياسة الخصوصية
-                    </Link>
-                    <p className="text-sm">© 2026 Tagdeer Libya.</p>
-                </div>
-            </div>
-        </footer>
-    );
-}
+import { Footer } from '@/components/Footer';
 
 export default function ClientLayout({ children }) {
     const {
@@ -55,7 +32,22 @@ export default function ClientLayout({ children }) {
     } = useTagdeer();
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const [impactBubble, setImpactBubble] = useState(null); // { weight: number, type: string }
+    const [globalImpactBubble, setGlobalImpactBubble] = useState(null);
+
+    useEffect(() => {
+        const handleVoteEvent = (e) => {
+            setGlobalImpactBubble(e.detail);
+            setTimeout(() => setGlobalImpactBubble(null), 2000);
+        };
+        window.addEventListener('trust-ledger-vote', handleVoteEvent);
+        return () => window.removeEventListener('trust-ledger-vote', handleVoteEvent);
+    }, []);
+
+    const { submitVote } = useVoteSubmission({
+        user, supabase, lang,
+        anonInteractions, setAnonInteractions,
+        setUser, showToast, setShowLimitModal, setBusinesses
+    });
     const router = useRouter();
     const pathname = usePathname();
 
@@ -67,195 +59,8 @@ export default function ClientLayout({ children }) {
         else router.push(`/${page}`);
     };
 
-    const submitVote = async () => {
-        const { businessId, type } = voteModal;
 
-        // Block merchant accounts from voting — only consumers can contribute
-        if (user?.role === 'merchant') {
-            showToast(lang === 'ar'
-                ? 'حسابات التجار لا يمكنها التصويت. استخدم حساب مستهلك.'
-                : 'Merchant accounts cannot vote. Use a consumer account.'
-            );
-            setVoteModal({ isOpen: false, businessId: null, type: null });
-            return;
-        }
 
-        const fingerprint = getDeviceFingerprint();
-        let weight = calculateVoteWeight(user, 0); // default for offline
-
-        const targetBusiness = businesses.find(b => b.id === businessId);
-        const isClaimed = targetBusiness?.isClaimed;
-
-        if (supabase) {
-            try {
-                const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-                // ── Step 0: Server-side anonymous vote limit (3 per 24h) ──
-                // This check runs inside submitVote (not just openVoteModal)
-                // to prevent bypass via direct API calls or race conditions.
-                if (!user) {
-                    const { count: anonTotal, error: anonErr } = await supabase
-                        .from('logs')
-                        .select('*', { count: 'exact', head: true })
-                        .eq('fingerprint', fingerprint)
-                        .gte('created_at', twentyFourHoursAgo);
-
-                    if (!anonErr && anonTotal >= 3) {
-                        setShowLimitModal(true);
-                        setVoteModal({ isOpen: false, businessId: null, type: null });
-                        return;
-                    }
-                }
-
-                // ── Step 1: 24-Hour Same-Business Cooldown ──────────────
-
-                // Build the full query in one chain to avoid mutation issues
-                const cooldownQuery = user?.id
-                    ? supabase.from('logs').select('*', { count: 'exact', head: true })
-                        .eq('business_id', businessId)
-                        .eq('profile_id', user.id)
-                        .gte('created_at', twentyFourHoursAgo)
-                    : supabase.from('logs').select('*', { count: 'exact', head: true })
-                        .eq('business_id', businessId)
-                        .eq('fingerprint', fingerprint)
-                        .gte('created_at', twentyFourHoursAgo);
-
-                const { count: recentCount, error: cooldownErr } = await cooldownQuery;
-
-                if (!cooldownErr && recentCount > 0) {
-                    showToast(lang === 'ar'
-                        ? 'لقد قيّمت هذا النشاط مؤخرًا. يرجى الانتظار 24 ساعة قبل تسجيل تجربة أخرى هنا.'
-                        : 'You recently evaluated this business. Please wait 24 hours before logging another experience here.'
-                    );
-                    setVoteModal({ isOpen: false, businessId: null, type: null });
-                    return;
-                }
-
-                // ── Step 2: Diminishing Returns (30-day count) ──────────
-                const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-                const diminishingQuery = user?.id
-                    ? supabase.from('logs').select('*', { count: 'exact', head: true })
-                        .eq('business_id', businessId)
-                        .eq('profile_id', user.id)
-                        .gte('created_at', thirtyDaysAgo)
-                    : supabase.from('logs').select('*', { count: 'exact', head: true })
-                        .eq('business_id', businessId)
-                        .eq('fingerprint', fingerprint)
-                        .gte('created_at', thirtyDaysAgo);
-
-                const { count: pastVoteCount, error: dimErr } = await diminishingQuery;
-                const safeCount = (!dimErr && pastVoteCount) ? pastVoteCount : 0;
-
-                // ── Step 3: Calculate Dynamic Weight ────────────────────
-                weight = calculateVoteWeight(user, safeCount);
-
-                // ── Step 4: Insert with weight ─────────────────────────
-                const { error } = await supabase.from('logs').insert([{
-                    business_id: businessId,
-                    interaction_type: type,
-                    reason_text: voteReason,
-                    profile_id: user?.id || null,
-                    fingerprint: fingerprint,
-                    weight: weight
-                }]);
-
-                if (error) {
-                    console.error("Supabase insert error:", error);
-                    showToast(lang === 'ar' ? "حدث خطأ: " + error.message : "Error: " + error.message);
-                    return;
-                }
-            } catch (err) {
-                console.error("Supabase insert exception:", err);
-                showToast("Connection failed.");
-                return;
-            }
-        }
-
-        // ✅ BUG-01 FIX: Award Gader Points atomically via RPC
-        if (user?.id && supabase) {
-            try {
-                const earnedPoints = Math.max(5, Math.min(25, Math.round(weight * 10)));
-                const { data: newPoints, error: rpcErr } = await supabase.rpc('increment_gader_points', {
-                    p_profile_id: user.id,
-                    p_amount: earnedPoints,
-                });
-                if (!rpcErr && newPoints !== null) {
-                    setUser(prev => prev ? { ...prev, gader: newPoints } : prev);
-                }
-            } catch (e) {
-                console.error('Error awarding points:', e);
-            }
-        }
-
-        // Only track anonymous vote count for non-verified users
-        if (!user) {
-            // Fix: Atomic read from storage to prevent race condition overwrite
-            const currentCount = parseInt(localStorage.getItem('trust_ledger_interactions') || '0');
-            const newCount = currentCount + 1;
-            setAnonInteractions(newCount);
-            localStorage.setItem('trust_ledger_interactions', newCount.toString());
-        }
-
-        setVoteModal({ isOpen: false, businessId: null, type: null });
-
-        // Trigger Impact Bubble animation
-        setImpactBubble({ weight, type });
-        setTimeout(() => setImpactBubble(null), 2000);
-
-        if (user) {
-            if (!isClaimed) {
-                showToast(lang === 'ar'
-                    ? 'تم حفظ تقييمك في سجل الثقة. العرض العام مقيّد حالياً لأن صاحب النشاط لم يسجّل بعد.'
-                    : 'Your vote is saved in the Trust Ledger. The public view is currently limited because the owner has not claimed this business yet.');
-            } else {
-                showToast(lang === 'ar' ? 'تم تسجيل تقييمك بنجاح!' : 'Vote logged successfully!');
-            }
-        } else {
-            const remaining = 3 - anonInteractions - 1;
-            if (!isClaimed) {
-                showToast(lang === 'ar'
-                    ? `تم الحفظ في سجل الثقة. (${remaining} تقييمات مجهولة متبقية)`
-                    : `Saved to Trust Ledger. (${remaining} anonymous votes remaining)`);
-            } else {
-                showToast(lang === 'ar'
-                    ? `تم التسجيل بنجاح. (${remaining} تقييمات مجهولة متبقية)`
-                    : `Successfully logged. (${remaining} anonymous votes remaining)`);
-            }
-        }
-    };
-
-    const submitPreRegistration = async (preRegData, setPreRegData) => {
-        if (!preRegData.name || !preRegData.phone || !preRegData.bizName) {
-            showToast(t('prereg_fill_all'));
-            return;
-        }
-
-        if (supabase) {
-            try {
-                const { error } = await supabase.from('pre_registrations').insert([
-                    {
-                        owner_name: preRegData.name,
-                        phone_number: preRegData.phone,
-                        business_name: preRegData.bizName
-                    }
-                ]);
-
-                if (error) {
-                    console.error("Pre-registration error:", error);
-                    showToast(t('prereg_error') + ": " + error.message);
-                    return;
-                }
-
-                showToast(t('prereg_success'));
-                setShowPreRegModal(false);
-                setPreRegData({ name: '', phone: '', bizName: '' });
-            } catch (err) {
-                console.error(err);
-                showToast(t('prereg_error'));
-            }
-        }
-    };
 
     return (
         <div className={`min-h-screen flex flex-col font-sans bg-slate-50 text-slate-800 ${isRTL ? 'text-right' : 'text-left'}`} dir={isRTL ? 'rtl' : 'ltr'}>
@@ -282,7 +87,12 @@ export default function ClientLayout({ children }) {
                 onClose={() => setVoteModal({ isOpen: false, businessId: null, type: null })}
                 voteReason={voteReason}
                 setVoteReason={setVoteReason}
-                onSubmit={submitVote}
+                onSubmit={() => {
+                    const { businessId, type } = voteModal;
+                    const targetBusiness = businesses.find(b => b.id === businessId);
+                    submitVote(businessId, type, voteReason, targetBusiness?.isClaimed);
+                    setVoteModal({ isOpen: false, businessId: null, type: null });
+                }}
                 t={t}
                 type={voteModal.type}
             />
@@ -291,8 +101,9 @@ export default function ClientLayout({ children }) {
             <WrappedPreRegModal
                 isOpen={showPreRegModal}
                 onClose={() => setShowPreRegModal(false)}
-                submitPreRegistration={submitPreRegistration}
                 t={t}
+                showToast={showToast}
+                supabase={supabase}
             />
 
             <LimitModal
@@ -312,14 +123,14 @@ export default function ClientLayout({ children }) {
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />
 
             {/* Impact Bubble Animation */}
-            {impactBubble && (
+            {globalImpactBubble && (
                 <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] animate-impact-bubble">
-                    <div className={`px-5 py-3 rounded-2xl shadow-lg font-bold text-lg flex items-center gap-2 backdrop-blur-sm ${impactBubble.type === 'recommend'
+                    <div className={`px-5 py-3 rounded-2xl shadow-lg font-bold text-lg flex items-center gap-2 backdrop-blur-sm ${globalImpactBubble.type === 'recommend'
                         ? 'bg-emerald-500/90 text-white'
                         : 'bg-rose-500/90 text-white'
                         }`}>
-                        <span className="text-2xl">{impactBubble.type === 'recommend' ? '👍' : '👎'}</span>
-                        <span>+{impactBubble.weight}x Impact</span>
+                        <span className="text-2xl">{globalImpactBubble.type === 'recommend' ? '👍' : '👎'}</span>
+                        <span>+{globalImpactBubble.weight}x Impact</span>
                     </div>
                 </div>
             )}
@@ -327,8 +138,40 @@ export default function ClientLayout({ children }) {
     );
 }
 
-function WrappedPreRegModal({ isOpen, onClose, submitPreRegistration, t }) {
+function WrappedPreRegModal({ isOpen, onClose, t, showToast, supabase }) {
     const [preRegData, setPreRegData] = useState({ name: '', phone: '', bizName: '' });
+
+    const handleSubmit = async () => {
+        if (!preRegData.name || !preRegData.phone || !preRegData.bizName) {
+            showToast(t('prereg_fill_all'));
+            return;
+        }
+
+        if (supabase) {
+            try {
+                const { error } = await supabase.from('pre_registrations').insert([
+                    {
+                        owner_name: preRegData.name,
+                        phone_number: preRegData.phone,
+                        business_name: preRegData.bizName
+                    }
+                ]);
+
+                if (error) {
+                    console.error("Pre-registration error:", error);
+                    showToast(t('prereg_error') + ": " + error.message);
+                    return;
+                }
+
+                showToast(t('prereg_success'));
+                onClose();
+                setPreRegData({ name: '', phone: '', bizName: '' });
+            } catch (err) {
+                console.error(err);
+                showToast(t('prereg_error'));
+            }
+        }
+    };
 
     return (
         <PreRegModal
@@ -336,7 +179,7 @@ function WrappedPreRegModal({ isOpen, onClose, submitPreRegistration, t }) {
             onClose={onClose}
             preRegData={preRegData}
             setPreRegData={setPreRegData}
-            onSubmit={() => submitPreRegistration(preRegData, setPreRegData)}
+            onSubmit={handleSubmit}
             t={t}
         />
     );

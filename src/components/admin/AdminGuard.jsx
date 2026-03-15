@@ -19,59 +19,72 @@ export default function AdminGuard({ children }) {
     const [checking, setChecking] = useState(true)
 
     useEffect(() => {
-        // Safety timeout: if check-auth takes longer than 8s, redirect to login
-        const safetyTimer = setTimeout(() => {
-            console.warn('[AdminGuard] Safety timeout: redirecting to login after 8s');
-            setChecking(false);
-            router.replace('/login');
-        }, 8000);
-
         // Don't guard the login page itself.
         // On subdomain: usePathname() returns '/login'
         // On path-based (localhost): returns '/admin/login'
         if (pathname === '/admin/login' || pathname === '/login') {
             setIsAuthorized(true)
             setChecking(false)
-            clearTimeout(safetyTimer)
             return
         }
 
         let isMounted = true
+        let attempts = 0
+        const MAX_ATTEMPTS = 3
 
         const checkAdminAuth = async () => {
-            try {
-                console.log('[AdminGuard] Checking auth for pathname:', pathname)
-                const res = await fetch('/api/admin/check-auth', {
-                    credentials: 'include',
-                    // Cache-bust to avoid stale 401s after a fresh login
-                    headers: { 'Cache-Control': 'no-cache' }
-                })
-                if (!isMounted) return
-                console.log('[AdminGuard] check-auth response status:', res.status)
+            while (isMounted && attempts < MAX_ATTEMPTS) {
+                attempts++
+                try {
+                    console.log(`[AdminGuard] Attempt ${attempts}/${MAX_ATTEMPTS} for pathname:`, pathname)
+                    const res = await fetch('/api/admin/check-auth', {
+                        credentials: 'include',
+                        headers: { 'Cache-Control': 'no-cache' }
+                    })
 
-                if (res.ok) {
-                    const data = await res.json()
-                    console.log('[AdminGuard] check-auth response data:', JSON.stringify(data))
-                    if (data.authenticated) {
-                        setIsAuthorized(true)
-                    } else {
-                        console.warn('[AdminGuard] REJECTED — check-auth returned authenticated:false')
-                        router.replace('/login?redirect=' + encodeURIComponent(pathname))
+                    if (!isMounted) return
+
+                    console.log('[AdminGuard] check-auth response status:', res.status)
+
+                    if (res.ok) {
+                        const data = await res.json()
+                        console.log('[AdminGuard] check-auth data:', JSON.stringify(data))
+
+                        if (data.authenticated) {
+                            setIsAuthorized(true)
+                            setChecking(false)
+                            return // success — stop retrying
+                        }
+
+                        // authenticated: false means cookie is missing/invalid.
+                        // Don't retry — redirect is appropriate.
+                        console.warn('[AdminGuard] REJECTED — authenticated:false')
+                        if (isMounted) {
+                            setChecking(false)
+                            router.replace('/login?redirect=' + encodeURIComponent(pathname))
+                        }
+                        return
                     }
-                } else {
-                    console.warn('[AdminGuard] REJECTED — check-auth returned non-OK status:', res.status)
-                    router.replace('/login?redirect=' + encodeURIComponent(pathname))
+
+                    // Non-OK (e.g. 500, network hiccup) — retry after a short wait
+                    console.warn('[AdminGuard] Non-OK status:', res.status, `— retrying (attempt ${attempts})`)
+                    if (attempts < MAX_ATTEMPTS) {
+                        await new Promise(r => setTimeout(r, 1000 * attempts)) // 1s, 2s back-off
+                    }
+
+                } catch (err) {
+                    console.error(`[AdminGuard] Fetch error (attempt ${attempts}):`, err)
+                    if (attempts < MAX_ATTEMPTS) {
+                        await new Promise(r => setTimeout(r, 1000 * attempts)) // back-off
+                    }
                 }
-            } catch (err) {
-                console.error('[AdminGuard] REJECTED — fetch error:', err)
-                if (isMounted) {
-                    router.replace('/login?redirect=' + encodeURIComponent(pathname))
-                }
-            } finally {
-                if (isMounted) {
-                    setChecking(false)
-                    clearTimeout(safetyTimer)
-                }
+            }
+
+            // All retries exhausted — redirect to login
+            if (isMounted) {
+                console.warn('[AdminGuard] All retries exhausted — redirecting to login')
+                setChecking(false)
+                router.replace('/login?redirect=' + encodeURIComponent(pathname))
             }
         }
 
@@ -79,7 +92,6 @@ export default function AdminGuard({ children }) {
 
         return () => {
             isMounted = false
-            clearTimeout(safetyTimer)
         }
     }, [pathname, router])
 
@@ -93,3 +105,4 @@ export default function AdminGuard({ children }) {
 
     return <>{children}</>
 }
+

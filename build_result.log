@@ -1,0 +1,82 @@
+
+> tagdeer-platform@1.0.0 build
+> next build
+
+▲ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+- Experiments (use with caution):
+  · clientTraceMetadata
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+Turbopack build encountered 1 warnings:
+./tailwind.config.js
+Specified module format (EcmaScript Modules) is not matching the module format of the source code (CommonJs)
+The EcmaScript module format was specified in the package.json that is affecting this source file or by using an special extension, but it looks like that CommonJs syntax is used in the source code.
+Exports made by CommonJs syntax will lead to a runtime error, since the module is in EcmaScript mode. Either change the "type" field in the package.json or replace CommonJs syntax with EcmaScript import/export syntax in the source file.
+
+
+✓ Compiled successfully in 9.9s
+  Running next.config.js provided runAfterProductionCompile ...
+✓ Completed runAfterProductionCompile in 2298ms
+  Running TypeScript ...
+  Collecting page data using 15 workers ...
+  Generating static pages using 15 workers (0/42) ...
+  Generating static pages using 15 workers (10/42) 
+  Generating static pages using 15 workers (20/42) 
+  Generating static pages using 15 workers (31/42) 
+✓ Generating static pages using 15 workers (42/42) in 1223.3ms
+  Finalizing page optimization ...
+
+Route (app)                                    Revalidate  Expire
+┌ ○ /
+├ ○ /_not-found
+├ ○ /about
+├ ○ /add
+├ ○ /admin
+├ ○ /admin/businesses
+├ ○ /admin/campaigns
+├ ○ /admin/disputes
+├ ○ /admin/financials
+├ ○ /admin/login
+├ ○ /admin/reports
+├ ○ /admin/requests
+├ ○ /admin/settings
+├ ○ /admin/users
+├ ƒ /api/admin/check-auth
+├ ƒ /api/admin/claims
+├ ƒ /api/admin/claims/update
+├ ƒ /api/admin/subscriptions/grant
+├ ƒ /api/admin/subscriptions/revoke
+├ ƒ /api/catalog/react
+├ ƒ /api/consumer/business-stats
+├ ƒ /api/consumer/logs
+├ ƒ /api/erp/sync
+├ ƒ /api/merchant/check-password
+├ ƒ /api/merchant/init-role
+├ ƒ /api/merchant/parse-catalog-feed
+├ ƒ /api/merchant/set-password
+├ ƒ /api/merchant/trial/claim
+├ ○ /auth/callback
+├ ƒ /b/[slug]
+├ ○ /discover                                          5m      1y
+├ ○ /merchant
+├ ○ /merchant/coupons
+├ ○ /merchant/dashboard
+├ ○ /merchant/inbox
+├ ○ /merchant/login
+├ ○ /merchant/onboarding
+├ ○ /merchant/reset-password
+├ ○ /merchant/settings
+├ ƒ /merchant/storefront-builder/[businessId]
+├ ○ /pricing
+├ ○ /privacy
+├ ○ /profile
+└ ƒ /verify-user/[id]
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

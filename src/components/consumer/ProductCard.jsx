@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { ThumbsUp, ThumbsDown } from 'lucide-react';
 
-export default function ProductCard({ item, theme, lang = 'en' }) {
+function ProductCard({ item, theme, lang = 'en' }) {
     const [likes, setLikes] = useState(item.likes || 0);
     const [dislikes, setDislikes] = useState(item.dislikes || 0);
     const [voted, setVoted] = useState(null);
@@ -118,3 +118,5 @@ export default function ProductCard({ item, theme, lang = 'en' }) {
         </div>
     );
 }
+
+export default memo(ProductCard);

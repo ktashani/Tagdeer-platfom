@@ -211,7 +211,10 @@ export default function FinancialsPage() {
         // API call to the server to grant trial
         const res = await fetch('/api/admin/subscriptions/grant', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'TagdeerAdmin'
+            },
             body: JSON.stringify({
                 profileId: trialForm.profileId,
                 tier: trialForm.tier,
@@ -239,7 +242,10 @@ export default function FinancialsPage() {
 
         const res = await fetch('/api/admin/subscriptions/revoke', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'TagdeerAdmin'
+            },
             body: JSON.stringify({ profileId })
         });
         const data = await res.json();
