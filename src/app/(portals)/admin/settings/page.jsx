@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Grid, MapPin, DollarSign, Lock, Plus, Edit2, Check, X, ChevronRight, Save, Trash2, Users, AlertTriangle, ShieldAlert, Tag, CreditCard } from 'lucide-react'
 import { useTagdeer } from '@/context/TagdeerContext'
 
@@ -20,6 +20,7 @@ export default function SettingsPage() {
 
     const [activeTab, setActiveTab] = useState('categories')
     const [isSaving, setIsSaving] = useState(false)
+    const isSavingRef = useRef(false)
 
     // Local mutable state for editing
     const [categories, setCategories] = useState([])
@@ -62,8 +63,10 @@ export default function SettingsPage() {
     const [editingCategory, setEditingCategory] = useState(null)
     const [newCategoryName, setNewCategoryName] = useState('')
 
-    // Load initial data from config
     useEffect(() => {
+        // Skip re-sync if we just saved (to prevent overwriting local edits)
+        if (isSavingRef.current) return
+
         // The context now provides the raw objects from the DB.
         if (configCategories?.length > 0) setCategories(configCategories)
         if (configRegions?.length > 0) setRegions(configRegions)
@@ -89,11 +92,11 @@ export default function SettingsPage() {
 
     const saveConfig = async (key, value) => {
         setIsSaving(true)
+        isSavingRef.current = true
         try {
             const { error } = await supabase
                 .from('platform_config')
-                .update({ value })
-                .eq('key', key)
+                .upsert({ key, value }, { onConflict: 'key' })
 
             if (error) throw error
             showToast(`${key} updated successfully.`)
@@ -103,6 +106,8 @@ export default function SettingsPage() {
             showToast(`Failed to update ${key}.`, 'error')
         } finally {
             setIsSaving(false)
+            // Delay clearing the flag so the useEffect from refreshConfig has time to fire and be skipped
+            setTimeout(() => { isSavingRef.current = false }, 500)
         }
     }
 
@@ -206,8 +211,22 @@ export default function SettingsPage() {
         setTierPricing([...tierPricing, newTier])
     }
 
+    const handleDeleteTier = (tierId) => {
+        if (!window.confirm('Are you sure you want to permanently delete this tier? This cannot be undone.')) return
+        const updated = tierPricing.filter(t => t.id !== tierId)
+        setTierPricing(updated)
+        saveConfig('tier_pricing', updated)
+    }
+
     const handleSaveTierPricing = () => {
-        saveConfig('tier_pricing', tierPricing)
+        // Deduplicate by id before saving — last occurrence wins
+        const seen = new Map()
+        tierPricing.forEach(t => {
+            if (t.id) seen.set(t.id, t)
+        })
+        const deduped = Array.from(seen.values())
+        setTierPricing(deduped)
+        saveConfig('tier_pricing', deduped)
     }
 
     const handleSaveRibbonConfig = async () => {
@@ -658,7 +677,13 @@ export default function SettingsPage() {
                                                                 onClick={() => handleTierChange(tier.id, 'isActive', !tier.isActive)}
                                                                 className={`text-xs px-3 py-1.5 rounded font-bold transition-all ${tier.isActive ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'}`}
                                                             >
-                                                                {tier.isActive ? 'Disable Tier' : 'Enable Tier'}
+                                                                {tier.isActive ? 'Disable' : 'Enable'}
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteTier(tier.id)}
+                                                                className="text-xs px-3 py-1.5 rounded font-bold bg-red-500/10 text-red-400 hover:bg-red-500/30 transition-all flex items-center gap-1"
+                                                            >
+                                                                <Trash2 className="w-3 h-3" /> Delete
                                                             </button>
                                                         </div>
                                                     </div>
