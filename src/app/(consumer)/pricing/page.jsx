@@ -27,8 +27,54 @@ export default function PricingPage() {
         setOpenFaqIndex(openFaqIndex === index ? null : index);
     };
 
-    // Active tiers only + free tier always first
-    const activeTiers = tierPricing.filter(t => t.isActive !== false);
+    const FALLBACK_TIERS = [
+        {
+            id: 'fallback_starter',
+            name: lang === 'ar' ? 'أساسي' : 'Starter',
+            name_ar: 'أساسي',
+            price: 49,
+            description: lang === 'ar'
+                ? 'مثالي للأنشطة التجارية ذات الفرع الواحد.'
+                : 'Perfect for single-location businesses getting started.',
+            features: lang === 'ar'
+                ? ['فرع واحد', 'استقبال تقييمات المجتمع', 'مؤشر القدر الأساسي']
+                : ['1 location', 'Community reviews', 'Basic Gader Score'],
+            features_ar: ['فرع واحد', 'استقبال تقييمات المجتمع', 'مؤشر القدر الأساسي'],
+            isActive: true,
+            isPopular: false
+        },
+        {
+            id: 'fallback_growth',
+            name: lang === 'ar' ? 'نمو' : 'Growth',
+            name_ar: 'نمو',
+            price: 99,
+            description: lang === 'ar'
+                ? 'للعلامات التجارية المتنامية التي تدير عدة فروع.'
+                : 'For growing brands managing multiple branches.',
+            features: lang === 'ar'
+                ? ['حتى 5 فروع', 'تقارير متقدمة', 'صفحة نشاط رقمية', 'دعم أولوية']
+                : ['Up to 5 locations', 'Advanced reports', 'Digital storefront', 'Priority support'],
+            features_ar: ['حتى 5 فروع', 'تقارير متقدمة', 'صفحة نشاط رقمية', 'دعم أولوية'],
+            isActive: true,
+            isPopular: true
+        }
+    ];
+
+    const rawTiers = (tierPricing && tierPricing.length > 0) ? tierPricing : FALLBACK_TIERS;
+
+    // Active tiers only, deduplicated by id
+    const seenIds = new Map();
+    rawTiers
+        .filter(t => t.isActive !== false)
+        .forEach(t => {
+            if (t.id) seenIds.set(t.id, t);
+        });
+    const uniqueActiveTiers = Array.from(seenIds.values());
+
+    const dbHasFreeTier = uniqueActiveTiers.some(
+        t => t.isFree || t.price === 0 || t.name === 'Free' || t.name === 'مجاني'
+    );
+
     const freeTier = {
         id: 'free',
         name: lang === 'ar' ? 'مجاني' : 'Free',
@@ -44,7 +90,11 @@ export default function PricingPage() {
         isFree: true
     };
 
-    const allTiers = [freeTier, ...activeTiers];
+    const allTiers = dbHasFreeTier
+        ? uniqueActiveTiers
+        : [freeTier, ...uniqueActiveTiers];
+
+    allTiers.sort((a, b) => (a.price || 0) - (b.price || 0));
 
     const benefits = [
         {
@@ -163,7 +213,13 @@ export default function PricingPage() {
                     </p>
                 </div>
 
-                <div className={`grid grid-cols-1 md:grid-cols-${Math.min(allTiers.length, 3)} max-w-7xl mx-auto gap-8 mb-16`}>
+                <div className={`grid grid-cols-1 gap-8 mb-16 max-w-7xl mx-auto ${
+                    allTiers.length === 2
+                        ? 'md:grid-cols-2 lg:max-w-4xl'
+                        : allTiers.length >= 3
+                            ? 'md:grid-cols-3'
+                            : 'md:grid-cols-1 lg:max-w-2xl'
+                }`}>
                     {allTiers.map((tier, idx) => {
                         const isPopular = tier.isPopular;
                         const isFree = tier.isFree || tier.price === 0;
@@ -222,7 +278,9 @@ export default function PricingPage() {
                                                 {tier.price} <span className="text-2xl font-bold">{lang === 'ar' ? 'د.ل' : 'LYD'}</span>
                                             </span>
                                             <span className={isPopular ? 'text-indigo-200' : 'text-slate-500'}>
-                                                {' '}/{lang === 'ar' ? ' شهرياً' : ' mo'}
+                                                {' '}/{tier.duration === 'yearly'
+                                                    ? (lang === 'ar' ? ' سنوياً' : ' yr')
+                                                    : (lang === 'ar' ? ' شهرياً' : ' mo')}
                                             </span>
                                         </>
                                     )}
