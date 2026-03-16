@@ -733,7 +733,15 @@ export default function MerchantSettings() {
                                     </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className={`grid grid-cols-1 ${tierPricing.length === 1 ? 'max-w-md' : tierPricing.length === 2 ? 'max-w-2xl' : 'grid-cols-1 lg:grid-cols-3'} gap-4`}>
+                                    <div className={`grid grid-cols-1 gap-4 ${
+                                        tierPricing.length === 1
+                                            ? 'max-w-md'
+                                            : tierPricing.length === 2
+                                                ? 'md:grid-cols-2 max-w-2xl'
+                                                : tierPricing.length === 3
+                                                    ? 'md:grid-cols-3'
+                                                    : 'md:grid-cols-2 lg:grid-cols-4'
+                                    }`}>
                                         {tierPricing.map((tier) => {
                                             const isActiveTier = accountTier?.toLowerCase() === tier.id?.toLowerCase() || accountTier?.toLowerCase() === tier.name?.toLowerCase();
                                             const isEnterprise = tier.id?.toLowerCase().includes('enterprise');

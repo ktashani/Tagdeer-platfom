@@ -224,7 +224,10 @@ export default function SettingsPage() {
         tierPricing.forEach(t => {
             if (t.id) seen.set(t.id, t)
         })
-        const deduped = Array.from(seen.values())
+        const deduped = Array.from(seen.values()).map(t => ({
+            ...t,
+            isFree: t.price === 0 || t.price === '0'
+        }))
         setTierPricing(deduped)
         saveConfig('tier_pricing', deduped)
     }

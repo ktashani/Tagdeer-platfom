@@ -27,40 +27,7 @@ export default function PricingPage() {
         setOpenFaqIndex(openFaqIndex === index ? null : index);
     };
 
-    const FALLBACK_TIERS = [
-        {
-            id: 'fallback_starter',
-            name: lang === 'ar' ? 'أساسي' : 'Starter',
-            name_ar: 'أساسي',
-            price: 49,
-            description: lang === 'ar'
-                ? 'مثالي للأنشطة التجارية ذات الفرع الواحد.'
-                : 'Perfect for single-location businesses getting started.',
-            features: lang === 'ar'
-                ? ['فرع واحد', 'استقبال تقييمات المجتمع', 'مؤشر القدر الأساسي']
-                : ['1 location', 'Community reviews', 'Basic Gader Score'],
-            features_ar: ['فرع واحد', 'استقبال تقييمات المجتمع', 'مؤشر القدر الأساسي'],
-            isActive: true,
-            isPopular: false
-        },
-        {
-            id: 'fallback_growth',
-            name: lang === 'ar' ? 'نمو' : 'Growth',
-            name_ar: 'نمو',
-            price: 99,
-            description: lang === 'ar'
-                ? 'للعلامات التجارية المتنامية التي تدير عدة فروع.'
-                : 'For growing brands managing multiple branches.',
-            features: lang === 'ar'
-                ? ['حتى 5 فروع', 'تقارير متقدمة', 'صفحة نشاط رقمية', 'دعم أولوية']
-                : ['Up to 5 locations', 'Advanced reports', 'Digital storefront', 'Priority support'],
-            features_ar: ['حتى 5 فروع', 'تقارير متقدمة', 'صفحة نشاط رقمية', 'دعم أولوية'],
-            isActive: true,
-            isPopular: true
-        }
-    ];
-
-    const rawTiers = (tierPricing && tierPricing.length > 0) ? tierPricing : FALLBACK_TIERS;
+    const rawTiers = tierPricing || [];
 
     // Active tiers only, deduplicated by id
     const seenIds = new Map();
@@ -71,30 +38,7 @@ export default function PricingPage() {
         });
     const uniqueActiveTiers = Array.from(seenIds.values());
 
-    const dbHasFreeTier = uniqueActiveTiers.some(
-        t => t.isFree || t.price === 0 || t.name === 'Free' || t.name === 'مجاني'
-    );
-
-    const freeTier = {
-        id: 'free',
-        name: lang === 'ar' ? 'مجاني' : 'Free',
-        price: 0,
-        description: lang === 'ar'
-            ? 'سجّل نشاطك التجاري مجاناً وابدأ باستقبال التفاعلات من الزبائن.'
-            : 'Register your business for free and start receiving customer interactions.',
-        features: lang === 'ar'
-            ? ['فرع واحد', 'استقبال تقييمات المجتمع', 'مؤشر القدر الأساسي', 'إشعار عند وصول تقييم جديد']
-            : ['1 location', 'Receive community reviews', 'Basic Gader Score', 'Notifications on new reviews'],
-        isActive: true,
-        isPopular: false,
-        isFree: true
-    };
-
-    const allTiers = dbHasFreeTier
-        ? uniqueActiveTiers
-        : [freeTier, ...uniqueActiveTiers];
-
-    allTiers.sort((a, b) => (a.price || 0) - (b.price || 0));
+    const allTiers = [...uniqueActiveTiers].sort((a, b) => (a.price || 0) - (b.price || 0));
 
     const benefits = [
         {
@@ -214,11 +158,13 @@ export default function PricingPage() {
                 </div>
 
                 <div className={`grid grid-cols-1 gap-8 mb-16 max-w-7xl mx-auto ${
-                    allTiers.length === 2
-                        ? 'md:grid-cols-2 lg:max-w-4xl'
-                        : allTiers.length >= 3
-                            ? 'md:grid-cols-3'
-                            : 'md:grid-cols-1 lg:max-w-2xl'
+                    allTiers.length === 1
+                        ? 'md:grid-cols-1 lg:max-w-2xl'
+                        : allTiers.length === 2
+                            ? 'md:grid-cols-2 lg:max-w-4xl'
+                            : allTiers.length === 3
+                                ? 'md:grid-cols-3'
+                                : 'md:grid-cols-2 lg:grid-cols-4'
                 }`}>
                     {allTiers.map((tier, idx) => {
                         const isPopular = tier.isPopular;
