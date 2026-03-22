@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, MessageSquare, Ticket, Settings, Bell, ChevronDown, Store, Plus, CheckCircle2, Lock } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, Ticket, Settings, Bell, ChevronDown, Store, Plus, CheckCircle2, Lock, Wallet } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -129,6 +129,7 @@ export default function TopNav() {
             requiresBusiness: true
         },
         { href: `${basePath}/coupons`, icon: Ticket, label: 'Coupons', requiresBusiness: true },
+        { href: `${basePath}/billing`, icon: Wallet, label: 'Billing', requiresBusiness: false },
         { href: `${basePath}/settings`, icon: Settings, label: 'Settings', requiresBusiness: false },
     ];
 

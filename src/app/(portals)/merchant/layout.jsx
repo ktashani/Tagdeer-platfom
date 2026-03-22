@@ -31,7 +31,7 @@ function BusinessRouteGate({ children }) {
     // Routes that are always accessible regardless of business status
     const isExemptRoute = useMemo(() => {
         if (!pathname) return true;
-        const exempt = ['/dashboard', '/settings', '/onboarding', '/login', '/reset-password'];
+        const exempt = ['/dashboard', '/settings', '/billing', '/onboarding', '/login', '/reset-password'];
         return exempt.some(route => pathname.includes(route));
     }, [pathname]);
 
