@@ -74,12 +74,11 @@ export default function FinancialsPage() {
                     amount: `${t.amount} ${t.currency || 'LYD'}`,
                     rawAmount: t.amount,
                     currency: t.currency || 'LYD',
-                    gateway: t.payment_gateway || 'manual_bank',
                     gatewayRef: t.gateway_reference,
                     exchangeRate: t.exchange_rate,
                     duration: t.duration,
                     paymentMethod: t.payment_method,
-                    gateway: t.payment_gateway,
+                    gateway: t.payment_gateway || 'manual_bank',
                     date: new Date(t.created_at).toLocaleDateString(),
                     screenshotUrl: t.screenshot_url || "https://placehold.co/400x600?text=No+Receipt",
                     status: t.status
