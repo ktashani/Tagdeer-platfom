@@ -1,60 +1,13 @@
 -- ============================================================
--- Production Readiness: Weekly Counter Reset + Configurable Limits
+-- HOTFIX: Fix submit_vote v_inserted_id type UUID → BIGINT
 --
--- 1. pg_cron job to reset weekly_log_count, coupons_earned_this_week
--- 2. Configurable anon_weekly_vote_limit in platform_config
--- 3. Update submit_vote RPC to read limit from config
+-- Root Cause: logs.id is BIGINT (auto-increment identity),
+-- but submit_vote declared v_inserted_id as UUID.
+-- PostgreSQL cannot cast integer 32/35/36 to UUID.
+--
+-- Fix: Change v_inserted_id to BIGINT. All other logic unchanged.
 -- ============================================================
 
--- ─── 1. Insert default anon_weekly_vote_limit config ──────────
-INSERT INTO platform_config (key, value)
-VALUES ('anon_weekly_vote_limit', '7')
-ON CONFLICT (key) DO NOTHING;
-
--- ─── 2. Weekly counter reset function ─────────────────────────
--- Resets weekly_log_count and coupons_earned_this_week every Monday 00:00 UTC.
--- This can be invoked via pg_cron, Supabase Edge Function cron, or manual call.
-CREATE OR REPLACE FUNCTION reset_weekly_counters()
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-    UPDATE profiles
-    SET weekly_log_count = 0,
-        coupons_earned_this_week = 0
-    WHERE weekly_log_count > 0
-       OR coupons_earned_this_week > 0;
-
-    RAISE NOTICE 'Weekly counters reset at %', NOW();
-END;
-$$;
-
--- ─── 3. Schedule via pg_cron (if extension available) ─────────
--- Supabase projects have pg_cron enabled by default.
--- This schedules the reset for every Monday at 00:00 UTC.
-DO $$
-BEGIN
-    -- Check if pg_cron extension is available
-    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-        -- Unschedule if previously existed (idempotent)
-        PERFORM cron.unschedule('weekly_counter_reset');
-        -- Schedule: every Monday at 00:00 UTC
-        PERFORM cron.schedule(
-            'weekly_counter_reset',
-            '0 0 * * 1',
-            'SELECT reset_weekly_counters()'
-        );
-        RAISE NOTICE 'pg_cron job scheduled: weekly_counter_reset (every Monday 00:00 UTC)';
-    ELSE
-        RAISE NOTICE 'pg_cron not available. Use Supabase Edge Function cron or external scheduler to call reset_weekly_counters() weekly.';
-    END IF;
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'pg_cron scheduling failed: %. Set up external cron.', SQLERRM;
-END $$;
-
--- ─── 4. Update submit_vote to read configurable anon limit ────
 CREATE OR REPLACE FUNCTION submit_vote(
     p_business_id UUID,
     p_interaction_type TEXT,
@@ -76,7 +29,7 @@ DECLARE
     v_gader_points INT;
     v_vip_tier TEXT;
     v_points_from_tier NUMERIC;
-    v_inserted_id BIGINT;          -- FIXED: logs.id is BIGINT, not UUID
+    v_inserted_id BIGINT;          -- ✅ FIXED: was UUID, logs.id is BIGINT
     v_inserted_at TIMESTAMPTZ;
     v_earned_points INT;
     v_new_points INT;

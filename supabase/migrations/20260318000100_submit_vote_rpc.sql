@@ -35,7 +35,7 @@ DECLARE
     v_gader_points INT;
     v_vip_tier TEXT;
     v_points_from_tier NUMERIC;
-    v_inserted_id UUID;
+    v_inserted_id BIGINT;          -- FIXED: logs.id is BIGINT, not UUID
     v_inserted_at TIMESTAMPTZ;
     v_earned_points INT;
     v_new_points INT;

@@ -187,12 +187,18 @@ export default function MerchantGuard({ children }) {
     }
 
     // Tier Gating Logic
-    if (subTier === 'Free' && pathname === '/merchant/coupons') {
+    const FREE_GATED_ROUTES = ['/merchant/coupons', '/merchant/inbox'];
+    const GATED_LABELS = {
+        '/merchant/coupons': { title: 'Unlock Campaigns & Coupons', description: 'Loyalty distribution is only available for Pro and Enterprise merchants.' },
+        '/merchant/inbox': { title: 'Unlock Resolution Inbox', description: 'The dispute resolution inbox and customer chat is available for Pro and Enterprise tiers.' },
+    };
+    if (subTier === 'Free' && FREE_GATED_ROUTES.some(r => pathname === r)) {
+        const labels = GATED_LABELS[pathname] || GATED_LABELS['/merchant/coupons'];
         return (
             <div className="flex h-screen w-full relative bg-[#F8F9FB] p-8">
                 <LockedFeatureOverlay
-                    title="Unlock Campaigns & Coupons"
-                    description="Loyalty distribution is only available for Pro and Enterprise merchants."
+                    title={labels.title}
+                    description={labels.description}
                 />
             </div>
         )

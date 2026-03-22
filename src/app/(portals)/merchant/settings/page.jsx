@@ -265,21 +265,49 @@ export default function MerchantSettings() {
     const handleTierUpgrade = async (tier) => {
         if (tier.isFreebie) {
             // Bypass payment — create subscription directly
-            const { error } = await supabase.from('subscriptions').upsert({
-                profile_id: user.id,
-                tier: tier.name,
-                status: 'Active',
-                quotas: tier.allocations || {},
-                is_trial: false,
-                started_at: new Date().toISOString(),
-                expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-            }, { onConflict: 'profile_id' });
-    
-            if (!error) {
-                showToast('Tier activated! Enjoy your free access. 🎁');
-                window.location.reload();
-            } else {
-                showToast('Failed to activate tier.', 'error');
+            try {
+                const { error } = await supabase.from('subscriptions').upsert({
+                    profile_id: user.id,
+                    tier: tier.name,
+                    status: 'Active',
+                    quotas: tier.allocations || {},
+                    is_trial: false,
+                    started_at: new Date().toISOString(),
+                    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+                }, { onConflict: 'profile_id' });
+
+                if (error) {
+                    console.error('Tier upgrade upsert error:', error);
+                    showToast(
+                        lang === 'ar'
+                            ? 'فشل تفعيل الباقة. تواصل مع الدعم.'
+                            : `Failed to activate tier: ${error.message}`,
+                        'error'
+                    );
+                    return;
+                }
+
+                // Update local state directly instead of reload to avoid MerchantGuard race
+                setAccountTier(tier.name);
+                setSubscription(prev => ({
+                    ...prev,
+                    tier: tier.name,
+                    status: 'Active',
+                    quotas: tier.allocations || {},
+                }));
+                showToast(
+                    lang === 'ar'
+                        ? 'تم تفعيل الباقة! استمتع بخدماتك المجانية. 🎁'
+                        : 'Tier activated! Enjoy your free access. 🎁'
+                );
+            } catch (err) {
+                console.error('Tier upgrade exception:', err);
+                showToast(
+                    lang === 'ar'
+                        ? 'حدث خطأ غير متوقع. حاول مرة أخرى.'
+                        : 'An unexpected error occurred. Please try again.',
+                    'error'
+                );
             }
             return;
         }
