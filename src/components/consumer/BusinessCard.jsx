@@ -7,7 +7,7 @@ import { Phone, Globe, Instagram, Facebook, MessageCircle, Navigation, Share2, B
 import LogItem from './LogItem';
 import { useVoteSubmission } from '@/hooks/useVoteSubmission';
 
-function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook, expandedLogs, toggleLogs, inlineVoteType, toggleInlineVote }) {
+function BusinessCard({ business, t, lang, isRTL, shareToFacebook, expandedLogs, toggleLogs, inlineVoteType, toggleInlineVote }) {
     const { voteReason, setVoteReason, user, supabase, anonInteractions, setAnonInteractions, setUser, showToast, setShowLimitModal, setBusinesses } = useTagdeer();
     const { submitVote } = useVoteSubmission({ user, supabase, lang, anonInteractions, setAnonInteractions, setUser, showToast, setShowLimitModal, setBusinesses });
     const { rawRecommends, rawComplains } = calculateBusinessScore(business.logs || []);
@@ -208,7 +208,8 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
             <div className="flex gap-3 mb-3">
                 <button
                     onClick={() => toggleInlineVote(business.id, 'recommend')}
-                    className={`flex-1 py-3 rounded-xl font-semibold flex justify-center items-center gap-2 transition-all border ${inlineVoteType === 'recommend'
+                    disabled={inlineSubmitting}
+                    className={`flex-1 py-3 rounded-xl font-semibold flex justify-center items-center gap-2 transition-all border ${inlineSubmitting ? 'opacity-50 cursor-not-allowed' : ''} ${inlineVoteType === 'recommend'
                         ? 'bg-green-100 text-green-800 border-green-300 shadow-inner'
                         : 'bg-green-50 hover:bg-green-100 text-green-700 border-green-200'
                         }`}
@@ -217,7 +218,8 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                 </button>
                 <button
                     onClick={() => toggleInlineVote(business.id, 'complain')}
-                    className={`flex-1 py-3 rounded-xl font-semibold flex justify-center items-center gap-2 transition-all border ${inlineVoteType === 'complain'
+                    disabled={inlineSubmitting}
+                    className={`flex-1 py-3 rounded-xl font-semibold flex justify-center items-center gap-2 transition-all border ${inlineSubmitting ? 'opacity-50 cursor-not-allowed' : ''} ${inlineVoteType === 'complain'
                         ? 'bg-red-100 text-red-800 border-red-300 shadow-inner'
                         : 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
                         }`}

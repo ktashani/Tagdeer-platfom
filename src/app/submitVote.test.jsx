@@ -1,74 +1,22 @@
-import React from 'react';
-import { render, screen, act, cleanup } from '@testing-library/react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { renderHook, act, cleanup } from '@testing-library/react';
 
-// ── Build a chainable Supabase mock that tracks calls ──────────────
-function createSupabaseMock() {
-    const calls = [];
-    let insertFn;
-
-    // Each chained method returns 'self' so .from().select().eq().gte() works
-    const chainable = () => {
-        const self = {
-            select: vi.fn((...args) => { self._ops.push({ op: 'select', args }); return self; }),
-            eq: vi.fn((...args) => { self._ops.push({ op: 'eq', args }); return self; }),
-            gte: vi.fn((...args) => { self._ops.push({ op: 'gte', args }); return self; }),
-            insert: vi.fn((payload) => {
-                insertFn?.(payload);
-                return Promise.resolve({ error: null });
-            }),
-            // When awaited (cooldown / diminishing), resolve with count: 0
-            then: (resolve) => resolve({ count: 0, error: null }),
-            _ops: [],
-        };
-        return self;
-    };
-
-    const from = vi.fn((table) => {
-        const chain = chainable();
-        calls.push({ table, chain });
-        return chain;
-    });
+// ── Build a Supabase mock that supports .rpc() ────────────
+function createSupabaseMock(rpcResponse = { success: true, weight: 1.0, log_id: 'test-uuid', created_at: new Date().toISOString(), earned_points: 10, new_gader_total: 30, past_vote_count: 0, profile_id: 'uuid-123', fingerprint: 'anon-test-fingerprint', interaction_type: 'recommend', reason_text: 'Great service!' }) {
+    const rpcFn = vi.fn().mockResolvedValue({ data: rpcResponse, error: null });
 
     return {
-        from,
-        calls,
-        getInsertPayload: () => {
-            const insertCall = calls.find(c => c.chain.insert.mock.calls.length > 0);
-            return insertCall?.chain.insert.mock.calls[0]?.[0];
-        },
-        getTableNames: () => calls.map(c => c.table),
+        rpc: rpcFn,
+        from: vi.fn().mockReturnValue({
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            gte: vi.fn().mockReturnThis(),
+            insert: vi.fn().mockResolvedValue({ error: null }),
+            then: (resolve) => resolve({ count: 0, error: null }),
+        }),
+        getRpcCalls: () => rpcFn.mock.calls,
     };
 }
-
-const createContext = (supabaseMock, overrides = {}) => ({
-    lang: 'en',
-    setLang: vi.fn(),
-    t: (key) => key,
-    isRTL: false,
-    businesses: [
-        { id: 1, name: 'Test Biz', region: 'Tripoli', category: 'Electronics', recommends: 10, complains: 2, isShielded: false, logs: [] },
-    ],
-    setBusinesses: vi.fn(),
-    supabase: supabaseMock,
-    anonInteractions: 0,
-    setAnonInteractions: vi.fn(),
-    showLimitModal: false,
-    setShowLimitModal: vi.fn(),
-    toastMessage: '',
-    setToastMessage: vi.fn(),
-    showToast: vi.fn(),
-    voteModal: { isOpen: true, businessId: 1, type: 'recommend' },
-    setVoteModal: vi.fn(),
-    voteReason: 'Great service!',
-    setVoteReason: vi.fn(),
-    showVerifySoonModal: false,
-    setShowVerifySoonModal: vi.fn(),
-    showPreRegModal: false,
-    setShowPreRegModal: vi.fn(),
-    user: { id: 'uuid-123', userId: 'VIP-ABCDE', vipTier: 'Bronze Tier' },
-    ...overrides,
-});
 
 // Provide a mock ResizeObserver
 global.ResizeObserver = class ResizeObserver {
@@ -77,96 +25,250 @@ global.ResizeObserver = class ResizeObserver {
     disconnect() { }
 };
 
-afterEach(() => { cleanup(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-async function setupWithContext(contextOverrides = {}) {
-    vi.resetModules();
+describe('useVoteSubmission — RPC-based submission', () => {
+    let useVoteSubmission;
+    let containsBadWords;
 
-    const sbMock = createSupabaseMock();
-    const ctx = createContext(sbMock, contextOverrides);
+    beforeEach(async () => {
+        vi.resetModules();
 
-    vi.doMock('@/context/TagdeerContext', () => ({
-        useTagdeer: vi.fn().mockReturnValue(ctx),
-    }));
-    vi.doMock('next/navigation', () => ({
-        useRouter: () => ({ push: vi.fn() }),
-        usePathname: () => '/',
-    }));
-    vi.doMock('@/lib/fingerprint', () => ({
-        getDeviceFingerprint: () => 'anon-test-fingerprint',
-    }));
-
-    const mod = await import('./ClientLayout');
-    return { mod, sbMock, ctx };
-}
-
-describe('Log Submission Flow (submitVote)', () => {
-    it('targets the "logs" table on every query, NOT "interactions"', async () => {
-        const { mod, sbMock } = await setupWithContext();
-
-        render(<mod.ClientLayout><div>children</div></mod.ClientLayout>);
-        const submitButton = screen.getByRole('button', { name: /submit/i });
-
-        await act(async () => { submitButton.click(); });
-
-        const tableNames = sbMock.getTableNames();
-        // Vote queries target 'logs', point awarding targets 'profiles'
-        const logsCalls = tableNames.filter(n => n === 'logs');
-        expect(logsCalls.length).toBeGreaterThanOrEqual(3);
-        // profiles call is allowed for point awarding
-        const allowedTables = ['logs', 'profiles'];
-        tableNames.forEach(name => {
-            expect(allowedTables).toContain(name);
-        });
-        expect(tableNames).not.toContain('interactions');
-    });
-
-    it('includes "weight" in the insert payload', async () => {
-        const { mod, sbMock } = await setupWithContext();
-
-        render(<mod.ClientLayout><div>children</div></mod.ClientLayout>);
-        const submitButton = screen.getByRole('button', { name: /submit/i });
-
-        await act(async () => { submitButton.click(); });
-
-        const payload = sbMock.getInsertPayload();
-        expect(payload).toBeDefined();
-        expect(payload[0]).toHaveProperty('weight');
-        expect(typeof payload[0].weight).toBe('number');
-    });
-
-    it('sends the correct full payload shape', async () => {
-        const { mod, sbMock } = await setupWithContext();
-
-        render(<mod.ClientLayout><div>children</div></mod.ClientLayout>);
-        const submitButton = screen.getByRole('button', { name: /submit/i });
-
-        await act(async () => { submitButton.click(); });
-
-        const payload = sbMock.getInsertPayload();
-        expect(payload).toEqual([{
-            business_id: 1,
-            interaction_type: 'recommend',
-            reason_text: 'Great service!',
-            profile_id: 'uuid-123',
-            fingerprint: 'anon-test-fingerprint',
-            weight: 1.0,  // Bronze Tier (1.0) × 0 past votes (1.0) = 1.0
-        }]);
-    });
-
-    it('calculates lower weight for anonymous users', async () => {
-        const { mod, sbMock } = await setupWithContext({ user: null });
-
-        render(<mod.ClientLayout><div>children</div></mod.ClientLayout>);
-        const submitButton = screen.getByRole('button', { name: /submit/i });
-
-        await act(async () => { submitButton.click(); });
-
-        const payload = sbMock.getInsertPayload();
-        expect(payload[0]).toEqual(expect.objectContaining({
-            profile_id: null,
-            fingerprint: 'anon-test-fingerprint',
-            weight: 0.2,  // Anonymous (0.2) × 0 past votes (1.0) = 0.2
+        vi.doMock('@/lib/fingerprint', () => ({
+            getDeviceFingerprint: () => 'anon-test-fingerprint',
         }));
+
+        vi.doMock('@/lib/contentFilter', () => ({
+            containsBadWords: vi.fn().mockReturnValue(false),
+        }));
+
+        const mod = await import('@/hooks/useVoteSubmission');
+        useVoteSubmission = mod.useVoteSubmission;
+
+        const filterMod = await import('@/lib/contentFilter');
+        containsBadWords = filterMod.containsBadWords;
+    });
+
+    it('calls supabase.rpc("submit_vote") with correct parameters', async () => {
+        const sbMock = createSupabaseMock();
+        const showToast = vi.fn();
+        const setBusinesses = vi.fn();
+        const setUser = vi.fn();
+
+        const { result } = renderHook(() => useVoteSubmission({
+            user: { id: 'uuid-123', vipTier: 'Bronze Tier', role: 'consumer' },
+            supabase: sbMock,
+            lang: 'en',
+            anonInteractions: 0,
+            setAnonInteractions: vi.fn(),
+            setUser,
+            showToast,
+            setShowLimitModal: vi.fn(),
+            setBusinesses,
+        }));
+
+        let voteResult;
+        await act(async () => {
+            voteResult = await result.current.submitVote('biz-1', 'recommend', 'Great service!', true);
+        });
+
+        expect(voteResult).toEqual({ success: true, weight: 1.0 });
+        expect(sbMock.rpc).toHaveBeenCalledWith('submit_vote', {
+            p_business_id: 'biz-1',
+            p_interaction_type: 'recommend',
+            p_reason_text: 'Great service!',
+            p_profile_id: 'uuid-123',
+            p_fingerprint: 'anon-test-fingerprint',
+            p_is_flagged: false,
+        });
+    });
+
+    it('blocks merchant accounts from voting', async () => {
+        const sbMock = createSupabaseMock();
+        const showToast = vi.fn();
+
+        const { result } = renderHook(() => useVoteSubmission({
+            user: { id: 'uuid-merchant', role: 'merchant' },
+            supabase: sbMock,
+            lang: 'en',
+            anonInteractions: 0,
+            setAnonInteractions: vi.fn(),
+            setUser: vi.fn(),
+            showToast,
+            setShowLimitModal: vi.fn(),
+            setBusinesses: vi.fn(),
+        }));
+
+        let voteResult;
+        await act(async () => {
+            voteResult = await result.current.submitVote('biz-1', 'recommend', '', true);
+        });
+
+        expect(voteResult).toBe(false);
+        expect(sbMock.rpc).not.toHaveBeenCalled();
+        expect(showToast).toHaveBeenCalled();
+    });
+
+    it('handles cooldown_active error from server', async () => {
+        const sbMock = createSupabaseMock({ error: 'cooldown_active' });
+        const showToast = vi.fn();
+
+        const { result } = renderHook(() => useVoteSubmission({
+            user: { id: 'uuid-123', role: 'consumer' },
+            supabase: sbMock,
+            lang: 'en',
+            anonInteractions: 0,
+            setAnonInteractions: vi.fn(),
+            setUser: vi.fn(),
+            showToast,
+            setShowLimitModal: vi.fn(),
+            setBusinesses: vi.fn(),
+        }));
+
+        let voteResult;
+        await act(async () => {
+            voteResult = await result.current.submitVote('biz-1', 'recommend', '', true);
+        });
+
+        expect(voteResult).toBe(false);
+        expect(showToast).toHaveBeenCalledWith(expect.stringContaining('24 hours'));
+    });
+
+    it('handles anonymous_weekly_limit error from server', async () => {
+        const sbMock = createSupabaseMock({ error: 'anonymous_weekly_limit', limit: 7 });
+        const setShowLimitModal = vi.fn();
+
+        const { result } = renderHook(() => useVoteSubmission({
+            user: null,
+            supabase: sbMock,
+            lang: 'en',
+            anonInteractions: 0,
+            setAnonInteractions: vi.fn(),
+            setUser: vi.fn(),
+            showToast: vi.fn(),
+            setShowLimitModal,
+            setBusinesses: vi.fn(),
+        }));
+
+        await act(async () => {
+            await result.current.submitVote('biz-1', 'recommend', '', true);
+        });
+
+        expect(setShowLimitModal).toHaveBeenCalledWith(true);
+    });
+
+    it('sends is_flagged=true when bad words are detected', async () => {
+        containsBadWords.mockReturnValue(true);
+        const sbMock = createSupabaseMock();
+
+        const { result } = renderHook(() => useVoteSubmission({
+            user: { id: 'uuid-123', role: 'consumer' },
+            supabase: sbMock,
+            lang: 'en',
+            anonInteractions: 0,
+            setAnonInteractions: vi.fn(),
+            setUser: vi.fn(),
+            showToast: vi.fn(),
+            setShowLimitModal: vi.fn(),
+            setBusinesses: vi.fn(),
+        }));
+
+        await act(async () => {
+            await result.current.submitVote('biz-1', 'recommend', 'bad content here', true);
+        });
+
+        expect(sbMock.rpc).toHaveBeenCalledWith('submit_vote', expect.objectContaining({
+            p_is_flagged: true,
+        }));
+    });
+
+    it('updates setUser with new Gader total from server response', async () => {
+        const sbMock = createSupabaseMock({
+            success: true, weight: 1.0, log_id: 'test-uuid', created_at: new Date().toISOString(),
+            earned_points: 10, new_gader_total: 50, past_vote_count: 0,
+            profile_id: 'uuid-123', fingerprint: null, interaction_type: 'recommend',
+        });
+        const setUser = vi.fn();
+
+        const { result } = renderHook(() => useVoteSubmission({
+            user: { id: 'uuid-123', role: 'consumer', gader: 40 },
+            supabase: sbMock,
+            lang: 'en',
+            anonInteractions: 0,
+            setAnonInteractions: vi.fn(),
+            setUser,
+            showToast: vi.fn(),
+            setShowLimitModal: vi.fn(),
+            setBusinesses: vi.fn(),
+        }));
+
+        await act(async () => {
+            await result.current.submitVote('biz-1', 'recommend', '', true);
+        });
+
+        expect(setUser).toHaveBeenCalled();
+        // Verify the setter function updates gader to new total
+        const setterFn = setUser.mock.calls[0][0];
+        const result2 = setterFn({ id: 'uuid-123', gader: 40 });
+        expect(result2.gader).toBe(50);
+    });
+
+    it('shows diminishing returns notification for past_vote_count > 0', async () => {
+        const sbMock = createSupabaseMock({
+            success: true, weight: 0.5, log_id: 'test-uuid', created_at: new Date().toISOString(),
+            earned_points: 5, new_gader_total: 25, past_vote_count: 1,
+            profile_id: 'uuid-123', fingerprint: null, interaction_type: 'recommend',
+        });
+        const showToast = vi.fn();
+
+        const { result } = renderHook(() => useVoteSubmission({
+            user: { id: 'uuid-123', role: 'consumer' },
+            supabase: sbMock,
+            lang: 'en',
+            anonInteractions: 0,
+            setAnonInteractions: vi.fn(),
+            setUser: vi.fn(),
+            showToast,
+            setShowLimitModal: vi.fn(),
+            setBusinesses: vi.fn(),
+        }));
+
+        await act(async () => {
+            await result.current.submitVote('biz-1', 'recommend', '', true);
+        });
+
+        expect(showToast).toHaveBeenCalledWith(expect.stringContaining('reduced'));
+    });
+
+    it('for anonymous users: increments localStorage counter', async () => {
+        const sbMock = createSupabaseMock({
+            success: true, weight: 0.2, log_id: 'anon-uuid', created_at: new Date().toISOString(),
+            earned_points: 5, new_gader_total: null, past_vote_count: 0,
+            profile_id: null, fingerprint: 'anon-test-fingerprint', interaction_type: 'recommend',
+        });
+        const setAnonInteractions = vi.fn();
+
+        // Mock localStorage
+        const localStorageMock = { getItem: vi.fn().mockReturnValue('2'), setItem: vi.fn() };
+        Object.defineProperty(global, 'localStorage', { value: localStorageMock, writable: true });
+
+        const { result } = renderHook(() => useVoteSubmission({
+            user: null,
+            supabase: sbMock,
+            lang: 'en',
+            anonInteractions: 2,
+            setAnonInteractions,
+            setUser: vi.fn(),
+            showToast: vi.fn(),
+            setShowLimitModal: vi.fn(),
+            setBusinesses: vi.fn(),
+        }));
+
+        await act(async () => {
+            await result.current.submitVote('biz-1', 'recommend', '', false);
+        });
+
+        expect(setAnonInteractions).toHaveBeenCalledWith(3);
+        expect(localStorageMock.setItem).toHaveBeenCalledWith('trust_ledger_interactions', '3');
     });
 });

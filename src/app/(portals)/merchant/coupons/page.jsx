@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Gift, QrCode, Sparkles, MessageCircle, Play, Pause, Trash2, Edit } from "lucide-react";
+import { Plus, Gift, QrCode, Sparkles, MessageCircle, Play, Pause, Trash2, Edit, Upload, FileUp } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useActiveBusiness } from '@/context/providers/ActiveBusinessProvider';
@@ -21,6 +21,11 @@ export default function CouponCommandCenter() {
     const [isLoading, setIsLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
     const PAGE_SIZE = 8;
+    
+    // Import state
+    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [importFile, setImportFile] = useState(null);
+    const [parsedCodes, setParsedCodes] = useState([]);
 
     const { activeBusiness: myBusiness, myBusinesses, selectedBusinessId, setSelectedBusinessId } = useActiveBusiness();
 
@@ -183,6 +188,95 @@ export default function CouponCommandCenter() {
         setNewCoupon(initialCouponState);
     };
 
+    const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        setImportFile(file);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const text = event.target.result;
+            // Support CSV or simple txt with one code per line
+            const lines = text.split('\n').map(l => l.trim().replace(/,/g, '')).filter(l => l.length > 0);
+            
+            // Deduplicate lines
+            const uniqueCodes = [...new Set(lines)];
+            setParsedCodes(uniqueCodes);
+            setNewCoupon(prev => ({ ...prev, quantity: uniqueCodes.length.toString() }));
+        };
+        reader.readAsText(file);
+    };
+
+    const handleImportCoupon = async (e) => {
+        e.preventDefault();
+
+        if (parsedCodes.length === 0) {
+            showToast("No valid codes found in file.");
+            return;
+        }
+
+        if (!supabase || !myBusiness || !user) return;
+
+        // Tier Checks via RPC
+        const { data: tierCheck, error: tierError } = await supabase.rpc('enforce_subscription_campaign_limits', {
+            p_business_id: myBusiness.id
+        });
+
+        if (tierError || (tierCheck && !tierCheck.success)) {
+            showToast(tierError ? "Error checking limits." : tierCheck.error);
+            return;
+        }
+
+        const qty = parsedCodes.length;
+        const discountVal = parseFloat(newCoupon.value) || null;
+
+        const { data, error } = await supabase.from('merchant_coupons').insert([{
+            business_id: myBusiness.id,
+            created_by: user.id,
+            title: newCoupon.title || null,
+            target_tier: newCoupon.targetTier,
+            offer_type: newCoupon.offerType,
+            discount_value: discountVal,
+            item_name: newCoupon.itemName || null,
+            initial_quantity: qty,
+            remaining_quantity: qty,
+            claimed_count: 0,
+            distribution_rule: newCoupon.distributionRule,
+            expiry_date: new Date(newCoupon.expiryDate).toISOString(),
+            source: 'merchant_import',
+            imported_codes: parsedCodes
+        }]).select().single();
+
+        if (error) {
+            console.error("Failed to import campaign:", error);
+            showToast("Failed to import codes");
+            return;
+        }
+
+        if (data) {
+            const newCampaign = {
+                id: data.id,
+                businessId: data.business_id,
+                title: data.title,
+                targetTier: data.target_tier,
+                type: data.offer_type,
+                value: data.discount_value,
+                itemName: data.item_name,
+                rule: data.distribution_rule,
+                total: data.initial_quantity,
+                claimed: data.claimed_count || 0,
+                status: data.status,
+                expiry: new Date(data.expiry_date).toISOString().split('T')[0]
+            };
+            setCampaigns([newCampaign, ...campaigns]);
+            showToast(`Imported ${qty} codes successfully!`);
+        }
+
+        setIsImportOpen(false);
+        setNewCoupon(initialCouponState);
+        setImportFile(null);
+        setParsedCodes([]);
+    };
+
     const handleEditCampaignSubmit = async (e) => {
         e.preventDefault();
 
@@ -289,6 +383,101 @@ export default function CouponCommandCenter() {
                                 ))}
                             </select>
                         )}
+
+                        {/* Import Codes Modal */}
+                        <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+                            <DialogTrigger asChild>
+                                <Button className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white shadow-sm border border-slate-700">
+                                    <FileUp className="w-4 h-4 mr-2" />
+                                    Import Codes
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-[700px] bg-white dark:bg-slate-950 max-h-[90vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>Import Pre-Generated Codes</DialogTitle>
+                                    <DialogDescription>Upload a CSV or TXT file with one code per line. These will act as a new campaign.</DialogDescription>
+                                </DialogHeader>
+
+                                <form onSubmit={handleImportCoupon} className="space-y-6 mt-4">
+                                    {/* File Upload Box */}
+                                    <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-6 text-center bg-slate-50 dark:bg-slate-900/50 relative hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors">
+                                        <Input 
+                                            type="file" 
+                                            accept=".csv,.txt"
+                                            onChange={handleFileUpload}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                        />
+                                        <Upload className="w-8 h-8 text-slate-400 mx-auto mb-3" />
+                                        <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                            {importFile ? importFile.name : 'Click or drag file to upload'}
+                                        </p>
+                                        <p className="text-xs text-slate-500 mt-1">
+                                            {parsedCodes.length > 0 ? `Found ${parsedCodes.length} valid codes` : 'One code per line (TXT) or first column (CSV)'}
+                                        </p>
+                                    </div>
+
+                                    {/* Reuse the Campaign form layout for offer details */}
+                                    {parsedCodes.length > 0 && (
+                                        <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
+                                            <div className="space-y-3">
+                                                <Label className="text-base font-semibold">1. Campaign Details</Label>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-2 col-span-2 sm:col-span-1">
+                                                        <Label>Campaign Title</Label>
+                                                        <Input placeholder="e.g. Influencer Codes" value={newCoupon.title} onChange={(e) => setNewCoupon({ ...newCoupon, title: e.target.value })} />
+                                                    </div>
+                                                    <div className="space-y-2 col-span-2 sm:col-span-1">
+                                                        <Label>Target User Tier</Label>
+                                                        <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={newCoupon.targetTier} onChange={(e) => setNewCoupon({ ...newCoupon, targetTier: e.target.value })}>
+                                                            <option value="ALL">All Gader Tiers</option>
+                                                            <option value="BRONZE_ONLY">Bronze Only</option>
+                                                            <option value="SILVER_ONLY">Silver Only</option>
+                                                            <option value="GOLD_ONLY">Gold Only</option>
+                                                            <option value="VIP_ONLY">VIP Platinum Only</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <Label className="text-base font-semibold">2. Offer Details</Label>
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    <div onClick={() => setNewCoupon({ ...newCoupon, offerType: 'percentage' })} className={`p-3 text-center rounded-lg border-2 cursor-pointer transition-all ${newCoupon.offerType === 'percentage' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' : 'border-slate-200 dark:border-slate-800'}`}>% Discount</div>
+                                                    <div onClick={() => setNewCoupon({ ...newCoupon, offerType: 'fixed' })} className={`p-3 text-center rounded-lg border-2 cursor-pointer transition-all ${newCoupon.offerType === 'fixed' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' : 'border-slate-200 dark:border-slate-800'}`}>Fixed Amount</div>
+                                                    <div onClick={() => setNewCoupon({ ...newCoupon, offerType: 'free_item' })} className={`p-3 text-center rounded-lg border-2 cursor-pointer transition-all ${newCoupon.offerType === 'free_item' ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400' : 'border-slate-200 dark:border-slate-800'}`}>Free Item</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                                                {newCoupon.offerType === 'percentage' && <div className="space-y-2 col-span-2"><Label>Discount Percentage (%)</Label><Input type="number" placeholder="20" value={newCoupon.value} onChange={(e) => setNewCoupon({ ...newCoupon, value: e.target.value })} /></div>}
+                                                {newCoupon.offerType === 'fixed' && <div className="space-y-2 col-span-2"><Label>Discount Amount (LYD)</Label><Input type="number" placeholder="15" value={newCoupon.value} onChange={(e) => setNewCoupon({ ...newCoupon, value: e.target.value })} /></div>}
+                                                {newCoupon.offerType === 'free_item' && <div className="space-y-2 col-span-2"><Label>Item Name</Label><Input placeholder="Free Coffee" value={newCoupon.itemName} onChange={(e) => setNewCoupon({ ...newCoupon, itemName: e.target.value })} /></div>}
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label>Distribution Channel</Label>
+                                                    <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={newCoupon.distributionRule} onChange={(e) => setNewCoupon({ ...newCoupon, distributionRule: e.target.value })}>
+                                                        <option value="PUBLIC_POOL">Platform Quota Pool</option>
+                                                        <option value="VIP_SCAN">Physical VIP Scan</option>
+                                                        <option value="RESOLUTION_ONLY">Resolution Only</option>
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>Expiry Date</Label>
+                                                    <Input type="date" value={newCoupon.expiryDate} onChange={(e) => setNewCoupon({ ...newCoupon, expiryDate: e.target.value })} />
+                                                </div>
+                                            </div>
+
+                                            <Button type="submit" className="w-full bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900">
+                                                Import {parsedCodes.length} Codes
+                                            </Button>
+                                        </div>
+                                    )}
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+
                         {/* Create Coupon Modal */}
                         <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                             <DialogTrigger asChild>

@@ -9,89 +9,86 @@ export function BusinessDataProvider({ children }) {
     const { user, supabase, lang } = useAuth();
 
     const [businesses, setBusinesses] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const fetchBusinesses = async () => {
             if (!supabase) return;
+            setIsLoading(true);
             try {
                 const ADMIN_ROLES = ['super_admin', 'admin', 'assistant_admin', 'support_agent'];
                 const isAdmin = ADMIN_ROLES.includes(user?.role) || user?.userId === 'ADMIN-MOCK' || user?.isDevBypass;
 
-                let query = supabase.from('businesses').select('*, logs(id, interaction_type, reason_text, created_at, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)').limit(200);
+                let mainQuery = supabase.from('businesses').select('*, logs(id, interaction_type, reason_text, created_at, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)').limit(200);
                 if (!isAdmin) {
-                    query = query.eq('status', 'published');
+                    mainQuery = mainQuery.eq('status', 'published');
                 }
 
-                const { data, error } = await query;
-                const { data: coupons } = await supabase.from('merchant_coupons').select('*').eq('status', 'active');
+                let ownedQuery = null;
+                let claimsQuery = null;
+                if (!isAdmin && user?.id) {
+                    ownedQuery = supabase.from('businesses')
+                        .select('*, logs(id, interaction_type, reason_text, created_at, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)')
+                        .eq('claimed_by', user.id)
+                        .neq('status', 'published');
+                    claimsQuery = supabase.from('business_claims')
+                        .select('business_id')
+                        .eq('user_id', user.id);
+                }
 
-                let ribbonsMap = {};
-                try {
-                    const { data: ribbons } = await supabase
-                        .from('business_ribbons')
-                        .select('*')
-                        .eq('is_active', true);
-                    if (ribbons) {
-                        ribbons.forEach(r => {
-                            if (!r.expires_at || new Date(r.expires_at) > new Date()) {
-                                if (!ribbonsMap[r.business_id]) ribbonsMap[r.business_id] = r;
-                            }
-                        });
-                    }
-                } catch (e) { /* safe to ignore */ }
+                // Execute primary queries in parallel
+                const [mainRes, couponsRes, ribbonsRes, ownedRes, claimsRes] = await Promise.all([
+                    mainQuery,
+                    supabase.from('merchant_coupons').select('business_id').eq('status', 'active'),
+                    supabase.from('business_ribbons').select('*').eq('is_active', true),
+                    ownedQuery ? ownedQuery : Promise.resolve({ data: [] }),
+                    claimsQuery ? claimsQuery : Promise.resolve({ data: [] })
+                ]);
 
-                if (error) {
-                    console.error('Supabase businesses fetch failed:', error);
+                if (mainRes.error) {
+                    console.error('Supabase businesses fetch failed:', mainRes.error);
                     setBusinesses([]);
+                    setIsLoading(false);
                     return;
                 }
 
-                // For merchants: also fetch their own businesses regardless of status
-                // so pending/under-review businesses appear in the TopNav dropdown
-                let ownedData = [];
+                const data = mainRes.data || [];
+                const coupons = couponsRes.data || [];
+                const ribbons = ribbonsRes.data || [];
+                const ownedData = ownedRes.data || [];
+                const claimRows = claimsRes.data || [];
+
+                let ribbonsMap = {};
+                ribbons.forEach(r => {
+                    if (!r.expires_at || new Date(r.expires_at) > new Date()) {
+                        if (!ribbonsMap[r.business_id]) ribbonsMap[r.business_id] = r;
+                    }
+                });
+
                 let claimInitiatedData = [];
-                if (!isAdmin && user?.id) {
-                    const { data: myOwned } = await supabase
-                        .from('businesses')
-                        .select('*, logs(id, interaction_type, reason_text, created_at, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)')
-                        .eq('claimed_by', user.id)
-                        .neq('status', 'published'); // Only fetch non-published ones to avoid duplicates
+                if (claimRows.length > 0) {
+                    const claimBizIds = claimRows.map(c => c.business_id);
+                    const existingIds = new Set([
+                        ...data.map(b => b.id),
+                        ...ownedData.map(b => b.id)
+                    ]);
+                    const missingIds = claimBizIds.filter(id => !existingIds.has(id));
 
-                    ownedData = myOwned || [];
-
-                    // Also fetch businesses where user has a business_claims row
-                    // but isn't the claimed_by owner (pending claims, rejected then re-claimed, etc.)
-                    try {
-                        const { data: claimRows } = await supabase
-                            .from('business_claims')
-                            .select('business_id')
-                            .eq('user_id', user.id);
-
-                        if (claimRows && claimRows.length > 0) {
-                            const claimBizIds = claimRows.map(c => c.business_id);
-                            // Fetch these businesses (skip ones we already have)
-                            const existingIds = new Set([
-                                ...(data || []).map(b => b.id),
-                                ...ownedData.map(b => b.id)
-                            ]);
-                            const missingIds = claimBizIds.filter(id => !existingIds.has(id));
-
-                            if (missingIds.length > 0) {
-                                const { data: claimBiz } = await supabase
-                                    .from('businesses')
-                                    .select('*, logs(id, interaction_type, reason_text, created_at, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)')
-                                    .in('id', missingIds);
-
-                                claimInitiatedData = claimBiz || [];
-                            }
+                    if (missingIds.length > 0) {
+                        try {
+                            const { data: claimBiz } = await supabase
+                                .from('businesses')
+                                .select('*, logs(id, interaction_type, reason_text, created_at, helpful_votes, unhelpful_votes, fingerprint, profile_id, business_id), storefronts(slug, logo_url, status)')
+                                .in('id', missingIds);
+                            claimInitiatedData = claimBiz || [];
+                        } catch (e) {
+                            console.warn('[BusinessDataProvider] Failed to fetch claim-initiated businesses:', e);
                         }
-                    } catch (e) {
-                        console.warn('[BusinessDataProvider] Failed to fetch claim-initiated businesses:', e);
                     }
                 }
 
                 // Merge: published businesses + user's own non-published + claim-initiated businesses
-                const mergedData = [...(data || []), ...ownedData, ...claimInitiatedData];
+                const mergedData = [...data, ...ownedData, ...claimInitiatedData];
 
                 if (mergedData) {
                     const formattedData = mergedData.map(b => {
@@ -148,6 +145,8 @@ export function BusinessDataProvider({ children }) {
             } catch (err) {
                 console.error('[BusinessDataProvider] Fetch error:', err);
                 setBusinesses([]);
+            } finally {
+                setIsLoading(false);
             }
         };
         fetchBusinesses();
@@ -195,6 +194,8 @@ export function BusinessDataProvider({ children }) {
                         const newLog = payload.new;
                         setBusinesses(prev => prev.map(b => {
                             if (b.id === newLog.business_id) {
+                                // Phase 2e fix: Skip if already added by optimistic update
+                                if (b.logs.some(l => l.id === newLog.id)) return b;
                                 return {
                                     ...b,
                                     logs: [
@@ -228,7 +229,7 @@ export function BusinessDataProvider({ children }) {
     }, [supabase, lang, user?.id, user?.role, user?.isDevBypass]);
 
     return (
-        <BusinessDataContext.Provider value={{ businesses, setBusinesses }}>
+        <BusinessDataContext.Provider value={{ businesses, setBusinesses, isLoading }}>
             {children}
         </BusinessDataContext.Provider>
     );

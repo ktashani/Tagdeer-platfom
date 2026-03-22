@@ -11,6 +11,7 @@ import { PreRegModal } from '@/components/Modals/PreRegModal';
 import { LimitModal } from '@/components/Modals/LimitModal';
 import { VerifySoonModal } from '@/components/Modals/VerifySoonModal';
 import { LoginModal } from '@/components/Auth/LoginModal';
+import { CouponAwardModal } from '@/components/consumer/CouponAwardModal';
 import { Toast } from '@/components/Toast';
 import { BadgeCheck } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -33,14 +34,23 @@ export default function ClientLayout({ children }) {
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [globalImpactBubble, setGlobalImpactBubble] = useState(null);
+    const [awardModalData, setAwardModalData] = useState(null);
 
     useEffect(() => {
         const handleVoteEvent = (e) => {
             setGlobalImpactBubble(e.detail);
             setTimeout(() => setGlobalImpactBubble(null), 2000);
         };
+        const handleCouponEvent = (e) => {
+            setAwardModalData(e.detail);
+        };
+        
         window.addEventListener('trust-ledger-vote', handleVoteEvent);
-        return () => window.removeEventListener('trust-ledger-vote', handleVoteEvent);
+        window.addEventListener('trust-ledger-coupon', handleCouponEvent);
+        return () => {
+            window.removeEventListener('trust-ledger-vote', handleVoteEvent);
+            window.removeEventListener('trust-ledger-coupon', handleCouponEvent);
+        };
     }, []);
 
     const { submitVote } = useVoteSubmission({
@@ -134,6 +144,16 @@ export default function ClientLayout({ children }) {
                     </div>
                 </div>
             )}
+
+            {/* Coupon Award Modal */}
+            <CouponAwardModal
+                isOpen={!!awardModalData}
+                onClose={() => setAwardModalData(null)}
+                data={awardModalData}
+                t={t}
+                isRTL={isRTL}
+                showToast={showToast}
+            />
         </div>
     );
 }

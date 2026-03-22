@@ -16,14 +16,14 @@ export function InlineReviewBlock({ businessId, business, isRTL, theme }) {
     const {
         user, supabase, lang,
         anonInteractions, setAnonInteractions,
-        showToast, setShowLimitModal, setShowLoginModal,
+        setUser, showToast, setShowLimitModal, setShowLoginModal,
         refreshAnonInteractions, setBusinesses
     } = useTagdeer();
 
     const { submitVote: executeVote } = useVoteSubmission({
         user, supabase, lang,
         anonInteractions, setAnonInteractions,
-        setUser: () => {}, // InlineReviewBlock doesn't need to update user in parent
+        setUser, // Phase 2d fix: propagate Gader points to UI
         showToast, setShowLimitModal, setBusinesses
     });
 
@@ -152,7 +152,8 @@ export function InlineReviewBlock({ businessId, business, isRTL, theme }) {
                         <button
                             type="button"
                             onClick={() => handleTypeSelect('recommend')}
-                            className={`flex flex-col items-center justify-center flex-1 py-4 md:py-6 rounded-2xl border-2 transition-all gap-2 ${selectedType === 'recommend'
+                            disabled={loading}
+                            className={`flex flex-col items-center justify-center flex-1 py-4 md:py-6 rounded-2xl border-2 transition-all gap-2 ${loading ? 'opacity-50 cursor-not-allowed' : ''} ${selectedType === 'recommend'
                                 ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
                                 : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-500 hover:border-emerald-200 hover:bg-emerald-50/50 dark:hover:border-emerald-900/50'
                                 }`}
@@ -166,7 +167,8 @@ export function InlineReviewBlock({ businessId, business, isRTL, theme }) {
                         <button
                             type="button"
                             onClick={() => handleTypeSelect('complain')}
-                            className={`flex flex-col items-center justify-center flex-1 py-4 md:py-6 rounded-2xl border-2 transition-all gap-2 ${selectedType === 'complain'
+                            disabled={loading}
+                            className={`flex flex-col items-center justify-center flex-1 py-4 md:py-6 rounded-2xl border-2 transition-all gap-2 ${loading ? 'opacity-50 cursor-not-allowed' : ''} ${selectedType === 'complain'
                                 ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-400'
                                 : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-500 hover:border-rose-200 hover:bg-rose-50/50 dark:hover:border-rose-900/50'
                                 }`}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ThumbsUp, ThumbsDown, BadgeCheck } from 'lucide-react';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { getDeviceFingerprint } from '@/lib/fingerprint';
@@ -32,21 +32,54 @@ export default function StorefrontLogEntries({ logs, isRTL, theme }) {
         voteToast: (type) => type === 'up' ? '👍 Helpful' : '👎 Unhelpful'
     };
 
+    const [visibleCount, setVisibleCount] = useState(5);
+    const visibleLogs = logs.slice(0, visibleCount);
+    
+    const containerRef = useRef(null);
+    const prevLogsLength = useRef(logs.length);
+
+    // Smooth scroll to top when a new log arrives (e.g. via realtime)
+    useEffect(() => {
+        if (logs.length > prevLogsLength.current && containerRef.current) {
+            containerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        prevLogsLength.current = logs.length;
+    }, [logs.length]);
+
+    const handleShowMore = () => {
+        setVisibleCount(prev => prev + 5);
+    };
+
     return (
         <div className="space-y-4">
-            {logs.map(log => (
-                <LogEntryCard
-                    key={log.id}
-                    log={log}
-                    user={user}
-                    supabase={supabase}
-                    showToast={showToast}
-                    isRTL={isRTL}
-                    theme={theme}
-                    t={t}
-                    lang={lang}
-                />
-            ))}
+            <div 
+                ref={containerRef}
+                className="max-h-[600px] overflow-y-auto pr-1 space-y-4 custom-scrollbar"
+                style={{ scrollbarWidth: 'thin' }}
+            >
+                {visibleLogs.map(log => (
+                    <LogEntryCard
+                        key={log.id}
+                        log={log}
+                        user={user}
+                        supabase={supabase}
+                        showToast={showToast}
+                        isRTL={isRTL}
+                        theme={theme}
+                        t={t}
+                        lang={lang}
+                    />
+                ))}
+            </div>
+            
+            {visibleCount < logs.length && (
+                <button 
+                    onClick={handleShowMore}
+                    className="w-full py-3 text-sm font-bold text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-300 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                >
+                    {isRTL ? 'إظهار المزيد' : 'Show more reviews'}
+                </button>
+            )}
         </div>
     );
 }

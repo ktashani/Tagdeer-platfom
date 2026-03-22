@@ -3,14 +3,14 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Script from 'next/script';
 import { InstagramBlock, FacebookBlock } from './SocialEmbeds';
-import StorefrontLogEntries from './StorefrontLogEntries';
+import StorefrontLiveScore from './StorefrontLiveScore';
 import { InlineReviewBlock } from './InlineReviewBlock';
 import {
     Store, MapPin, Phone, Globe, ExternalLink, ShieldCheck,
     Sparkles, Star, MessageCircle, Instagram, Facebook, ChevronRight
 } from 'lucide-react';
-import ProductCard from '@/components/consumer/ProductCard';
-
+import StorefrontGalleryUI from '@/components/consumer/StorefrontGalleryUI';
+import StorefrontProductsUI from '@/components/consumer/StorefrontProductsUI';
 // Supabase Server Client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -123,19 +123,22 @@ export default async function PublicStorefront({ params, searchParams }) {
     const t = labels[lang];
     const isRTL = lang === 'ar';
 
-    // Fetch everything
+    // Fetch everything via single joined query (Phase 6e)
     const { data: storefront, error } = await supabase
         .from('storefronts')
         .select(`
             *,
             businesses (
-                id, name, category, region, external_url, recommends, complains,
-                feature_allocations ( feature_type, status )
+                id, name, category, region, external_url, recommends, complains, display_score,
+                feature_allocations ( feature_type, status ),
+                logs ( id, interaction_type, reason_text, created_at, profile_id, fingerprint, helpful_votes, unhelpful_votes, weight )
             ),
             catalog_items ( id, name, description, price, image_url, category, sku, is_active, likes, dislikes, display_order )
         `)
         .eq('slug', slug)
         .eq('status', 'published')
+        .order('created_at', { foreignTable: 'businesses.logs', ascending: false })
+        .limit(10, { foreignTable: 'businesses.logs' })
         .single();
 
     if (error || !storefront) {
@@ -148,13 +151,10 @@ export default async function PublicStorefront({ params, searchParams }) {
     const contacts = storefront.contact_overrides || {};
     const seo = storefront.seo_metadata || {};
 
-    // Recent reviews from correct table
-    const { data: recentLogs } = await supabase
-        .from('logs')
-        .select('id, interaction_type, reason_text, created_at, profile_id, fingerprint, helpful_votes, unhelpful_votes, weight')
-        .eq('business_id', business.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+    // Defensive: sort/limit logs client-side as fallback if PostgREST nested ordering fails
+    const recentLogs = (business.logs || [])
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 10);
 
     // Trust Shield check
     const hasTrustShield = business.feature_allocations?.some(f => f.feature_type === 'shield' && f.status === 'active');
@@ -174,11 +174,14 @@ export default async function PublicStorefront({ params, searchParams }) {
     // Maps direction URL
     const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(business.name + ', ' + business.region + ', Libya')}`;
 
-    // Trust score
+    // Trust score — Phase 2c: Use display_score as unified source
     const totalVotes = (business.recommends || 0) + (business.complains || 0);
-    const trustScore = totalVotes > 0
-        ? Math.round(((business.recommends || 0) / totalVotes) * 100) + '%'
-        : 'N/A';
+    const gaderScore = business.display_score != null
+        ? Math.round(business.display_score)
+        : totalVotes > 0
+            ? Math.round(((business.recommends || 0) / totalVotes) * 100)
+            : null;
+    const trustScore = gaderScore != null ? `${gaderScore}%` : 'N/A';
 
     // JSON-LD Structured Data
     const jsonLd = {
@@ -324,131 +327,36 @@ export default async function PublicStorefront({ params, searchParams }) {
                     </a>
                 </div>
 
-                {/* ─── Community Trust & Rating ─────────────────── */}
-                <div className="mt-8 p-4 md:p-6 rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-                    {/* Gader Index Header — matches Discover page */}
-                    <div className="flex justify-between items-end mb-4">
-                        <div className="flex items-center gap-2">
-                            <div className={`p-1.5 rounded-md ${totalVotes === 0 ? 'bg-slate-100 dark:bg-slate-800 text-slate-400' : ((business.recommends || 0) / totalVotes) >= 0.5 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'}`}>
-                                ⚡
-                            </div>
-                            <div className="flex flex-col">
-                                <span className="text-slate-900 dark:text-white font-bold text-lg leading-tight">{t.gaderScore}</span>
-                                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">{isRTL ? 'مقدار' : 'Migdar'}</span>
-                            </div>
-                        </div>
-                        {totalVotes === 0 ? (
-                            <span className="text-sm font-medium text-slate-400 italic">
-                                {isRTL ? 'لا توجد تجارب بعد' : 'No experiences yet'}
-                            </span>
-                        ) : (
-                            <div className="flex items-center gap-1.5 text-sm font-bold">
-                                <span className="text-green-600 dark:text-green-400">{trustScore}</span>
-                                <span className="text-slate-300 dark:text-slate-600">/</span>
-                                <span className="text-red-500 dark:text-red-400">{totalVotes > 0 ? (100 - Math.round(((business.recommends || 0) / totalVotes) * 100)) + '%' : '0%'}</span>
-                            </div>
-                        )}
-                    </div>
+                {/* ─── Community Trust & Rating — Phase 3: LIVE via Realtime ── */}
+                <StorefrontLiveScore
+                    initialBusiness={business}
+                    initialLogs={recentLogs || []}
+                    isRTL={isRTL}
+                    theme={theme}
+                    labels={t}
+                />
 
-                    {/* Tug-of-War Progress Bar — matches Discover page */}
-                    {totalVotes === 0 ? (
-                        <div className="w-full rounded-full h-4 overflow-hidden flex shadow-inner border border-slate-200 dark:border-slate-700 mb-4">
-                            <div className="bg-slate-300 dark:bg-slate-600 h-4 w-1/2 flex items-center justify-end">
-                                <span className="text-[10px] font-bold text-slate-500/70 pr-1.5">⚖️</span>
-                            </div>
-                            <div className="bg-slate-300 dark:bg-slate-600 h-4 w-1/2 border-l border-slate-400/30 dark:border-slate-500/30 flex items-center justify-start">
-                                <span className="text-[10px] font-bold text-slate-500/70 pl-1.5">⚖️</span>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="w-full rounded-full h-4 overflow-hidden flex shadow-inner border border-slate-200 dark:border-slate-700 mb-4">
-                            <div
-                                className="bg-gradient-to-r from-green-400 to-green-500 h-4 transition-all duration-1000 ease-out flex items-center justify-end"
-                                style={{ width: `${Math.max(Math.round(((business.recommends || 0) / totalVotes) * 100), 8)}%` }}
-                            >
-                                {Math.round(((business.recommends || 0) / totalVotes) * 100) >= 20 && <span className="text-[10px] font-bold text-white/90 pr-1.5">👍</span>}
-                            </div>
-                            <div
-                                className="bg-gradient-to-r from-red-400 to-red-500 h-4 transition-all duration-1000 ease-out flex items-center justify-start"
-                                style={{ width: `${Math.max(100 - Math.round(((business.recommends || 0) / totalVotes) * 100), 8)}%` }}
-                            >
-                                {(100 - Math.round(((business.recommends || 0) / totalVotes) * 100)) >= 20 && <span className="text-[10px] font-bold text-white/90 pl-1.5">👎</span>}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Recommend/Complain Count Badges */}
-                    <div className={`flex justify-between text-xs font-bold px-1 mb-4 ${isRTL ? 'flex-row-reverse' : ''}`}>
-                        <div className="flex items-center gap-1.5 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded">
-                            👍 {business.recommends || 0} {t.recommend}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded">
-                            {business.complains || 0} {t.complain} 👎
-                        </div>
-                    </div>
-
-                    {/* Inline Review Block — vote form with full integrity */}
-                    <div className="[&>div]:mt-0 [&>div]:shadow-none [&>div]:border-0 [&>div]:p-0 [&>div]:rounded-none">
-                        <InlineReviewBlock businessId={business.id} business={business} isRTL={isRTL} theme={theme} />
-                    </div>
+                {/* ─── Inline Review Block (remains separate for vote form) ── */}
+                <div className="mt-4 [&>div]:shadow-none [&>div]:border-0 [&>div]:p-0 [&>div]:rounded-none">
+                    <InlineReviewBlock businessId={business.id} business={business} isRTL={isRTL} theme={theme} />
                 </div>
 
-                {/* ─── Products / Menu ─────────────────────────── */}
-                {Object.keys(groupedProducts).length > 0 && (
-                    <div className="mt-12 space-y-10">
-                        <h3 className="text-2xl font-black flex items-center gap-3">
-                            <span className="w-2 h-8 rounded-full" style={{ backgroundColor: theme.primaryColor }} />
-                            {t.products}
-                        </h3>
-                        {Object.entries(groupedProducts).map(([category, items]) => (
-                            <div key={category}>
-                                <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">{category}</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {items.map(item => (
-                                        <ProductCard key={item.id} item={item} theme={theme} lang={lang} />
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                {/* ─── Products & Services ────────────────────── */}
+                <StorefrontProductsUI 
+                    title={t.products} 
+                    allProducts={products} 
+                    groupedProducts={groupedProducts} 
+                    theme={theme} 
+                    isRTL={isRTL} 
+                />
 
                 {/* ─── Gallery ─────────────────────────────────── */}
-                {storefront.gallery_images && storefront.gallery_images.length > 0 && (
-                    <div className="mt-12">
-                        <h3 className="text-2xl font-black mb-6 flex items-center gap-3">
-                            <span className="w-2 h-8 rounded-full" style={{ backgroundColor: theme.primaryColor }} />
-                            {t.gallery}
-                        </h3>
-                        <div className="flex overflow-x-auto gap-4 pb-4 snap-x no-scrollbar">
-                            {storefront.gallery_images.map((imgUrl, i) => (
-                                <div key={i} className="snap-center shrink-0 w-72 h-48 md:w-96 md:h-64 rounded-3xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800">
-                                    <img src={imgUrl} alt={`${t.gallery} ${i + 1}`} className="w-full h-full object-cover" loading="lazy" />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* ─── Community Logs History ──────────────────── */}
-                <div className="mt-12">
-                    <h3 className="text-2xl font-black mb-6 flex items-center gap-3">
-                        <span className="w-2 h-8 rounded-full" style={{ backgroundColor: theme.primaryColor }} />
-                        {t.communityReviews}
-                    </h3>
-                    {recentLogs && recentLogs.length > 0 ? (
-                        <StorefrontLogEntries logs={recentLogs} isRTL={isRTL} theme={theme} />
-                    ) : (
-                        <div className="p-8 md:p-12 rounded-[2rem] bg-slate-50 dark:bg-slate-900/50 border border-slate-200 border-dashed dark:border-slate-800 text-center flex flex-col items-center justify-center">
-                            <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-3xl mb-4 opacity-50">💬</div>
-                            <p className="text-slate-500 dark:text-slate-400 font-medium text-lg max-w-sm">
-                                {t.noLogsYet}
-                            </p>
-                        </div>
-                    )}
-                </div>
-
-
+                <StorefrontGalleryUI 
+                    title={t.gallery} 
+                    images={storefront.gallery_urls || []} 
+                    theme={theme} 
+                    isRTL={isRTL} 
+                />
 
                 {/* ─── Social Connect Section ─────────────────── */}
                 {contacts.instagram && (

@@ -34,7 +34,7 @@ export function WalletTab() {
                     const { data, error } = await supabase
                         .from('user_coupons')
                         .select(`
-                            id, serial_code, acquired_at, valid_until, status,
+                            id, serial_code, generated_at, valid_until, status,
                             merchant_coupons (
                                 id, title, offer_type, discount_value, item_name,
                                 businesses ( name, region, category )
@@ -97,7 +97,7 @@ export function WalletTab() {
         const couponName = mc.offer_type === 'free_item' ? mc.item_name : `${mc.discount_value}${mc.offer_type === 'percentage' ? '%' : ' LYD'} Off`;
 
         // Check Hot Coupon status (< 48 hours from acquired)
-        const ageHours = (new Date() - new Date(coupon.acquired_at)) / (1000 * 60 * 60);
+        const ageHours = (new Date() - new Date(coupon.generated_at)) / (1000 * 60 * 60);
         const isHot = ageHours < 48;
         const hoursLeftForHot = Math.max(0, 48 - ageHours).toFixed(1);
 

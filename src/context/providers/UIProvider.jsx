@@ -31,14 +31,14 @@ export function UIProvider({ children }) {
         if (!supabase) return;
         const { getDeviceFingerprint } = await import('../../lib/fingerprint');
         const fingerprint = getDeviceFingerprint();
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
         try {
             const { count, error } = await supabase
                 .from('logs')
                 .select('*', { count: 'exact', head: true })
                 .eq('fingerprint', fingerprint)
-                .gte('created_at', twentyFourHoursAgo);
+                .gte('created_at', sevenDaysAgo);
 
             if (!error && count !== null) {
                 setAnonInteractions(count);

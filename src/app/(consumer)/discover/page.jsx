@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useTagdeer } from '@/context/TagdeerContext';
+import { getDeviceFingerprint } from '@/lib/fingerprint';
 import { Search, MapPin } from 'lucide-react';
 import { SkeletonCardGrid } from '@/components/ui/SkeletonLoaders';
 import BusinessCard from '@/components/consumer/BusinessCard';
@@ -9,7 +10,7 @@ import LogItem from '@/components/consumer/LogItem';
 
 function DiscoverContent() {
     const {
-        t, lang, isRTL, businesses, anonInteractions, refreshAnonInteractions,
+        t, lang, isRTL, businesses, isLoading, anonInteractions, refreshAnonInteractions,
         showToast, setShowLimitModal, setShowLoginModal, setVoteModal, setVoteReason, user,
         categories = [], regions = [], supabase
     } = useTagdeer();
@@ -74,7 +75,7 @@ function DiscoverContent() {
         if (!user && supabase) {
             try {
                 const fingerprint = await getDeviceFingerprint();
-                const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                const twentyFourHoursAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
                 const { count, error } = await supabase
                     .from('logs')
                     .select('*', { count: 'exact', head: true })
@@ -133,35 +134,6 @@ function DiscoverContent() {
         return () => observer.disconnect();
     }, [hasMore, visibleCount]);
 
-    const openVoteModal = async (businessId, type, business) => {
-        // Shield Level Checks for Complaints
-        if (type === 'complain') {
-            if (business.shield_level === 2) {
-                // Fatora Level: Requires verified receipt upload (We'll show a toast for MVP)
-                showToast(lang === 'ar' ? 'يتطلب هذا النشاط رفع فاتورة لإضافة شكوى.' : 'This business requires a receipt to complain.');
-                return;
-            } else if (business.shield_level === 1 || business.isShielded) {
-                // Trust Level: Requires logged-in verified user
-                if (!user) {
-                    showToast(t('shielded_warning'));
-                    setShowLoginModal(true);
-                    return;
-                }
-            }
-        }
-
-        // Fix: Fresh DB-side check for anonymous users before opening modal
-        if (!user) {
-            const currentCount = await refreshAnonInteractions();
-            if (currentCount >= 3) {
-                setShowLimitModal(true);
-                return;
-            }
-        }
-
-        setVoteModal({ isOpen: true, businessId, type });
-        setVoteReason('');
-    };
 
     const shareToFacebook = (title, text) => {
         const url = encodeURIComponent(window.location.href);
@@ -195,8 +167,28 @@ function DiscoverContent() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                {businesses.length === 0 ? (
-                    <div className="col-span-full"><SkeletonCardGrid count={4} variant="light" /></div>
+                {isLoading ? (
+                    <div className="col-span-full"><SkeletonCardGrid count={6} variant="light" /></div>
+                ) : visibleBusinesses.length === 0 ? (
+                    <div className="col-span-full py-20 flex flex-col items-center justify-center text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700">
+                        <div className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center mb-5">
+                            <Search className="w-8 h-8 text-slate-400" />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+                            {lang === 'ar' ? 'لا يوجد نتائج' : 'No results found'}
+                        </h3>
+                        <p className="text-slate-500 dark:text-slate-400 max-w-sm mb-6">
+                            {lang === 'ar' 
+                                ? 'لم نتمكن من العثور على أي نشاط تجاري مطابق لبحثك. جرب البحث بكلمات مختلفة أو تغيير الفلتر.' 
+                                : 'We couldn\'t find any businesses matching your search. Try adjusting your filters or search terms.'}
+                        </p>
+                        <button 
+                            onClick={() => { setSearchQuery(''); setDebouncedSearch(''); setSelectedRegion('All'); setSelectedCategory('All'); }}
+                            className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium px-6 py-2 rounded-xl transition-colors"
+                        >
+                            {lang === 'ar' ? 'مسح الفلاتر' : 'Clear Filters'}
+                        </button>
+                    </div>
                 ) : visibleBusinesses.map(business => (
                     <BusinessCard
                         key={business.id}
@@ -204,7 +196,6 @@ function DiscoverContent() {
                         t={t}
                         lang={lang}
                         isRTL={isRTL}
-                        openVoteModal={openVoteModal}
                         shareToFacebook={shareToFacebook}
                         expandedLogs={expandedLogs}
                         toggleLogs={toggleLogs}
