@@ -58,7 +58,7 @@ export default function FinancialsPage() {
         const fetchData = async () => {
             setIsLoading(true)
             const [txnData, profilesData, bizData, subsData, campaignsData] = await Promise.all([
-                supabase.from('transactions').select('*, businesses(name), profiles(email)').eq('status', 'pending').order('created_at', { ascending: false }),
+                supabase.from('transactions').select('*, businesses(name), owner:profiles!owner_id(email, full_name)').eq('status', 'pending').order('created_at', { ascending: false }),
                 supabase.from('profiles').select('id, full_name, email').eq('role', 'merchant'),
                 supabase.from('businesses').select('id, name, claimed_by').not('claimed_by', 'is', null).order('name', { ascending: true }),
                 supabase.from('subscriptions').select('*'),
@@ -69,7 +69,7 @@ export default function FinancialsPage() {
                 setTransfers(txnData.data.map(t => ({
                     id: t.id,
                     business: t.businesses?.name || 'Unknown',
-                    ownerEmail: t.profiles?.email || 'Unknown',
+                    ownerEmail: t.owner?.email || 'Unknown',
                     requestedTier: t.requested_tier,
                     amount: `${t.amount} ${t.currency || 'LYD'}`,
                     rawAmount: t.amount,
@@ -339,7 +339,7 @@ export default function FinancialsPage() {
             const [bizRes, allocRes, txnRes] = await Promise.all([
                 supabase.from('businesses').select('id, name, region, category, is_shielded, shield_level, status, claimed_by').eq('claimed_by', profileId),
                 supabase.from('feature_allocations').select('*').eq('profile_id', profileId),
-                supabase.from('transactions').select('*').eq('profile_id', profileId).order('created_at', { ascending: false }).limit(20)
+                supabase.from('transactions').select('*').eq('owner_id', profileId).order('created_at', { ascending: false }).limit(20)
             ]);
 
             // Try to get ribbons (table may not exist)

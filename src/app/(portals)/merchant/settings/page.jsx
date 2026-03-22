@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Crown, Building, Trash2, CheckCircle2, ArrowUpRight, Loader2, Sparkles, Tag } from "lucide-react";
+import { ShieldAlert, ShieldCheck, Mail, Phone, Lock, UserPlus, Users, Store, Crown, Building, Trash2, CheckCircle2, ArrowUpRight, Loader2, Sparkles, Tag, Clock } from "lucide-react";
 import { useTagdeer } from '@/context/TagdeerContext';
 import { useActiveBusiness } from '@/context/providers/ActiveBusinessProvider';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -42,6 +42,7 @@ export default function MerchantSettings() {
     // Account Level
     const [accountTier, setAccountTier] = useState('Free'); // 'Free', 'Pro', 'Enterprise'
     const [subscription, setSubscription] = useState(null);
+    const [pendingUpgrade, setPendingUpgrade] = useState(null);
     const [quotaUsage, setQuotaUsage] = useState({ locationsUsed: 0, shieldsAssigned: 0, storefrontsAssigned: 0 });
     const [personalInfo, setPersonalInfo] = useState({
         name: '',
@@ -87,6 +88,24 @@ export default function MerchantSettings() {
                     shieldsAssigned: shieldCountRes.count || 0,
                     storefrontsAssigned: storefrontCountRes.count || 0
                 });
+
+                // Check for pending upgrade request
+                const { data: pendingTxn } = await supabase
+                    .from('transactions')
+                    .select('id, requested_tier, created_at, status')
+                    .eq('owner_id', user.id)
+                    .eq('status', 'pending')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (pendingTxn) {
+                    setPendingUpgrade({
+                        id: pendingTxn.id,
+                        tier: pendingTxn.requested_tier,
+                        date: new Date(pendingTxn.created_at).toLocaleDateString()
+                    });
+                }
 
                 if (data && data.tier) {
                     // Integrate Addons into dynamic computing Base Quotas
@@ -333,6 +352,7 @@ export default function MerchantSettings() {
             }]);
 
             if (error) throw error;
+            setPendingUpgrade({ id: null, tier: tier.name, date: new Date().toLocaleDateString() });
             showToast(
                 lang === 'ar'
                     ? `تم إرسال طلب الترقية إلى ${tier.name_ar || tier.name}! يرجى إتمام التحويل البنكي. سيتم تفعيل باقتك فور تأكيد الدفع من الإدارة.`
@@ -771,6 +791,30 @@ export default function MerchantSettings() {
                                     </div>
                                 </CardHeader>
                                 <CardContent>
+                                    {/* Pending Upgrade Banner */}
+                                    {pendingUpgrade && (
+                                        <div className="mb-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0">
+                                                    <Clock className="w-5 h-5 text-amber-600" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-semibold text-amber-800 dark:text-amber-300">
+                                                        {lang === 'ar' ? 'طلب ترقية قيد المراجعة' : 'Upgrade Request Pending'}
+                                                    </p>
+                                                    <p className="text-sm text-amber-600 dark:text-amber-400">
+                                                        {lang === 'ar'
+                                                            ? `تم طلب الترقية إلى ${pendingUpgrade.tier} بتاريخ ${pendingUpgrade.date}. بانتظار تأكيد الدفع.`
+                                                            : `Requested ${pendingUpgrade.tier} on ${pendingUpgrade.date}. Awaiting payment confirmation.`
+                                                        }
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <Badge className="bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                                                {lang === 'ar' ? 'قيد الانتظار' : 'Pending'}
+                                            </Badge>
+                                        </div>
+                                    )}
                                     <div className={`grid grid-cols-1 gap-4 ${
                                         tierPricing.length === 1
                                             ? 'max-w-md'
@@ -827,14 +871,21 @@ export default function MerchantSettings() {
                                                     {!isActiveTier && (
                                                         <Button
                                                             onClick={() => handleTierUpgrade(tier)}
+                                                            disabled={pendingUpgrade?.tier === tier.name}
                                                             variant={isPro ? "default" : "outline"}
                                                             size="sm"
-                                                            className={`w-full mt-4 ${isEnterprise
-                                                                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0 shadow-lg shadow-purple-500/20 hover:from-purple-700 hover:to-indigo-700'
-                                                                : isPro ? 'bg-blue-600 hover:bg-blue-700 text-white border-0' : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-                                                                }`}
+                                                            className={`w-full mt-4 ${
+                                                                pendingUpgrade?.tier === tier.name
+                                                                    ? 'opacity-50 cursor-not-allowed'
+                                                                    : isEnterprise
+                                                                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0 shadow-lg shadow-purple-500/20 hover:from-purple-700 hover:to-indigo-700'
+                                                                        : isPro ? 'bg-blue-600 hover:bg-blue-700 text-white border-0' : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                                                            }`}
                                                         >
-                                                            {lang === 'ar' ? 'ترقية إلى' : 'Upgrade to'} {lang === 'ar' && tier.name_ar ? tier.name_ar : tier.name}
+                                                            {pendingUpgrade?.tier === tier.name
+                                                                ? (lang === 'ar' ? '⏳ بانتظار التأكيد' : '⏳ Awaiting Confirmation')
+                                                                : `${lang === 'ar' ? 'ترقية إلى' : 'Upgrade to'} ${lang === 'ar' && tier.name_ar ? tier.name_ar : tier.name}`
+                                                            }
                                                         </Button>
                                                     )}
                                                 </div>
