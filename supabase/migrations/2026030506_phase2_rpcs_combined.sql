@@ -203,7 +203,7 @@ BEGIN
     END IF;
 
     -- Get merchant's subscription tier
-    SELECT tier INTO v_sub_tier FROM public.subscriptions WHERE profile_id = v_merchant_id AND status = 'active';
+    SELECT tier INTO v_sub_tier FROM public.subscriptions WHERE profile_id = v_merchant_id AND status IN ('Active', 'Expiring Soon', 'Grace Period');
     v_sub_tier := COALESCE(v_sub_tier, 'Free'); -- Default to Free if no active sub
 
     -- Count their active campaigns
@@ -267,7 +267,7 @@ BEGIN
     END IF;
 
     -- 3. Determine points based on business tier
-    SELECT tier INTO v_sub_tier FROM public.subscriptions WHERE profile_id = v_merchant_id AND status = 'active';
+    SELECT tier INTO v_sub_tier FROM public.subscriptions WHERE profile_id = v_merchant_id AND status IN ('Active', 'Expiring Soon', 'Grace Period');
     v_sub_tier := COALESCE(v_sub_tier, 'Free');
     
     IF v_sub_tier = 'Enterprise' THEN

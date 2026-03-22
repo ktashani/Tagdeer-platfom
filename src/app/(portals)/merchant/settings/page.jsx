@@ -333,10 +333,20 @@ export default function MerchantSettings() {
             }]);
 
             if (error) throw error;
-            showToast(`Upgrade request to ${tier.name} submitted! Your current plan remains active while we verify your payment.`, 'success');
+            showToast(
+                lang === 'ar'
+                    ? `تم إرسال طلب الترقية إلى ${tier.name_ar || tier.name}! يرجى إتمام التحويل البنكي. سيتم تفعيل باقتك فور تأكيد الدفع من الإدارة.`
+                    : `Upgrade request to ${tier.name} submitted! Please complete the bank transfer. Your plan will activate once payment is confirmed by admin.`,
+                'success'
+            );
         } catch (err) {
             console.error('Tier upgrade request error:', err);
-            showToast('Failed to submit upgrade request.', 'error');
+            showToast(
+                lang === 'ar'
+                    ? 'فشل إرسال طلب الترقية. حاول مرة أخرى.'
+                    : 'Failed to submit upgrade request.',
+                'error'
+            );
         }
     };
 

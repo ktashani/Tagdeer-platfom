@@ -77,16 +77,16 @@ BEGIN
         -- Upsert Subscription
         INSERT INTO public.subscriptions (business_id, profile_id, tier, status, expires_at)
         VALUES (v_business_id, v_owner_id, v_tier, 'Active', now() + (v_days || ' days')::interval)
-        ON CONFLICT (business_id) 
+        ON CONFLICT (profile_id)
         DO UPDATE SET 
             tier = EXCLUDED.tier,
             status = 'Active',
             expires_at = EXCLUDED.expires_at,
-            profile_id = EXCLUDED.profile_id;
+            business_id = EXCLUDED.business_id;
 
-        -- Update business shield_level physically if tying Tier to Shield
+        -- Update business shield_level if tying Tier to Shield
         UPDATE public.businesses 
-        SET shield_level = CASE WHEN v_tier = 'Tier 2' THEN 2 ELSE 1 END
+        SET shield_level = CASE WHEN v_tier = 'Enterprise' THEN 2 ELSE 1 END
         WHERE id = v_business_id;
     END IF;
 
