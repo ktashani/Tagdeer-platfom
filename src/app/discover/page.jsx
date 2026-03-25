@@ -57,6 +57,9 @@ export default function DiscoverRoute() {
             // Sorting (server-side for non-computed columns)
             if (sortBy === 'newest') {
                 query = query.order('created_at', { ascending: false });
+            } else if (sortBy === 'last_activity') {
+                // We'll sort client-side after merging logs
+                query = query.order('created_at', { ascending: false });
             }
             // For gader-based sorts, we fetch and sort client-side (requires logs)
 
@@ -111,6 +114,12 @@ export default function DiscoverRoute() {
                 });
             } else if (sortBy === 'most_votes') {
                 merged.sort((a, b) => (b.logs.length || 0) - (a.logs.length || 0));
+            } else if (sortBy === 'last_activity') {
+                merged.sort((a, b) => {
+                    const aLast = a.logs.length > 0 ? new Date(a.logs[0].date || 0).getTime() : 0;
+                    const bLast = b.logs.length > 0 ? new Date(b.logs[0].date || 0).getTime() : 0;
+                    return bLast - aLast;
+                });
             }
 
             setBusinesses(prev => append ? [...prev, ...merged] : merged);
@@ -181,6 +190,7 @@ export default function DiscoverRoute() {
                     </select>
                     <select className="px-4 py-3 rounded-xl border border-slate-300 bg-white" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                         <option value="newest">{lang === 'ar' ? 'الأحدث' : 'Newest'}</option>
+                        <option value="last_activity">{lang === 'ar' ? 'آخر نشاط' : 'Last Activity'}</option>
                         <option value="highest">{lang === 'ar' ? 'أعلى مؤشر القَدْر' : 'Highest Gader'}</option>
                         <option value="lowest">{lang === 'ar' ? 'أدنى مؤشر القَدْر' : 'Lowest Gader'}</option>
                         <option value="most_votes">{lang === 'ar' ? 'الأكثر تقييماً' : 'Most Votes'}</option>
@@ -273,6 +283,11 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1">
                         <Link href={`/business/${business.id}`} className="text-xl font-bold text-slate-800 break-words line-clamp-2 leading-tight hover:text-blue-600 transition-colors">{business.name}</Link>
+                        {business.claimed_by && (
+                            <span className="shrink-0 bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-0.5">
+                                ✓ {lang === 'ar' ? 'موثق' : 'Claimed'}
+                            </span>
+                        )}
                         {business.external_url && (
                             <a href={business.external_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 bg-blue-50 p-1.5 rounded-full shrink-0">
                                 <Facebook className="h-5 w-5" />

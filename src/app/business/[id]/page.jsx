@@ -35,7 +35,7 @@ export default function BusinessProfilePage() {
         // Fetch business details
         const { data: biz, error: bizErr } = await supabase
           .from('businesses')
-          .select('id, name, category, city, region, address, phone, email, external_url, claimed_by, created_at, description, operating_hours, instagram, facebook, website')
+          .select('id, name, category, region, address, phone, email, external_url, claimed_by, is_shielded, created_at, description, operating_hours, instagram, facebook, website')
           .eq('id', businessId)
           .single();
 
@@ -45,7 +45,7 @@ export default function BusinessProfilePage() {
         // Fetch logs for this business
         const { data: logData } = await supabase
           .from('logs')
-          .select('id, type, text, created_at, is_verified')
+          .select('id, interaction_type, reason_text, created_at, is_verified')
           .eq('business_id', businessId)
           .order('created_at', { ascending: false })
           .limit(50);
@@ -87,7 +87,9 @@ export default function BusinessProfilePage() {
     );
   }
 
-  const { gaderIndex, rawRecommends, rawComplains } = calculateBusinessScore(logs);
+  const { gaderIndex, rawRecommends, rawComplains } = calculateBusinessScore(
+    logs.map(l => ({ ...l, interaction_type: l.interaction_type }))
+  );
   const totalVotes = rawRecommends + rawComplains;
   const safeIndex = totalVotes === 0 ? 50 : (isNaN(gaderIndex) ? 50 : gaderIndex);
   const avatarLetter = business.name?.charAt(0).toUpperCase() || '?';
@@ -289,12 +291,12 @@ export default function BusinessProfilePage() {
                   {logs.slice(0, 5).map((log) => (
                     <div key={log.id} className="p-4 flex items-start gap-3">
                       <span className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm ${
-                        log.type === 'recommend' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
+                        log.interaction_type === 'recommend' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
                       }`}>
-                        {log.type === 'recommend' ? '👍' : '👎'}
+                        {log.interaction_type === 'recommend' ? '👍' : '👎'}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-slate-700">{log.text || (log.type === 'recommend' ? 'توصية' : 'شكوى')}</p>
+                        <p className="text-sm text-slate-700">{log.reason_text || (log.interaction_type === 'recommend' ? 'توصية' : 'شكوى')}</p>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-xs text-slate-400">
                             {new Date(log.created_at).toLocaleDateString('ar-LY')}
@@ -334,12 +336,12 @@ export default function BusinessProfilePage() {
               logs.map((log) => (
                 <div key={log.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3 shadow-sm">
                   <span className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-lg ${
-                    log.type === 'recommend' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
+                    log.interaction_type === 'recommend' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'
                   }`}>
-                    {log.type === 'recommend' ? '👍' : '👎'}
+                    {log.interaction_type === 'recommend' ? '👍' : '👎'}
                   </span>
                   <div className="flex-1">
-                    <p className="text-sm text-slate-800">{log.text || (log.type === 'recommend' ? 'توصية' : 'شكوى')}</p>
+                    <p className="text-sm text-slate-800">{log.reason_text || (log.interaction_type === 'recommend' ? 'توصية' : 'شكوى')}</p>
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-xs text-slate-400">
                         {new Date(log.created_at).toLocaleDateString('ar-LY', { year: 'numeric', month: 'short', day: 'numeric' })}
