@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { useTagdeer } from '@/context/TagdeerContext';
-import { BadgeCheck, ShieldCheck, MapPin, Zap, Gift, Loader2, UserX } from 'lucide-react';
+import { BadgeCheck, ShieldCheck, MapPin, Zap, Gift, Loader2, UserX, Check } from 'lucide-react';
 import Link from 'next/link';
 
 export default function VerifyUserPage() {
@@ -16,6 +16,14 @@ export default function VerifyUserPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
 
+    // Grant Recognition state
+    const [merchantBusiness, setMerchantBusiness] = useState(null);
+    const [showGrantForm, setShowGrantForm] = useState(false);
+    const [grantDiscount, setGrantDiscount] = useState(10);
+    const [grantType, setGrantType] = useState('percentage');
+    const [granting, setGranting] = useState(false);
+    const [granted, setGranted] = useState(false);
+
     useEffect(() => {
         const fetchProfile = async () => {
             if (!userId || !supabase) {
@@ -25,18 +33,16 @@ export default function VerifyUserPage() {
             }
 
             try {
-                // Try matching by user_id (VIP-XXXXX) first, then by UUID
                 let { data, error: err } = await supabase
                     .from('profiles')
-                    .select('*')
+                    .select('id, full_name, city, gader, user_id, phone, avatar_url')
                     .eq('user_id', userId)
                     .single();
 
                 if (err && err.code === 'PGRST116') {
-                    // Try by UUID
                     const result = await supabase
                         .from('profiles')
-                        .select('*')
+                        .select('id, full_name, city, gader, user_id, phone, avatar_url')
                         .eq('id', userId)
                         .single();
                     data = result.data;
@@ -56,8 +62,51 @@ export default function VerifyUserPage() {
             }
         };
 
+        const checkMerchant = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const { data: biz } = await supabase
+                .from('businesses')
+                .select('id, name')
+                .eq('claimed_by', session.user.id)
+                .limit(1)
+                .maybeSingle();
+
+            if (biz) setMerchantBusiness(biz);
+        };
+
         fetchProfile();
+        checkMerchant();
     }, [userId]);
+
+    const handleGrant = async () => {
+        if (!profile || !merchantBusiness) return;
+        setGranting(true);
+
+        try {
+            const code = `TAGDEER-${merchantBusiness.name.slice(0, 4).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+
+            const { error: insertErr } = await supabase
+                .from('user_coupons')
+                .insert({
+                    user_id: profile.id,
+                    business_id: merchantBusiness.id,
+                    coupon_code: code,
+                    discount_value: grantDiscount,
+                    discount_type: grantType,
+                    status: 'ACTIVE',
+                    source: 'grant_recognition',
+                });
+
+            if (insertErr) throw insertErr;
+            setGranted(true);
+            setShowGrantForm(false);
+        } catch (err) {
+            alert('فشل في منح المكافأة: ' + err.message);
+        }
+        setGranting(false);
+    };
 
     if (loading) {
         return (
@@ -93,8 +142,7 @@ export default function VerifyUserPage() {
         );
     }
 
-    // Calculate tier info
-    const points = profile.gader_points || 0;
+    const points = profile.gader || 0;
     const tierInfo = points >= 20000
         ? { emoji: '💎', name: 'VIP', color: 'from-indigo-600 to-blue-700', badgeBg: 'bg-indigo-100 text-indigo-700', border: 'border-indigo-200' }
         : points >= 5000
@@ -111,25 +159,27 @@ export default function VerifyUserPage() {
             <div className="text-center mb-8">
                 <div className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-600 text-sm font-bold tracking-wider mb-4">
                     <ShieldCheck className="h-4 w-4" />
-                    {lang === 'ar' ? 'ملف ثقة موثّق' : 'Verified Trust Profile'}
+                    {lang === 'ar' ? 'بطاقة قَدِّر الرقمية' : 'Digital Gader Card'}
                 </div>
                 <h1 className="text-3xl font-extrabold text-slate-900">
-                    {lang === 'ar' ? 'ملف المستخدم العام' : 'Public User Profile'}
+                    {lang === 'ar' ? 'ملف الثقة' : 'Trust Profile'}
                 </h1>
             </div>
 
             {/* Profile Card */}
             <div className={`bg-white rounded-3xl shadow-lg border ${tierInfo.border} overflow-hidden`}>
-                {/* Gradient banner */}
                 <div className={`bg-gradient-to-r ${tierInfo.color} h-24 relative`}>
                     <div className="absolute -bottom-10 left-1/2 -translate-x-1/2">
                         <div className="w-20 h-20 bg-white rounded-2xl shadow-lg flex items-center justify-center text-4xl border-4 border-white">
-                            {tierInfo.emoji}
+                            {profile.avatar_url ? (
+                                <img src={profile.avatar_url} alt="" className="w-full h-full rounded-xl object-cover" />
+                            ) : (
+                                tierInfo.emoji
+                            )}
                         </div>
                     </div>
                 </div>
 
-                {/* Profile info */}
                 <div className="pt-14 pb-6 px-6 text-center">
                     <h2 className="text-2xl font-extrabold text-slate-800 mb-1">
                         {profile.full_name || (lang === 'ar' ? 'عضو تقدير' : 'Tagdeer Member')}
@@ -142,7 +192,6 @@ export default function VerifyUserPage() {
                         </div>
                     )}
 
-                    {/* Verified Local Guide Badge */}
                     {isLocalGuide && (
                         <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-2 rounded-full mb-6 shadow-sm">
                             <BadgeCheck className="w-5 h-5" />
@@ -182,14 +231,68 @@ export default function VerifyUserPage() {
                         <span className="font-mono text-sm font-bold text-slate-600">{profile.user_id || profile.id}</span>
                     </div>
 
-                    {/* Grant Reward Button */}
-                    <button className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-3.5 rounded-xl font-bold text-base hover:from-emerald-700 hover:to-teal-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2">
-                        <Gift className="w-5 h-5" />
-                        {lang === 'ar' ? 'منح مكافأة' : 'Grant Reward'}
-                    </button>
-                    <p className="text-xs text-slate-400 mt-2">
-                        {lang === 'ar' ? 'قريباً: نظام المكافآت الكامل' : 'Coming soon: full rewards system'}
-                    </p>
+                    {/* Grant Recognition Button */}
+                    {granted ? (
+                        <div className="w-full bg-emerald-50 border border-emerald-200 text-emerald-700 py-3.5 rounded-xl font-bold text-base flex items-center justify-center gap-2">
+                            <Check className="w-5 h-5" />
+                            {lang === 'ar' ? 'تم منح المكافأة بنجاح! ✅' : 'Reward Granted! ✅'}
+                        </div>
+                    ) : merchantBusiness ? (
+                        <>
+                            {!showGrantForm ? (
+                                <button
+                                    onClick={() => setShowGrantForm(true)}
+                                    className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-3.5 rounded-xl font-bold text-base hover:from-emerald-700 hover:to-teal-700 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                                >
+                                    <Gift className="w-5 h-5" />
+                                    {lang === 'ar' ? 'منح تقدير (كوبون)' : 'Grant Recognition'}
+                                </button>
+                            ) : (
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3 text-left animate-in slide-in-from-bottom-2 duration-200">
+                                    <p className="text-sm font-bold text-emerald-800">
+                                        {lang === 'ar' ? `منح كوبون من ${merchantBusiness.name}` : `Grant coupon from ${merchantBusiness.name}`}
+                                    </p>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="number"
+                                            value={grantDiscount}
+                                            onChange={(e) => setGrantDiscount(Number(e.target.value))}
+                                            className="flex-1 px-3 py-2 border border-emerald-200 rounded-lg text-sm outline-none"
+                                            min={1} max={100}
+                                        />
+                                        <select
+                                            value={grantType}
+                                            onChange={(e) => setGrantType(e.target.value)}
+                                            className="px-3 py-2 border border-emerald-200 rounded-lg text-sm outline-none"
+                                        >
+                                            <option value="percentage">%</option>
+                                            <option value="fixed">LYD</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={handleGrant}
+                                            disabled={granting}
+                                            className="flex-1 py-2 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-1"
+                                        >
+                                            {granting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gift className="w-4 h-4" />}
+                                            {lang === 'ar' ? 'تأكيد' : 'Confirm'}
+                                        </button>
+                                        <button
+                                            onClick={() => setShowGrantForm(false)}
+                                            className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700"
+                                        >
+                                            {lang === 'ar' ? 'إلغاء' : 'Cancel'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div className="w-full bg-slate-100 text-slate-500 py-3.5 rounded-xl font-medium text-sm text-center">
+                            {lang === 'ar' ? 'سجّل دخول كتاجر لمنح مكافأة' : 'Sign in as merchant to grant rewards'}
+                        </div>
+                    )}
                 </div>
             </div>
 

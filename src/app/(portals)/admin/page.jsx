@@ -6,6 +6,7 @@ import ClaimQueue from '@/components/admin/ClaimQueue';
 import FlaggedContentQueue from '@/components/admin/FlaggedContentQueue';
 import PaymentQueue from '@/components/admin/PaymentQueue';
 import UserManagement from '@/components/admin/UserManagement';
+import PlatformSettings from '@/components/admin/PlatformSettings';
 
 export default function AdminDashboard() {
     const [stats, setStats] = useState(null);
@@ -131,6 +132,11 @@ export default function AdminDashboard() {
 
             {/* Flagged Content Moderation */}
             <FlaggedContentQueue />
+
+            {/* Platform Settings */}
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-6">
+                <PlatformSettings />
+            </div>
         </div>
     )
 }
