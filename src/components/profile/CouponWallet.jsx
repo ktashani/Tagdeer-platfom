@@ -132,14 +132,18 @@ export default function CouponWallet({ userId, lang }) {
                                 </div>
                             </div>
 
-                            {/* Redeem button */}
+                            {/* Show code for merchant verification */}
                             {effectiveStatus === 'ACTIVE' && (
-                                <button
-                                    onClick={() => handleRedeem(coupon.id)}
-                                    className="shrink-0 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-colors shadow-sm"
-                                >
-                                    {lang === 'ar' ? 'استخدام' : 'Redeem'}
-                                </button>
+                                <div className="shrink-0 flex flex-col items-center gap-1">
+                                    <div className="px-3 py-2 bg-slate-100 border border-dashed border-slate-300 rounded-lg text-center">
+                                        <span className="text-[9px] text-slate-400 block mb-0.5">
+                                            {lang === 'ar' ? 'أعرض للتاجر' : 'Show to merchant'}
+                                        </span>
+                                        <span className="font-mono text-xs font-bold text-slate-700 select-all">
+                                            {coupon.id.slice(0, 8).toUpperCase()}
+                                        </span>
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </div>

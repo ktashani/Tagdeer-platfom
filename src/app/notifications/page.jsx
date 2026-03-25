@@ -11,9 +11,12 @@ const TYPE_CONFIG = {
     claim_rejected: { icon: AlertTriangle, color: 'bg-red-100 text-red-600', label: 'Claim' },
     payment_approved: { icon: CreditCard, color: 'bg-blue-100 text-blue-600', label: 'Payment' },
     payment_rejected: { icon: CreditCard, color: 'bg-red-100 text-red-600', label: 'Payment' },
+    payment_received: { icon: CreditCard, color: 'bg-emerald-100 text-emerald-600', label: 'Payment' },
     subscription_expiring: { icon: AlertTriangle, color: 'bg-amber-100 text-amber-600', label: 'Subscription' },
     subscription_expired: { icon: AlertTriangle, color: 'bg-red-100 text-red-600', label: 'Subscription' },
     coupon_granted: { icon: Gift, color: 'bg-emerald-100 text-emerald-600', label: 'Reward' },
+    coupon_redeemed: { icon: Gift, color: 'bg-blue-100 text-blue-600', label: 'Coupon' },
+    vote_milestone: { icon: Bell, color: 'bg-amber-100 text-amber-600', label: 'Milestone' },
     verification: { icon: ShieldCheck, color: 'bg-blue-100 text-blue-600', label: 'Verification' },
 };
 
@@ -32,8 +35,8 @@ export default function NotificationsPage() {
         const fetchNotifications = async () => {
             let query = supabase
                 .from('notifications')
-                .select('id, type, title, body, is_read, created_at')
-                .eq('user_id', user.id)
+                .select('id, type, title, message, is_read, created_at')
+                .eq('profile_id', user.id)
                 .order('created_at', { ascending: false })
                 .limit(50);
 
@@ -60,7 +63,7 @@ export default function NotificationsPage() {
 
     const markAllRead = async () => {
         if (!user?.id) return;
-        await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false);
+        await supabase.from('notifications').update({ is_read: true }).eq('profile_id', user.id).eq('is_read', false);
         setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     };
 
@@ -172,7 +175,7 @@ export default function NotificationsPage() {
                                             <span className="font-bold text-sm text-slate-800 truncate">{n.title}</span>
                                             <span className="text-[10px] text-slate-400 shrink-0">{formatTime(n.created_at)}</span>
                                         </div>
-                                        <p className="text-sm text-slate-500 leading-relaxed">{n.body}</p>
+                                        <p className="text-sm text-slate-500 leading-relaxed">{n.message}</p>
                                     </div>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}

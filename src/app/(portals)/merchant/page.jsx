@@ -13,6 +13,7 @@ export default function MerchantDashboard() {
     const [profile, setProfile] = useState(null);
     const [business, setBusiness] = useState(null);
     const [stats, setStats] = useState({ votes: 0, couponsRedeemed: 0, activeCampaigns: 0, logs: [] });
+    const [subStatus, setSubStatus] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -44,10 +45,11 @@ export default function MerchantDashboard() {
                     }
 
                     if (biz?.id) {
-                        const [logsRes, couponsRes, campaignsRes] = await Promise.all([
+                        const [logsRes, couponsRes, campaignsRes, subRes] = await Promise.all([
                             supabase.from('logs').select('id, interaction_type, created_at, is_verified').eq('business_id', biz.id).order('created_at', { ascending: false }).limit(100),
                             supabase.from('user_coupons').select('id').eq('business_id', biz.id).eq('status', 'REDEEMED'),
                             supabase.from('campaigns').select('id').eq('business_id', biz.id).eq('is_active', true),
+                            supabase.rpc('get_subscription_status', { p_business_id: biz.id }),
                         ]);
 
                         setStats({
@@ -56,6 +58,7 @@ export default function MerchantDashboard() {
                             activeCampaigns: (campaignsRes.data || []).length,
                             logs: logsRes.data || [],
                         });
+                        if (subRes.data) setSubStatus(subRes.data);
                     }
                 }
             } catch (e) {
@@ -91,6 +94,44 @@ export default function MerchantDashboard() {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
+
+            {/* Grace Period / Expired Banner */}
+            {subStatus?.status === 'grace_period' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-4">
+                    <span className="text-2xl">⏳</span>
+                    <div className="flex-1">
+                        <h3 className="font-bold text-amber-800">
+                            {lang === 'ar' ? 'فترة السماح — اشتراكك انتهى' : 'Grace Period — Your subscription expired'}
+                        </h3>
+                        <p className="text-sm text-amber-700 mt-1">
+                            {lang === 'ar'
+                                ? `لديك ${subStatus.days_remaining || 0} أيام إضافية قبل تعليق الخدمة. جدّد الآن.`
+                                : `You have ${subStatus.days_remaining || 0} days before features are suspended. Renew now.`}
+                        </p>
+                    </div>
+                    <Link href="/merchant/billing" className="shrink-0 px-4 py-2 bg-amber-600 text-white text-sm font-bold rounded-xl hover:bg-amber-700 transition-colors">
+                        {lang === 'ar' ? 'تجديد' : 'Renew'}
+                    </Link>
+                </div>
+            )}
+            {subStatus?.status === 'expired' && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-5 flex items-start gap-4">
+                    <span className="text-2xl">🚫</span>
+                    <div className="flex-1">
+                        <h3 className="font-bold text-red-800">
+                            {lang === 'ar' ? 'اشتراكك منتهي' : 'Your subscription has expired'}
+                        </h3>
+                        <p className="text-sm text-red-700 mt-1">
+                            {lang === 'ar'
+                                ? 'بعض الميزات معطلة. جدّد اشتراكك لاستعادة كامل الوصول.'
+                                : 'Some features are disabled. Renew to restore full access.'}
+                        </p>
+                    </div>
+                    <Link href="/merchant/billing" className="shrink-0 px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-xl hover:bg-red-700 transition-colors">
+                        {lang === 'ar' ? 'تجديد الآن' : 'Renew Now'}
+                    </Link>
+                </div>
+            )}
 
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

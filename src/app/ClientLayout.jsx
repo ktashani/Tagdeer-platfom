@@ -252,6 +252,8 @@ export function ClientLayout({ children }) {
                 onSubmit={submitVote}
                 t={t}
                 type={voteModal.type}
+                isAnonymous={!user}
+                businessId={voteModal.businessId}
             />
 
             {/* Adding a placeholder for PreRegModal state, we'll recreate the state if needed locally or inside modal later */}
