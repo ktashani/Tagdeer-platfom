@@ -1,4 +1,70 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+import MerchantOnboarding from '@/components/merchant/MerchantOnboarding';
+
 export default function MerchantDashboard() {
+    const [showOnboarding, setShowOnboarding] = useState(false);
+    const [profile, setProfile] = useState(null);
+    const [business, setBusiness] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const checkOnboarding = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) { setLoading(false); return; }
+
+                const { data: prof } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, phone, role, metadata')
+                    .eq('id', session.user.id)
+                    .single();
+
+                setProfile(prof);
+
+                if (prof?.role === 'merchant') {
+                    const { data: biz } = await supabase
+                        .from('businesses')
+                        .select('id, name, category, city, address, phone, email, external_url')
+                        .eq('claimed_by', session.user.id)
+                        .limit(1)
+                        .single();
+
+                    setBusiness(biz);
+
+                    if (!prof?.metadata?.onboarding_complete) {
+                        setShowOnboarding(true);
+                    }
+                }
+            } catch (e) {
+                console.error('Onboarding check error:', e);
+            }
+            setLoading(false);
+        };
+
+        checkOnboarding();
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
+            </div>
+        );
+    }
+
+    if (showOnboarding) {
+        return (
+            <MerchantOnboarding
+                business={business}
+                profile={profile}
+                onComplete={() => setShowOnboarding(false)}
+            />
+        );
+    }
+
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
 
