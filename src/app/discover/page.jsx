@@ -1,8 +1,9 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTagdeer } from '../../context/TagdeerContext';
-import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap } from 'lucide-react';
+import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap, ArrowUpDown } from 'lucide-react';
 import { calculateBusinessScore } from '../../lib/mathEngine';
+import Link from 'next/link';
 
 const CATEGORIES = [
     "All", "Supermarket", "Pharmacy", "Café & Restaurants", "Bakery",
@@ -18,18 +19,40 @@ export default function DiscoverRoute() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedRegion, setSelectedRegion] = useState('All');
     const [selectedCategory, setSelectedCategory] = useState('All');
+    const [sortBy, setSortBy] = useState('newest');
     const [expandedLogs, setExpandedLogs] = useState({});
 
     const toggleLogs = (id) => {
         setExpandedLogs(prev => ({ ...prev, [id]: !prev[id] }));
     };
 
-    const filteredBusinesses = businesses.filter(b => {
-        const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesRegion = selectedRegion === 'All' || b.region === selectedRegion;
-        const matchesCategory = selectedCategory === 'All' || b.category === selectedCategory;
-        return matchesSearch && matchesRegion && matchesCategory;
-    });
+    const filteredBusinesses = useMemo(() => {
+        let result = businesses.filter(b => {
+            const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesRegion = selectedRegion === 'All' || b.region === selectedRegion;
+            const matchesCategory = selectedCategory === 'All' || b.category === selectedCategory;
+            return matchesSearch && matchesRegion && matchesCategory;
+        });
+
+        // Sort
+        if (sortBy === 'highest') {
+            result = [...result].sort((a, b) => {
+                const sa = calculateBusinessScore(a.logs || []);
+                const sb = calculateBusinessScore(b.logs || []);
+                return (sb.gaderIndex || 50) - (sa.gaderIndex || 50);
+            });
+        } else if (sortBy === 'lowest') {
+            result = [...result].sort((a, b) => {
+                const sa = calculateBusinessScore(a.logs || []);
+                const sb = calculateBusinessScore(b.logs || []);
+                return (sa.gaderIndex || 50) - (sb.gaderIndex || 50);
+            });
+        } else if (sortBy === 'most_votes') {
+            result = [...result].sort((a, b) => (b.logs?.length || 0) - (a.logs?.length || 0));
+        }
+
+        return result;
+    }, [businesses, searchQuery, selectedRegion, selectedCategory, sortBy]);
 
     const openVoteModal = (businessId, type, isShielded) => {
         if (type === 'complain' && isShielded) {
@@ -66,12 +89,18 @@ export default function DiscoverRoute() {
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
-                <div className="flex gap-4">
+                <div className="flex gap-4 flex-wrap">
                     <select className="px-4 py-3 rounded-xl border border-slate-300 bg-white" value={selectedRegion} onChange={(e) => setSelectedRegion(e.target.value)}>
                         {REGIONS.map(r => <option key={r} value={r}>{t(r)}</option>)}
                     </select>
                     <select className="px-4 py-3 rounded-xl border border-slate-300 bg-white" value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
                         {CATEGORIES.map(c => <option key={c} value={c}>{t(c)}</option>)}
+                    </select>
+                    <select className="px-4 py-3 rounded-xl border border-slate-300 bg-white" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                        <option value="newest">{lang === 'ar' ? 'الأحدث' : 'Newest'}</option>
+                        <option value="highest">{lang === 'ar' ? 'أعلى مؤشر القَدْر' : 'Highest Gader'}</option>
+                        <option value="lowest">{lang === 'ar' ? 'أدنى مؤشر القَدْر' : 'Lowest Gader'}</option>
+                        <option value="most_votes">{lang === 'ar' ? 'الأكثر تقييماً' : 'Most Votes'}</option>
                     </select>
                 </div>
             </div>
@@ -126,7 +155,7 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
 
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-1">
-                        <h3 className="text-xl font-bold text-slate-800 break-words line-clamp-2 leading-tight">{business.name}</h3>
+                        <Link href={`/business/${business.id}`} className="text-xl font-bold text-slate-800 break-words line-clamp-2 leading-tight hover:text-blue-600 transition-colors">{business.name}</Link>
                         {business.external_url && (
                             <a href={business.external_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 bg-blue-50 p-1.5 rounded-full shrink-0">
                                 <Facebook className="h-5 w-5" />
