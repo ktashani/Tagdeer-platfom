@@ -7,6 +7,7 @@ import FlaggedContentQueue from '@/components/admin/FlaggedContentQueue';
 import PaymentQueue from '@/components/admin/PaymentQueue';
 import UserManagement from '@/components/admin/UserManagement';
 import BusinessManagement from '@/components/admin/BusinessManagement';
+import AdminAnalytics from '@/components/admin/AdminAnalytics';
 import PlatformSettings from '@/components/admin/PlatformSettings';
 
 export default function AdminDashboard() {
@@ -137,6 +138,11 @@ export default function AdminDashboard() {
             {/* Business Management */}
             <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-6">
                 <BusinessManagement />
+            </div>
+
+            {/* Analytics Dashboard */}
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-6">
+                <AdminAnalytics />
             </div>
 
             {/* Platform Settings */}
