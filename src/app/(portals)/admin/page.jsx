@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import ClaimQueue from '@/components/admin/ClaimQueue';
 import FlaggedContentQueue from '@/components/admin/FlaggedContentQueue';
+import PaymentQueue from '@/components/admin/PaymentQueue';
 
 export default function AdminDashboard() {
     const [stats, setStats] = useState(null);
@@ -108,6 +109,11 @@ export default function AdminDashboard() {
 
             {/* Live Claim Queue */}
             <ClaimQueue />
+
+            {/* Payment Confirmation Queue */}
+            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-6">
+                <PaymentQueue />
+            </div>
 
             {/* Flagged Content Moderation */}
             <FlaggedContentQueue />

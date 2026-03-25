@@ -10,7 +10,9 @@ export default function MerchantLayout({ children }) {
                 <div className="flex items-center gap-4 text-sm font-medium text-neutral-600">
                     <a href="/merchant" className="hover:text-blue-600 transition-colors">Dashboard</a>
                     <a href="/merchant/campaigns" className="hover:text-blue-600 transition-colors">Campaigns</a>
+                    <a href="/merchant/verify" className="hover:text-blue-600 transition-colors">Verify</a>
                     <a href="/merchant/analytics" className="hover:text-blue-600 transition-colors">Analytics</a>
+                    <a href="/merchant/settings" className="hover:text-blue-600 transition-colors">Settings</a>
                     <a href="/merchant/billing" className="hover:text-blue-600 transition-colors">Billing</a>
                     <NotificationBanner variant="bell" />
                 </div>
