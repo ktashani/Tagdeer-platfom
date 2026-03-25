@@ -1,6 +1,7 @@
 'use client';
 
 import NotificationBanner from '@/components/NotificationBanner';
+import SubscriptionBanner from '@/components/SubscriptionBanner';
 
 export default function MerchantLayout({ children }) {
     return (
@@ -19,6 +20,7 @@ export default function MerchantLayout({ children }) {
             </nav>
             <main className="p-8 max-w-7xl mx-auto">
                 <NotificationBanner variant="banner" />
+                <SubscriptionBanner />
                 {children}
             </main>
         </div>

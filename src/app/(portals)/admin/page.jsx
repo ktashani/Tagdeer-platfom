@@ -48,6 +48,13 @@ export default function AdminDashboard() {
             color: 'amber',
             sub: stats?.pending_claims > 0 ? 'Action required' : 'All clear',
         },
+        {
+            label: 'Pending Payments',
+            value: stats?.pending_payments,
+            icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z',
+            color: 'rose',
+            sub: stats?.pending_payments > 0 ? 'Needs review' : 'None pending',
+        },
     ];
 
     const colorMap = {
@@ -55,6 +62,7 @@ export default function AdminDashboard() {
         blue: { icon: 'text-blue-400', badge: 'text-blue-400 bg-blue-400/10' },
         purple: { icon: 'text-purple-400', badge: 'text-purple-400 bg-purple-400/10' },
         amber: { icon: 'text-amber-400', badge: 'text-amber-400 bg-amber-400/10' },
+        rose: { icon: 'text-rose-400', badge: 'text-rose-400 bg-rose-400/10' },
     };
 
     return (
@@ -81,7 +89,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
                 {statCards.map((card) => {
                     const colors = colorMap[card.color];
                     return (
