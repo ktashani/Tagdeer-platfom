@@ -11,6 +11,41 @@
 
 
 -- ═══════════════════════════════════════════════════════════
+-- 0. ENSURE subscription_tiers EXISTS
+--    This table may have been created ad-hoc; we formalize it here.
+-- ═══════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.subscription_tiers (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    price NUMERIC DEFAULT 0,
+    description TEXT,
+    allocations JSONB DEFAULT '{}',
+    features JSONB DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.subscription_tiers ENABLE ROW LEVEL SECURITY;
+
+-- Anyone can read tiers; only admins can manage
+DROP POLICY IF EXISTS "tier_select_public" ON public.subscription_tiers;
+CREATE POLICY "tier_select_public" ON public.subscription_tiers
+    FOR SELECT USING (TRUE);
+
+DROP POLICY IF EXISTS "tier_all_admin" ON public.subscription_tiers;
+CREATE POLICY "tier_all_admin" ON public.subscription_tiers
+    FOR ALL USING (public.is_platform_admin());
+
+-- Seed default tiers (skip if already exist)
+INSERT INTO public.subscription_tiers (name, price, description, allocations)
+VALUES
+    ('Free', 0, 'الباقة المجانية', '{"max_locations": 1, "max_campaigns": 0, "max_coupons": 0}'),
+    ('Growth', 99, 'باقة النمو', '{"max_locations": 3, "max_campaigns": 5, "max_coupons": 50}'),
+    ('Enterprise', 299, 'باقة الأعمال', '{"max_locations": 999, "max_campaigns": 999, "max_coupons": 999}')
+ON CONFLICT (name) DO NOTHING;
+
+
+-- ═══════════════════════════════════════════════════════════
 -- 1. ADMIN STATS MATERIALIZED VIEW
 --    Replaces live queries with cached aggregates.
 --    Refreshed every 5 minutes via pg_cron (if available).
