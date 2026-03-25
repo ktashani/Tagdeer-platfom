@@ -1,3 +1,7 @@
+'use client';
+
+import ClaimQueue from '@/components/admin/ClaimQueue';
+
 export default function AdminDashboard() {
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -59,47 +63,8 @@ export default function AdminDashboard() {
 
             </div>
 
-            {/* Recent Activity Table */}
-            <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden mt-8">
-                <div className="p-6 border-b border-slate-700/50 flex justify-between items-center">
-                    <h2 className="text-lg font-semibold text-white">Recent Store Claims</h2>
-                    <button className="text-sm text-emerald-400 hover:text-emerald-300 font-medium transition-colors">View All</button>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-slate-400">
-                        <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50">
-                            <tr>
-                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Business Name</th>
-                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Requested By</th>
-                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Date</th>
-                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Status</th>
-                                <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
-                                <td className="px-6 py-4 font-medium text-white">Starbucks - Riyadh Front</td>
-                                <td className="px-6 py-4">ahmed@example.com</td>
-                                <td className="px-6 py-4">Today, 10:42 AM</td>
-                                <td className="px-6 py-4"><span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">Pending</span></td>
-                                <td className="px-6 py-4 text-right">
-                                    <button className="text-emerald-400 hover:text-emerald-300 font-medium mr-4">Approve</button>
-                                    <button className="text-slate-500 hover:text-slate-400 font-medium">Reject</button>
-                                </td>
-                            </tr>
-                            <tr className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
-                                <td className="px-6 py-4 font-medium text-white">Zara Menswear</td>
-                                <td className="px-6 py-4">sara@zara.com</td>
-                                <td className="px-6 py-4">Yesterday, 4:15 PM</td>
-                                <td className="px-6 py-4"><span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Approved</span></td>
-                                <td className="px-6 py-4 text-right">
-                                    <button className="text-slate-500 hover:text-slate-400 font-medium">Details</button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            {/* Live Claim Queue */}
+            <ClaimQueue />
 
         </div>
     )
