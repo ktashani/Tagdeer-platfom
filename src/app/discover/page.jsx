@@ -41,7 +41,7 @@ export default function DiscoverRoute() {
         try {
             let query = supabase
                 .from('businesses')
-                .select('id, name, category, region, city, external_url, status, isShielded, claimed_by, created_at');
+                .select('id, name, category, region, external_url, is_shielded, claimed_by, created_at');
 
             // Filters
             if (searchQuery.trim()) {
@@ -74,7 +74,7 @@ export default function DiscoverRoute() {
             if (bizIds.length > 0) {
                 const { data: logsData } = await supabase
                     .from('logs')
-                    .select('id, business_id, interaction_type, reason, created_at, is_verified')
+                    .select('id, business_id, interaction_type, reason_text, created_at')
                     .in('business_id', bizIds)
                     .order('created_at', { ascending: false });
 
@@ -84,9 +84,8 @@ export default function DiscoverRoute() {
                     logsMap[log.business_id].push({
                         id: log.id,
                         type: log.interaction_type,
-                        text: log.reason || '',
+                        text: log.reason_text || '',
                         date: new Date(log.created_at).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en'),
-                        is_verified: log.is_verified,
                     });
                 });
             }
@@ -290,7 +289,7 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                     <button onClick={() => shareToFacebook(business.name, `Tagdeer Gader Index: ${safeIndex}%`)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 text-slate-500 transition-colors">
                         <Share2 className="h-5 w-5" />
                     </button>
-                    {business.isShielded && (
+                    {business.is_shielded && (
                         <div className="bg-blue-50 p-2 rounded-full border border-blue-100">
                             <BadgeCheck className="h-5 w-5 text-blue-600" />
                         </div>
@@ -365,7 +364,7 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                 <button onClick={() => openVoteModal(business.id, 'recommend', false)} className="flex-1 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 py-3 rounded-xl font-semibold flex justify-center items-center gap-2">
                     <ThumbsUp className="h-5 w-5" /> {t('recommend')}
                 </button>
-                <button onClick={() => openVoteModal(business.id, 'complain', business.isShielded)} className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 py-3 rounded-xl font-semibold flex justify-center items-center gap-2">
+                <button onClick={() => openVoteModal(business.id, 'complain', business.is_shielded)} className="flex-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 py-3 rounded-xl font-semibold flex justify-center items-center gap-2">
                     <ThumbsDown className="h-5 w-5" /> {t('complain')}
                 </button>
             </div>
