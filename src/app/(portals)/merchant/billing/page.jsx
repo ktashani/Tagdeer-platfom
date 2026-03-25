@@ -41,31 +41,31 @@ export default function BillingPage() {
       // Fetch current subscription
       const { data: sub } = await supabase
         .from('subscriptions')
-        .select('id, tier, status, start_date, end_date, quotas')
-        .eq('user_id', session.user.id)
+        .select('id, tier, status, expires_at, quotas')
+        .eq('profile_id', session.user.id)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       setSubscription(sub);
 
       // Fetch available tiers
       const { data: tierData } = await supabase
         .from('subscription_tiers')
-        .select('id, name, price, features, quotas')
+        .select('id, name, price, description, allocations')
         .order('price', { ascending: true });
 
       setTiers(tierData || []);
 
-      // Fetch payment history
-      const { data: paymentData } = await supabase
-        .from('payment_audit_log')
-        .select('id, amount, status, method, created_at, notes')
-        .eq('user_id', session.user.id)
+      // Fetch transaction history (upgrade requests)
+      const { data: txnData } = await supabase
+        .from('transactions')
+        .select('id, requested_tier, amount, payment_gateway, status, rejection_reason, created_at')
+        .eq('owner_id', session.user.id)
         .order('created_at', { ascending: false })
         .limit(10);
 
-      setPayments(paymentData || []);
+      setPayments(txnData || []);
       setLoading(false);
     };
 
@@ -81,32 +81,36 @@ export default function BillingPage() {
     setUpgrading(paymentModal.name);
 
     try {
-      // Create payment request
       const { data: { session } } = await supabase.auth.getSession();
 
+      // Insert into transactions table → flows through admin PaymentQueue
       const { error } = await supabase
-        .from('payment_audit_log')
+        .from('transactions')
         .insert({
-          user_id: session.user.id,
-          amount: paymentModal.price,
-          method: method,
+          owner_id: session.user.id,
+          business_id: subscription?.business_id || null,
+          requested_tier: paymentModal.name,
+          amount: paymentModal.price || 0,
+          payment_method: 'manual',
+          payment_gateway: method,
           status: 'pending',
-          notes: `Upgrade to ${paymentModal.name}`,
         });
 
       if (error) throw error;
 
-      // Also create upgrade request
-      await supabase
-        .from('subscriptions')
-        .update({
-          requested_tier: paymentModal.name,
-        })
-        .eq('id', subscription?.id);
+      // Refresh payment history
+      const { data: txnData } = await supabase
+        .from('transactions')
+        .select('id, requested_tier, amount, payment_gateway, status, rejection_reason, created_at')
+        .eq('owner_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
 
+      setPayments(txnData || []);
       setPaymentModal(null);
     } catch (err) {
       console.error('Payment error:', err);
+      alert('فشل في إرسال الطلب: ' + err.message);
     }
     setUpgrading(null);
   };
@@ -121,8 +125,8 @@ export default function BillingPage() {
 
   const currentTier = subscription?.tier || 'Free';
   const tierInfo = TIER_FEATURES[currentTier] || TIER_FEATURES.Free;
-  const daysLeft = subscription?.end_date
-    ? Math.max(0, Math.ceil((new Date(subscription.end_date) - Date.now()) / 86400000))
+  const daysLeft = subscription?.expires_at
+    ? Math.max(0, Math.ceil((new Date(subscription.expires_at) - Date.now()) / 86400000))
     : null;
 
   return (
@@ -236,9 +240,10 @@ export default function BillingPage() {
               <p>لا توجد مدفوعات بعد</p>
             </div>
           ) : (
-            <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
+                  <th className="px-6 py-3 font-medium text-slate-500">الباقة</th>
                   <th className="px-6 py-3 font-medium text-slate-500">المبلغ</th>
                   <th className="px-6 py-3 font-medium text-slate-500">الطريقة</th>
                   <th className="px-6 py-3 font-medium text-slate-500">الحالة</th>
@@ -248,18 +253,22 @@ export default function BillingPage() {
               <tbody className="divide-y divide-slate-100">
                 {payments.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-semibold text-slate-900">{p.requested_tier}</td>
                     <td className="px-6 py-4 font-bold text-slate-900">{p.amount} LYD</td>
-                    <td className="px-6 py-4 text-slate-600">{p.method || '—'}</td>
+                    <td className="px-6 py-4 text-slate-600">{p.payment_gateway || '—'}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
-                        p.status === 'confirmed'
+                        p.status === 'completed'
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           : p.status === 'pending'
                           ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-slate-50 text-slate-600 border-slate-200'
+                          : 'bg-red-50 text-red-700 border-red-200'
                       }`}>
-                        {p.status === 'confirmed' ? 'مؤكد' : p.status === 'pending' ? 'قيد التأكيد' : p.status}
+                        {p.status === 'completed' ? 'مؤكد ✅' : p.status === 'pending' ? 'قيد المراجعة' : 'مرفوض'}
                       </span>
+                      {p.rejection_reason && (
+                        <p className="text-xs text-red-500 mt-1">{p.rejection_reason}</p>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-slate-400">
                       {new Date(p.created_at).toLocaleDateString('ar-LY', { year: 'numeric', month: 'short', day: 'numeric' })}
