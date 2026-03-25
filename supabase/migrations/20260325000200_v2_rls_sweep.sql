@@ -142,7 +142,7 @@ BEGIN
 
     PERFORM _temp_safe_policy('payment_audit_log', 'pal_all_admin', 'ALL', 'public.is_platform_admin()');
     PERFORM _temp_safe_policy('payment_audit_log', 'pal_select_merchant', 'SELECT',
-        $$entity_type = 'transaction' AND entity_id IN (SELECT id FROM public.transactions WHERE owner_id = auth.uid())$$);
+        'entity_type = ''transaction'' AND entity_id IN (SELECT id FROM public.transactions WHERE owner_id = auth.uid())');
 
     RAISE NOTICE 'payment_audit_log: RLS re-drafted';
 END $$;
@@ -290,7 +290,7 @@ BEGIN
     EXECUTE 'DROP POLICY IF EXISTS "team_select_own" ON public.merchant_teams';
     EXECUTE 'DROP POLICY IF EXISTS "team_all_admin" ON public.merchant_teams';
 
-    PERFORM _temp_safe_policy('merchant_teams', 'team_select_own', 'SELECT', 'auth.uid() = owner_id');
+    PERFORM _temp_safe_policy('merchant_teams', 'team_select_own', 'SELECT', 'auth.uid() = created_by');
     PERFORM _temp_safe_policy('merchant_teams', 'team_all_admin', 'ALL', 'public.is_platform_admin()');
 
     RAISE NOTICE 'merchant_teams: RLS re-drafted';
@@ -362,7 +362,7 @@ BEGIN
     EXECUTE 'DROP POLICY IF EXISTS "uc_select_own" ON public.user_coupons';
     EXECUTE 'DROP POLICY IF EXISTS "uc_all_admin" ON public.user_coupons';
 
-    PERFORM _temp_safe_policy('user_coupons', 'uc_select_own', 'SELECT', 'auth.uid() = profile_id');
+    PERFORM _temp_safe_policy('user_coupons', 'uc_select_own', 'SELECT', 'auth.uid() = user_id');
     PERFORM _temp_safe_policy('user_coupons', 'uc_all_admin', 'ALL', 'public.is_platform_admin()');
 
     RAISE NOTICE 'user_coupons: RLS re-drafted';
@@ -414,7 +414,7 @@ BEGIN
 
     PERFORM _temp_safe_policy('storefronts', 'sf_select_public', 'SELECT', 'true');
     PERFORM _temp_safe_policy('storefronts', 'sf_all_merchant', 'ALL',
-        $$business_id IN (SELECT id FROM public.businesses WHERE claimed_by = auth.uid())$$);
+        'business_id IN (SELECT id FROM public.businesses WHERE claimed_by = auth.uid())');
     PERFORM _temp_safe_policy('storefronts', 'sf_all_admin', 'ALL', 'public.is_platform_admin()');
 
     RAISE NOTICE 'storefronts: RLS re-drafted';
@@ -442,7 +442,7 @@ BEGIN
 
     PERFORM _temp_safe_policy('storefront_products', 'sp_select_public', 'SELECT', 'true');
     PERFORM _temp_safe_policy('storefront_products', 'sp_all_merchant', 'ALL',
-        $$storefront_id IN (SELECT id FROM public.storefronts WHERE business_id IN (SELECT id FROM public.businesses WHERE claimed_by = auth.uid()))$$);
+        'storefront_id IN (SELECT id FROM public.storefronts WHERE business_id IN (SELECT id FROM public.businesses WHERE claimed_by = auth.uid()))');
     PERFORM _temp_safe_policy('storefront_products', 'sp_all_admin', 'ALL', 'public.is_platform_admin()');
 
     RAISE NOTICE 'storefront_products: RLS re-drafted';
@@ -466,7 +466,7 @@ BEGIN
     EXECUTE 'DROP POLICY IF EXISTS "r2_all_own" ON public.r2_assets';
     EXECUTE 'DROP POLICY IF EXISTS "r2_all_admin" ON public.r2_assets';
 
-    PERFORM _temp_safe_policy('r2_assets', 'r2_all_own', 'ALL', 'auth.uid() = uploaded_by');
+    PERFORM _temp_safe_policy('r2_assets', 'r2_all_own', 'ALL', 'auth.uid() = owner_id');
     PERFORM _temp_safe_policy('r2_assets', 'r2_all_admin', 'ALL', 'public.is_platform_admin()');
 
     RAISE NOTICE 'r2_assets: RLS re-drafted';
