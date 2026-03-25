@@ -1,7 +1,8 @@
 'use client';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTagdeer } from '../../context/TagdeerContext';
-import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap, ArrowUpDown } from 'lucide-react';
+import { supabase } from '@/lib/supabaseClient';
+import { Search, MapPin, Facebook, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap, Loader2 } from 'lucide-react';
 import { calculateBusinessScore } from '../../lib/mathEngine';
 import Link from 'next/link';
 
@@ -12,9 +13,10 @@ const CATEGORIES = [
     "Education", "Travel", "Fashion & Retail", "Services", "Food & Beverage", "Delivery & Shipping"
 ];
 const REGIONS = ["All", "Tripoli", "Benghazi"];
+const PAGE_SIZE = 20;
 
 export default function DiscoverRoute() {
-    const { t, lang, isRTL, businesses, anonInteractions, showToast, setShowLimitModal, setVoteModal, setVoteReason, user } = useTagdeer();
+    const { t, lang, isRTL, anonInteractions, showToast, setShowLimitModal, setVoteModal, setVoteReason, user } = useTagdeer();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedRegion, setSelectedRegion] = useState('All');
@@ -22,44 +24,126 @@ export default function DiscoverRoute() {
     const [sortBy, setSortBy] = useState('newest');
     const [expandedLogs, setExpandedLogs] = useState({});
 
+    // Server-side query state
+    const [businesses, setBusinesses] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [hasMore, setHasMore] = useState(true);
+    const [page, setPage] = useState(0);
+    const debounceRef = useRef(null);
+
     const toggleLogs = (id) => {
         setExpandedLogs(prev => ({ ...prev, [id]: !prev[id] }));
     };
 
-    const filteredBusinesses = useMemo(() => {
-        let result = businesses.filter(b => {
-            const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesRegion = selectedRegion === 'All' || b.region === selectedRegion;
-            const matchesCategory = selectedCategory === 'All' || b.category === selectedCategory;
-            return matchesSearch && matchesRegion && matchesCategory;
-        });
+    // Server-side query: fetch businesses directly from Supabase
+    const fetchBusinesses = useCallback(async (pageNum = 0, append = false) => {
+        setLoading(true);
+        try {
+            let query = supabase
+                .from('businesses')
+                .select('id, name, category, region, city, external_url, status, isShielded, claimed_by, created_at');
 
-        // Sort
-        if (sortBy === 'highest') {
-            result = [...result].sort((a, b) => {
-                const sa = calculateBusinessScore(a.logs || []);
-                const sb = calculateBusinessScore(b.logs || []);
-                return (sb.gaderIndex || 50) - (sa.gaderIndex || 50);
-            });
-        } else if (sortBy === 'lowest') {
-            result = [...result].sort((a, b) => {
-                const sa = calculateBusinessScore(a.logs || []);
-                const sb = calculateBusinessScore(b.logs || []);
-                return (sa.gaderIndex || 50) - (sb.gaderIndex || 50);
-            });
-        } else if (sortBy === 'most_votes') {
-            result = [...result].sort((a, b) => (b.logs?.length || 0) - (a.logs?.length || 0));
+            // Filters
+            if (searchQuery.trim()) {
+                query = query.ilike('name', `%${searchQuery.trim()}%`);
+            }
+            if (selectedRegion !== 'All') {
+                query = query.eq('region', selectedRegion);
+            }
+            if (selectedCategory !== 'All') {
+                query = query.eq('category', selectedCategory);
+            }
+
+            // Sorting (server-side for non-computed columns)
+            if (sortBy === 'newest') {
+                query = query.order('created_at', { ascending: false });
+            }
+            // For gader-based sorts, we fetch and sort client-side (requires logs)
+
+            // Pagination
+            const from = pageNum * PAGE_SIZE;
+            const to = from + PAGE_SIZE - 1;
+            query = query.range(from, to);
+
+            const { data: bizData, error } = await query;
+            if (error) { console.error('Discover fetch error:', error); setLoading(false); return; }
+
+            // Fetch logs for these businesses (for Gader Index display)
+            const bizIds = (bizData || []).map(b => b.id);
+            let logsMap = {};
+            if (bizIds.length > 0) {
+                const { data: logsData } = await supabase
+                    .from('logs')
+                    .select('id, business_id, interaction_type, reason, created_at, is_verified')
+                    .in('business_id', bizIds)
+                    .order('created_at', { ascending: false });
+
+                // Group logs by business_id
+                (logsData || []).forEach(log => {
+                    if (!logsMap[log.business_id]) logsMap[log.business_id] = [];
+                    logsMap[log.business_id].push({
+                        id: log.id,
+                        type: log.interaction_type,
+                        text: log.reason || '',
+                        date: new Date(log.created_at).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en'),
+                        is_verified: log.is_verified,
+                    });
+                });
+            }
+
+            // Merge logs into businesses
+            let merged = (bizData || []).map(b => ({
+                ...b,
+                logs: logsMap[b.id] || [],
+            }));
+
+            // Client-side sort for Gader Index (server can't compute weighted avg)
+            if (sortBy === 'highest') {
+                merged.sort((a, b) => {
+                    const sa = calculateBusinessScore(a.logs);
+                    const sb = calculateBusinessScore(b.logs);
+                    return (sb.gaderIndex || 50) - (sa.gaderIndex || 50);
+                });
+            } else if (sortBy === 'lowest') {
+                merged.sort((a, b) => {
+                    const sa = calculateBusinessScore(a.logs);
+                    const sb = calculateBusinessScore(b.logs);
+                    return (sa.gaderIndex || 50) - (sb.gaderIndex || 50);
+                });
+            } else if (sortBy === 'most_votes') {
+                merged.sort((a, b) => (b.logs.length || 0) - (a.logs.length || 0));
+            }
+
+            setBusinesses(prev => append ? [...prev, ...merged] : merged);
+            setHasMore((bizData || []).length === PAGE_SIZE);
+        } catch (err) {
+            console.error('Discover fetch error:', err);
         }
+        setLoading(false);
+    }, [searchQuery, selectedRegion, selectedCategory, sortBy, lang]);
 
-        return result;
-    }, [businesses, searchQuery, selectedRegion, selectedCategory, sortBy]);
+    // Re-fetch when filters change (debounced for search)
+    useEffect(() => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            setPage(0);
+            fetchBusinesses(0, false);
+        }, searchQuery ? 400 : 0); // Debounce search, instant for dropdowns
+
+        return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    }, [fetchBusinesses]);
+
+    const loadMore = () => {
+        const nextPage = page + 1;
+        setPage(nextPage);
+        fetchBusinesses(nextPage, true);
+    };
 
     const openVoteModal = (businessId, type, isShielded) => {
         if (type === 'complain' && isShielded) {
             showToast(t('shielded_warning'));
             return;
         }
-        // Only apply the 3-vote global limit to anonymous users
         if (!user && anonInteractions >= 3) {
             setShowLimitModal(true);
             return;
@@ -105,8 +189,23 @@ export default function DiscoverRoute() {
                 </div>
             </div>
 
+            {/* Zero results CTA */}
+            {!loading && businesses.length === 0 && (
+                <div className="text-center py-16">
+                    <div className="bg-slate-100 w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                        <Search className="w-8 h-8 text-slate-400" />
+                    </div>
+                    <p className="text-slate-500 font-medium mb-4">
+                        {lang === 'ar' ? 'لم نجد نتائج. هل تعرف هذا المكان؟' : 'No results found. Know this place?'}
+                    </p>
+                    <Link href="/add" className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors shadow-sm">
+                        {lang === 'ar' ? '➕ أضف نشاط تجاري' : '➕ Add a Business'}
+                    </Link>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                {filteredBusinesses.map(business => (
+                {businesses.map(business => (
                     <BusinessCard
                         key={business.id}
                         business={business}
@@ -120,6 +219,25 @@ export default function DiscoverRoute() {
                     />
                 ))}
             </div>
+
+            {/* Loading spinner */}
+            {loading && (
+                <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                </div>
+            )}
+
+            {/* Load more button */}
+            {!loading && hasMore && businesses.length > 0 && (
+                <div className="flex justify-center mt-8">
+                    <button
+                        onClick={loadMore}
+                        className="px-8 py-3 bg-white border border-slate-300 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors shadow-sm"
+                    >
+                        {lang === 'ar' ? 'تحميل المزيد' : 'Load More'}
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
@@ -191,7 +309,6 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
                             <span className="text-xs text-slate-500 font-medium uppercase tracking-wider">{t('migdar')}</span>
                         </div>
                     </div>
-                    {/* Score label: neutral for zero votes, dual split otherwise */}
                     {totalVotes === 0 ? (
                         <span className="text-sm font-medium text-slate-400 italic">
                             {lang === 'ar' ? 'لا توجد تجارب بعد' : 'No experiences yet'}
@@ -207,7 +324,6 @@ function BusinessCard({ business, t, lang, isRTL, openVoteModal, shareToFacebook
 
                 {/* Tug-of-War Progress Bar */}
                 {totalVotes === 0 ? (
-                    /* Neutral 50/50 bar for zero votes */
                     <div className="w-full rounded-full h-4 overflow-hidden flex shadow-inner border border-slate-200 mb-3">
                         <div className="bg-slate-300 h-4 w-1/2 flex items-center justify-end">
                             <span className="text-[10px] font-bold text-slate-500/70 pr-1.5">⚖️</span>

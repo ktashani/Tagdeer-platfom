@@ -7,10 +7,20 @@ import { supabase } from '@/lib/supabaseClient';
  * VoteModal — collects a vote reason and submits it.
  * For anonymous users: checks vote limit via fingerprint before allowing submission.
  * Per AGENTS.md: "Unverified devices are limited to 3 logs per 24 hours."
+ * W13: Now passes client IP for secondary rate limiting (15/IP/24h).
  */
 export function VoteModal({ isOpen, onClose, voteReason, setVoteReason, onSubmit, t, type, isAnonymous = false, businessId }) {
   const [anonCheck, setAnonCheck] = useState(null); // { allowed, remaining, limit }
   const [checking, setChecking] = useState(false);
+  const [clientIp, setClientIp] = useState(null);
+
+  // Fetch client IP once on mount
+  useEffect(() => {
+    fetch('/api/client-ip')
+      .then(r => r.json())
+      .then(d => setClientIp(d.ip))
+      .catch(() => setClientIp(null));
+  }, []);
 
   useEffect(() => {
     if (!isOpen || !isAnonymous) return;
@@ -42,18 +52,25 @@ export function VoteModal({ isOpen, onClose, voteReason, setVoteReason, onSubmit
 
   const handleSubmit = async () => {
     if (isAnonymous && businessId) {
-      // Use the fingerprint RPC to record the vote
+      // Use the fingerprint RPC to record the vote — now with IP
       const fp = await generateFingerprint();
       const { data, error } = await supabase.rpc('record_anon_vote', {
         p_fingerprint: fp.hash,
         p_business_id: businessId,
         p_type: type,
+        p_ip_address: clientIp || null,
       });
 
       if (error || (data && !data.success)) {
-        const msg = data?.error === 'vote_limit_exceeded'
-          ? (t('vote_limit_exceeded') || 'لقد وصلت للحد الأقصى من التقييمات اليومية')
-          : (error?.message || 'فشل في تسجيل التقييم');
+        const errType = data?.error;
+        let msg;
+        if (errType === 'vote_limit_exceeded') {
+          msg = t('vote_limit_exceeded') || 'لقد وصلت للحد الأقصى من التقييمات اليومية';
+        } else if (errType === 'ip_rate_limit_exceeded') {
+          msg = t('vote_limit_exceeded') || 'تم تجاوز حد التقييمات من هذا الجهاز';
+        } else {
+          msg = error?.message || 'فشل في تسجيل التقييم';
+        }
         alert(msg);
         return;
       }
