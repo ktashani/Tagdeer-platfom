@@ -5,7 +5,7 @@ import { useTagdeer } from '@/context/TagdeerContext';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
-import { Mail, User, ShieldCheck, Phone, AlertTriangle } from 'lucide-react';
+import { Mail, User, ShieldCheck, Phone, AlertTriangle, Gift } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Toast } from '@/components/Toast';
@@ -14,6 +14,7 @@ import { Toast } from '@/components/Toast';
 import { ProfileHeader } from '@/components/profile/ProfileHeader';
 import { LogHistory } from '@/components/profile/LogHistory';
 import { GaderPassModal } from '@/components/profile/GaderPassModal';
+import CouponWallet from '@/components/profile/CouponWallet';
 
 export default function ProfilePage() {
     const { user, logout, t, isRTL, setShowLoginModal, lang } = useTagdeer();
@@ -304,6 +305,17 @@ export default function ProfilePage() {
                     🔒 {lang === 'ar' ? 'وثق رقمك لعرض البطاقة' : 'Verify phone to show card'}
                 </button>
             )}
+
+            {/* ═══ Personal Details & Email Section ═══ */}
+
+            {/* ═══ Coupon Wallet ═══ */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8 p-6 sm:p-10">
+                <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-4">
+                    <Gift className="w-6 h-6 text-emerald-600" />
+                    <h2 className="text-2xl font-bold text-slate-800">{lang === 'ar' ? 'محفظة الكوبونات' : 'Coupon Wallet'}</h2>
+                </div>
+                <CouponWallet userId={user.id} lang={lang} />
+            </div>
 
             {/* ═══ Personal Details & Email Section ═══ */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8 p-6 sm:p-10">
