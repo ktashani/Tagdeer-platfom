@@ -35,7 +35,7 @@ export default function BusinessProfilePage() {
         // Fetch business details
         const { data: biz, error: bizErr } = await supabase
           .from('businesses')
-          .select('id, name, category, city, region, address, phone, email, external_url, claimed_by, created_at')
+          .select('id, name, category, city, region, address, phone, email, external_url, claimed_by, created_at, description, operating_hours, instagram, facebook, website')
           .eq('id', businessId)
           .single();
 
@@ -152,6 +152,16 @@ export default function BusinessProfilePage() {
               {business.external_url && (
                 <a href={business.external_url} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/20 rounded-xl hover:bg-white/30 transition-colors text-white backdrop-blur-sm">
                   🌐
+                </a>
+              )}
+              {business.instagram && (
+                <a href={`https://instagram.com/${business.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/20 rounded-xl hover:bg-white/30 transition-colors text-white backdrop-blur-sm">
+                  📸
+                </a>
+              )}
+              {business.facebook && (
+                <a href={business.facebook} target="_blank" rel="noopener noreferrer" className="p-3 bg-white/20 rounded-xl hover:bg-white/30 transition-colors text-white backdrop-blur-sm">
+                  📘
                 </a>
               )}
               <button
@@ -346,56 +356,112 @@ export default function BusinessProfilePage() {
         )}
 
         {activeTab === 'info' && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm mb-10">
-            <div className="divide-y divide-slate-100">
-              {business.address && (
-                <div className="p-4 flex items-center gap-3">
-                  <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">📍</span>
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium">العنوان</p>
-                    <p className="text-sm text-slate-800">{business.address}</p>
+          <div className="space-y-4 mb-10">
+            {/* Description */}
+            {business.description && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <h3 className="font-semibold text-slate-900 mb-2 flex items-center gap-2">📝 عن النشاط</h3>
+                <p className="text-sm text-slate-600 leading-relaxed">{business.description}</p>
+              </div>
+            )}
+
+            {/* Contact & Links */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+              <div className="divide-y divide-slate-100">
+                {business.address && (
+                  <div className="p-4 flex items-center gap-3">
+                    <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">📍</span>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium">العنوان</p>
+                      <p className="text-sm text-slate-800">{business.address}</p>
+                    </div>
                   </div>
-                </div>
-              )}
-              {business.phone && (
-                <div className="p-4 flex items-center gap-3">
-                  <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">📞</span>
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium">هاتف</p>
-                    <a href={`tel:${business.phone}`} className="text-sm text-blue-600 font-medium" dir="ltr">{business.phone}</a>
+                )}
+                {business.phone && (
+                  <div className="p-4 flex items-center gap-3">
+                    <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">📞</span>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium">هاتف</p>
+                      <a href={`tel:${business.phone}`} className="text-sm text-blue-600 font-medium" dir="ltr">{business.phone}</a>
+                    </div>
                   </div>
-                </div>
-              )}
-              {business.email && (
-                <div className="p-4 flex items-center gap-3">
-                  <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">✉️</span>
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium">بريد إلكتروني</p>
-                    <a href={`mailto:${business.email}`} className="text-sm text-blue-600 font-medium" dir="ltr">{business.email}</a>
+                )}
+                {business.email && (
+                  <div className="p-4 flex items-center gap-3">
+                    <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">✉️</span>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium">بريد إلكتروني</p>
+                      <a href={`mailto:${business.email}`} className="text-sm text-blue-600 font-medium" dir="ltr">{business.email}</a>
+                    </div>
                   </div>
-                </div>
-              )}
-              {business.external_url && (
-                <div className="p-4 flex items-center gap-3">
-                  <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">🌐</span>
-                  <div>
-                    <p className="text-xs text-slate-500 font-medium">رابط خارجي</p>
-                    <a href={business.external_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 font-medium" dir="ltr">
-                      {business.external_url.replace(/^https?:\/\//, '')}
-                    </a>
+                )}
+                {(business.website || business.external_url) && (
+                  <div className="p-4 flex items-center gap-3">
+                    <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">🌐</span>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium">الموقع</p>
+                      <a href={business.website || business.external_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 font-medium" dir="ltr">
+                        {(business.website || business.external_url).replace(/^https?:\/\//, '')}
+                      </a>
+                    </div>
                   </div>
-                </div>
-              )}
-              <div className="p-4 flex items-center gap-3">
-                <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">📅</span>
-                <div>
-                  <p className="text-xs text-slate-500 font-medium">تاريخ التسجيل</p>
-                  <p className="text-sm text-slate-800">
-                    {new Date(business.created_at).toLocaleDateString('ar-LY', { year: 'numeric', month: 'long', day: 'numeric' })}
-                  </p>
+                )}
+                {business.instagram && (
+                  <div className="p-4 flex items-center gap-3">
+                    <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-lg text-white">📸</span>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium">إنستغرام</p>
+                      <a href={`https://instagram.com/${business.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 font-medium" dir="ltr">
+                        @{business.instagram.replace('@', '')}
+                      </a>
+                    </div>
+                  </div>
+                )}
+                {business.facebook && (
+                  <div className="p-4 flex items-center gap-3">
+                    <span className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-lg text-white">📘</span>
+                    <div>
+                      <p className="text-xs text-slate-500 font-medium">فيسبوك</p>
+                      <a href={business.facebook} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 font-medium" dir="ltr">
+                        {business.facebook.replace(/^https?:\/\/(www\.)?facebook\.com\//, '')}
+                      </a>
+                    </div>
+                  </div>
+                )}
+                <div className="p-4 flex items-center gap-3">
+                  <span className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-lg">📅</span>
+                  <div>
+                    <p className="text-xs text-slate-500 font-medium">تاريخ التسجيل</p>
+                    <p className="text-sm text-slate-800">
+                      {new Date(business.created_at).toLocaleDateString('ar-LY', { year: 'numeric', month: 'long', day: 'numeric' })}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* Operating Hours */}
+            {business.operating_hours && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <h3 className="font-semibold text-slate-900 mb-3 flex items-center gap-2">🕐 ساعات العمل</h3>
+                <div className="space-y-2">
+                  {[{k:'sun',l:'الأحد'},{k:'mon',l:'الإثنين'},{k:'tue',l:'الثلاثاء'},{k:'wed',l:'الأربعاء'},{k:'thu',l:'الخميس'},{k:'fri',l:'الجمعة'},{k:'sat',l:'السبت'}].map(day => {
+                    const h = business.operating_hours[day.k];
+                    if (!h) return null;
+                    return (
+                      <div key={day.k} className="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0">
+                        <span className="text-sm text-slate-700 font-medium w-20">{day.l}</span>
+                        {h.open ? (
+                          <span className="text-sm text-emerald-600 font-medium" dir="ltr">{h.from} — {h.to}</span>
+                        ) : (
+                          <span className="text-sm text-slate-400">مغلق</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
