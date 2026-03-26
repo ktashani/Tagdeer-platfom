@@ -1,17 +1,25 @@
 'use client';
 
 import React, { useState, memo } from 'react';
-import { ThumbsUp, ThumbsDown } from 'lucide-react';
+import { ThumbsUp, ThumbsDown, Heart } from 'lucide-react';
 
-function ProductCard({ item: itemProp, product, theme, lang = 'en' }) {
+/**
+ * ProductCard — Self-contained product card with image, details, and reaction buttons
+ * all inside the card. Mobile-adaptive grid-friendly design.
+ */
+function ProductCard({ item: itemProp, product, theme, lang = 'en', onClick }) {
     const item = itemProp || product;
     if (!item) return null;
+
     const [likes, setLikes] = useState(item.likes || 0);
     const [dislikes, setDislikes] = useState(item.dislikes || 0);
     const [voted, setVoted] = useState(null);
     const [isVoting, setIsVoting] = useState(false);
 
-    const handleReact = async (reaction) => {
+    const isAr = lang === 'ar';
+
+    const handleReact = async (e, reaction) => {
+        e.stopPropagation(); // Don't trigger card click
         if (isVoting || voted === reaction) return;
         setIsVoting(true);
 
@@ -55,66 +63,80 @@ function ProductCard({ item: itemProp, product, theme, lang = 'en' }) {
         }
     };
 
-    const isAr = lang === 'ar';
-
     return (
-        <div className="flex gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 group">
-            {item.image_url && (
-                <div className="w-24 h-24 md:w-28 md:h-28 rounded-xl bg-slate-100 dark:bg-slate-800 shrink-0 overflow-hidden">
+        <div className="h-full flex flex-col rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden group">
+            {/* Product Image */}
+            {item.image_url ? (
+                <div className="aspect-square w-full bg-slate-50 dark:bg-slate-800 overflow-hidden relative">
                     <img
                         src={item.image_url}
                         alt={item.name}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
                     />
+                    {/* Price Badge on Image */}
+                    {item.price > 0 && (
+                        <div
+                            className="absolute bottom-2 left-2 px-3 py-1.5 rounded-xl text-white text-sm font-black shadow-md backdrop-blur-sm"
+                            style={{ backgroundColor: `${theme?.primaryColor || '#10b981'}dd` }}
+                        >
+                            {item.price} <span className="text-[10px] font-medium opacity-80">{isAr ? 'د.ل' : 'LYD'}</span>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="aspect-square w-full bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 flex items-center justify-center">
+                    <span className="text-4xl opacity-30">📦</span>
+                    {item.price > 0 && (
+                        <div
+                            className="absolute bottom-2 left-2 px-3 py-1.5 rounded-xl text-white text-sm font-black shadow-md"
+                            style={{ backgroundColor: theme?.primaryColor || '#10b981' }}
+                        >
+                            {item.price} <span className="text-[10px] font-medium">{isAr ? 'د.ل' : 'LYD'}</span>
+                        </div>
+                    )}
                 </div>
             )}
-            <div className="flex-1 min-w-0 py-1 flex flex-col justify-between">
-                <div>
-                    <h4 className="font-bold text-slate-900 dark:text-white text-lg truncate">
-                        {item.name}
-                    </h4>
-                    {item.description && (
-                        <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mt-1">
-                            {item.description}
-                        </p>
-                    )}
-                    {item.sku && (
-                        <span className="text-[10px] text-slate-400 font-mono mt-1 inline-block">
-                            SKU: {item.sku}
-                        </span>
-                    )}
-                </div>
-                <div className="flex items-center justify-between mt-2 gap-2">
-                    {item.price > 0 && (
-                        <span className="font-black text-lg" style={{ color: theme?.primaryColor || '#10b981' }}>
-                            {item.price} <span className="text-xs font-medium">{isAr ? 'د.ل' : 'LYD'}</span>
-                        </span>
-                    )}
-                    <div className="flex gap-3 text-sm shrink-0">
-                        <button
-                            onClick={() => handleReact('like')}
-                            disabled={isVoting}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all ${voted === 'like'
-                                    ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 font-bold'
-                                    : 'text-slate-400 hover:text-emerald-500 hover:bg-emerald-50/50'
-                                }`}
-                            title={isAr ? 'أعجبني' : 'Like'}
-                        >
-                            <ThumbsUp className="w-4 h-4" /> {likes}
-                        </button>
-                        <button
-                            onClick={() => handleReact('dislike')}
-                            disabled={isVoting}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all ${voted === 'dislike'
-                                    ? 'text-rose-600 bg-rose-50 dark:bg-rose-900/30 font-bold'
-                                    : 'text-slate-400 hover:text-rose-500 hover:bg-rose-50/50'
-                                }`}
-                            title={isAr ? 'لم يعجبني' : 'Dislike'}
-                        >
-                            <ThumbsDown className="w-4 h-4" /> {dislikes}
-                        </button>
-                    </div>
+
+            {/* Card Body */}
+            <div className="flex flex-col flex-1 p-3.5">
+                {/* Product Name */}
+                <h4 className="font-bold text-slate-900 dark:text-white text-sm leading-tight line-clamp-2 mb-1">
+                    {item.name}
+                </h4>
+
+                {/* Description */}
+                {item.description && (
+                    <p className="text-xs text-slate-400 dark:text-slate-500 line-clamp-2 mb-2">
+                        {item.description}
+                    </p>
+                )}
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Reaction Buttons — Inside the card */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 mt-2">
+                    <button
+                        onClick={(e) => handleReact(e, 'like')}
+                        disabled={isVoting}
+                        className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 rounded-lg transition-all ${voted === 'like'
+                                ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30'
+                                : 'text-slate-400 hover:text-emerald-500 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/20'
+                            }`}
+                    >
+                        <ThumbsUp className="w-3.5 h-3.5" /> {likes}
+                    </button>
+                    <button
+                        onClick={(e) => handleReact(e, 'dislike')}
+                        disabled={isVoting}
+                        className={`flex items-center gap-1 text-xs font-bold px-2 py-1.5 rounded-lg transition-all ${voted === 'dislike'
+                                ? 'text-rose-600 bg-rose-50 dark:bg-rose-900/30'
+                                : 'text-slate-400 hover:text-rose-500 hover:bg-rose-50/50 dark:hover:bg-rose-900/20'
+                            }`}
+                    >
+                        <ThumbsDown className="w-3.5 h-3.5" /> {dislikes}
+                    </button>
                 </div>
             </div>
         </div>
