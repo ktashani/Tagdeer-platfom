@@ -302,6 +302,39 @@ CREATE TABLE IF NOT EXISTS public.payment_audit_log (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Evolve payment_audit_log: add missing columns if table already existed
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema='public' AND table_name='payment_audit_log'
+                   AND column_name='actor_id') THEN
+        ALTER TABLE public.payment_audit_log ADD COLUMN actor_id UUID REFERENCES public.profiles(id);
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema='public' AND table_name='payment_audit_log'
+                   AND column_name='metadata') THEN
+        ALTER TABLE public.payment_audit_log ADD COLUMN metadata JSONB DEFAULT '{}'::jsonb;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema='public' AND table_name='payment_audit_log'
+                   AND column_name='entity_type') THEN
+        ALTER TABLE public.payment_audit_log ADD COLUMN entity_type TEXT NOT NULL DEFAULT 'transaction';
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema='public' AND table_name='payment_audit_log'
+                   AND column_name='entity_id') THEN
+        ALTER TABLE public.payment_audit_log ADD COLUMN entity_id UUID;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema='public' AND table_name='payment_audit_log'
+                   AND column_name='action') THEN
+        ALTER TABLE public.payment_audit_log ADD COLUMN action TEXT NOT NULL DEFAULT 'unknown';
+    END IF;
+END $$;
+
 ALTER TABLE public.payment_audit_log ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "pal_admin_all" ON public.payment_audit_log;
