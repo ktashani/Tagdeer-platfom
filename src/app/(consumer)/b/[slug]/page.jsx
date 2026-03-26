@@ -353,7 +353,7 @@ export default async function PublicStorefront({ params, searchParams }) {
                 {/* ─── Gallery ─────────────────────────────────── */}
                 <StorefrontGalleryUI 
                     title={t.gallery} 
-                    images={storefront.gallery_urls || []} 
+                    images={storefront.gallery_urls || storefront.gallery_images || []} 
                     theme={theme} 
                     isRTL={isRTL} 
                 />
