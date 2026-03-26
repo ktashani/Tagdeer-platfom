@@ -20,11 +20,22 @@
 -- ============================================================
 
 -- Drop ALL existing overloads to avoid "function name is not unique" error
-DROP FUNCTION IF EXISTS public.submit_vote(UUID, TEXT, TEXT, UUID, TEXT, BOOLEAN);
-DROP FUNCTION IF EXISTS public.submit_vote(UUID, TEXT, TEXT, UUID, TEXT, BOOLEAN, TEXT);
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT oid::regprocedure AS sig
+        FROM pg_proc
+        WHERE proname = 'submit_vote'
+          AND pronamespace = 'public'::regnamespace
+    LOOP
+        EXECUTE 'DROP FUNCTION ' || r.sig || ' CASCADE';
+    END LOOP;
+END $$;
 
 CREATE OR REPLACE FUNCTION public.submit_vote(
-    p_business_id UUID,
+    p_business_id BIGINT,
     p_interaction_type TEXT,
     p_reason_text TEXT DEFAULT NULL,
     p_profile_id UUID DEFAULT NULL,
@@ -38,7 +49,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-    v_log_id UUID;
+    v_log_id BIGINT;
     v_weight NUMERIC := 1.0;
     v_now TIMESTAMPTZ := NOW();
     v_cooldown_count INT;
