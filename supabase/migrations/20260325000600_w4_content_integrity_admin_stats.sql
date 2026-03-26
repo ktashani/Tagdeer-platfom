@@ -77,7 +77,7 @@ DECLARE
     v_match RECORD;
     v_text TEXT;
 BEGIN
-    v_text := LOWER(COALESCE(NEW.text, ''));
+    v_text := LOWER(COALESCE(NEW.reason_text, ''));
 
     -- Skip empty text
     IF v_text = '' THEN
