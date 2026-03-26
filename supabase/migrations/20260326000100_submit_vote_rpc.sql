@@ -19,6 +19,10 @@
 --                 fingerprint, coupon_awarded, error }
 -- ============================================================
 
+-- Drop ALL existing overloads to avoid "function name is not unique" error
+DROP FUNCTION IF EXISTS public.submit_vote(UUID, TEXT, TEXT, UUID, TEXT, BOOLEAN);
+DROP FUNCTION IF EXISTS public.submit_vote(UUID, TEXT, TEXT, UUID, TEXT, BOOLEAN, TEXT);
+
 CREATE OR REPLACE FUNCTION public.submit_vote(
     p_business_id UUID,
     p_interaction_type TEXT,
