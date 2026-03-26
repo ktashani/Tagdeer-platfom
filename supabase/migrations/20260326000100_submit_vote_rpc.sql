@@ -35,7 +35,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE FUNCTION public.submit_vote(
-    p_business_id BIGINT,
+    p_business_id UUID,
     p_interaction_type TEXT,
     p_reason_text TEXT DEFAULT NULL,
     p_profile_id UUID DEFAULT NULL,
