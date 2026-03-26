@@ -3,7 +3,9 @@
 import React, { useState, memo } from 'react';
 import { ThumbsUp, ThumbsDown } from 'lucide-react';
 
-function ProductCard({ item, theme, lang = 'en' }) {
+function ProductCard({ item: itemProp, product, theme, lang = 'en' }) {
+    const item = itemProp || product;
+    if (!item) return null;
     const [likes, setLikes] = useState(item.likes || 0);
     const [dislikes, setDislikes] = useState(item.dislikes || 0);
     const [voted, setVoted] = useState(null);
