@@ -76,18 +76,21 @@ export function useVoteSubmission({
             }
 
             // ── Call server-side submit_vote RPC ────────────────
-            const { data: result, error: rpcError } = await supabase.rpc('submit_vote', {
+            const rpcParams = {
                 p_business_id: businessId,
                 p_interaction_type: type,
                 p_reason_text: typeof reasonText === 'string' && reasonText.trim() ? reasonText.trim() : null,
                 p_profile_id: user?.id || null,
                 p_fingerprint: fingerprint,
                 p_is_flagged: isFlagged,
-            });
+                p_receipt_url: null,
+            };
+            console.log('[submit_vote] calling RPC with:', rpcParams);
+            const { data: result, error: rpcError } = await supabase.rpc('submit_vote', rpcParams);
 
             if (rpcError) {
-                console.error("submit_vote RPC error:", rpcError);
-                showToast(lang === 'ar' ? "حدث خطأ: " + rpcError.message : "Error: " + rpcError.message);
+                console.error("submit_vote RPC error:", JSON.stringify(rpcError), "message:", rpcError.message, "code:", rpcError.code, "details:", rpcError.details, "hint:", rpcError.hint);
+                showToast(lang === 'ar' ? "حدث خطأ: " + (rpcError.message || 'Unknown') : "Error: " + (rpcError.message || 'Unknown'));
                 return false;
             }
 

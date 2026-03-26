@@ -29,7 +29,7 @@ const labels = {
         products: 'Products',
         communityReviews: 'Community Reviews',
         rateExperience: 'Rate Your Experience',
-        rateDesc: (name) => `Help ${name} improve by leaving a verified public review through Tagdeer.`,
+        rateDesc: 'Help {name} improve by leaving a verified public review through Tagdeer.',
         leaveReview: 'Leave a Review',
         callNow: 'Call Now',
         directions: 'Directions',
@@ -52,7 +52,7 @@ const labels = {
         products: 'المنتجات',
         communityReviews: 'تجارب المجتمع',
         rateExperience: 'شاركنا تقديرك',
-        rateDesc: (name) => `ساعد ${name} على التحسن بترك تقييم موثق عبر تقدير.`,
+        rateDesc: 'ساعد {name} على التحسن بترك تقييم موثق عبر تقدير.',
         leaveReview: 'أضف تقديرك',
         callNow: 'اتصل الآن',
         directions: 'الاتجاهات',
@@ -333,7 +333,7 @@ export default async function PublicStorefront({ params, searchParams }) {
                     initialLogs={recentLogs || []}
                     isRTL={isRTL}
                     theme={theme}
-                    labels={t}
+                    labels={{ ...t, rateDesc: t.rateDesc.replace('{name}', business.name) }}
                 />
 
                 {/* ─── Inline Review Block (remains separate for vote form) ── */}
@@ -353,7 +353,7 @@ export default async function PublicStorefront({ params, searchParams }) {
                 {/* ─── Gallery ─────────────────────────────────── */}
                 <StorefrontGalleryUI 
                     title={t.gallery} 
-                    images={storefront.gallery_urls || []} 
+                    images={storefront.gallery_urls || storefront.gallery_images || []} 
                     theme={theme} 
                     isRTL={isRTL} 
                 />
