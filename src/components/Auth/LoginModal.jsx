@@ -131,7 +131,14 @@ export function LoginModal() {
 
         setIsLoading(true);
         try {
-            const { error: otpError } = await supabase.auth.signInWithOtp({ email });
+            const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+            const redirectOrigin = envSiteUrl || window.location.origin;
+            const { error: otpError } = await supabase.auth.signInWithOtp({
+                email,
+                options: {
+                    emailRedirectTo: `${redirectOrigin}/auth/callback`
+                }
+            });
 
             if (otpError) {
                 setError(otpError.message || (lang === 'ar' ? 'فشل إرسال الرمز' : 'Failed to send code'));
@@ -203,15 +210,28 @@ export function LoginModal() {
         setIsLoading(true);
         try {
             if (otpChannel === 'email') {
-                // Verify via Supabase Auth for email
-                const { data: authData, error: verifyErr } = await supabase.auth.verifyOtp({
-                    email,
-                    token,
-                    type: 'email'
-                });
+                // Verify via Supabase Auth for email — try multiple OTP types
+                // Supabase may send 'email', 'magiclink', or 'signup' types depending on user state
+                const otpTypes = ['email', 'magiclink', 'signup'];
+                let verifySuccess = false;
+                let lastVerifyErr = null;
 
-                if (verifyErr) {
-                    throw new Error(verifyErr.message || (lang === 'ar' ? 'رمز غير صحيح' : 'Invalid code'));
+                for (const otpType of otpTypes) {
+                    const { data: authData, error: verifyErr } = await supabase.auth.verifyOtp({
+                        email,
+                        token,
+                        type: otpType
+                    });
+
+                    if (!verifyErr && authData?.user) {
+                        verifySuccess = true;
+                        break;
+                    }
+                    if (verifyErr) lastVerifyErr = verifyErr;
+                }
+
+                if (!verifySuccess && lastVerifyErr) {
+                    throw new Error(lastVerifyErr.message || (lang === 'ar' ? 'رمز غير صحيح أو منتهي الصلاحية' : 'Invalid or expired code'));
                 }
 
                 // After email verification, use the login function with email

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { createMiddlewareClient } from '@/lib/supabase/server'
 
 export const config = {
     matcher: [
@@ -16,12 +17,18 @@ export const config = {
 export async function middleware(request) {
     const url = request.nextUrl
     const hostname = request.headers.get('host') || ''
+    const pathname = request.nextUrl.pathname
 
-    // Define the main app domain (handle both localhost and production)
+    // Define the main app domain (handle localhost, staging, and production)
     const isLocalhost = hostname.includes('localhost') || hostname.includes('127.0.0.1')
+    const isStaging = hostname.includes('staging.tagdeer.app')
 
-    // You might want to get this from env variables in a real app, e.g. process.env.NEXT_PUBLIC_ROOT_DOMAIN
-    const rootDomain = isLocalhost ? 'localhost:3000' : (process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tagdeer.com')
+    // Auto-detect environment: localhost → staging → production
+    const rootDomain = isLocalhost
+        ? 'localhost:3000'
+        : isStaging
+            ? 'staging.tagdeer.app'
+            : (process.env.NEXT_PUBLIC_ROOT_DOMAIN || 'tagdeer.app')
 
     // Check if we are on a subdomain
     let currentHost = hostname.replace(`.${rootDomain}`, '')
@@ -37,21 +44,88 @@ export async function middleware(request) {
         }
     }
 
-    const res = NextResponse.next()
-
     // Routing Logic
-    // 1. Admin Subdomain -> rewrite to /(portals)/admin
+    // 1. Admin Subdomain — uses custom admin_auth cookie (NOT Supabase SSR)
     if (currentHost === 'admin') {
-        url.pathname = `/admin${url.pathname}`
-        return NextResponse.rewrite(url, res)
+        // Exclude system paths, static files, and api from auth check
+        if (!pathname.startsWith('/_next') && !pathname.includes('api')) {
+            const authCookie = request.cookies.get('admin_auth');
+            const isAuthenticated = !!authCookie?.value;
+            console.log('[Middleware:Admin]', pathname, '| admin_auth:', isAuthenticated ? 'PRESENT' : 'MISSING')
+
+            // Redirect to login if not authenticated and trying to access protected route
+            if (!isAuthenticated && pathname !== '/login') {
+                console.warn('[Middleware:Admin] BOUNCING to /login — no admin_auth cookie for', pathname)
+                const loginUrl = request.nextUrl.clone();
+                loginUrl.pathname = '/login';
+                return NextResponse.redirect(loginUrl);
+            }
+
+            // Redirect to dashboard if authenticated and trying to access login
+            if (isAuthenticated && pathname === '/login') {
+                const dashboardUrl = request.nextUrl.clone();
+                dashboardUrl.pathname = '/';
+                return NextResponse.redirect(dashboardUrl);
+            }
+        }
+
+        // Ensure we don't double prefix if the path already starts with /admin
+        const newPath = pathname.startsWith('/admin') ? pathname : `/admin${pathname}`
+        const newUrl = new URL(newPath, request.url)
+        return NextResponse.rewrite(newUrl)
     }
 
-    // 2. Merchant Subdomain -> rewrite to /(portals)/merchant
+    // 2. Merchant Subdomain — uses Supabase SSR cookie-based session
     if (currentHost === 'merchant' || currentHost === 'business') {
-        url.pathname = `/merchant${url.pathname}`
-        return NextResponse.rewrite(url, res)
+        // Exclude system paths, static files, and api from auth check
+        if (!pathname.startsWith('/_next') && !pathname.includes('api')) {
+            // Create a response object that createMiddlewareClient can write cookies to
+            const newPath = pathname.startsWith('/merchant') ? pathname : `/merchant${pathname}`
+            const newUrl = new URL(newPath, request.url)
+            let response = NextResponse.rewrite(newUrl)
+
+            // Create an SSR-aware Supabase client that reads/writes cookies
+            const supabase = createMiddlewareClient(request, response)
+
+            // getUser() validates the session with the Supabase Auth server.
+            // This also refreshes expired tokens and writes updated cookies
+            // to the response via the setAll handler.
+            const { data: { user }, error } = await supabase.auth.getUser()
+
+            const isAuthenticated = !!user && !error
+
+            // Normalize pathname for public route comparison.
+            // On the subdomain, /onboarding and /merchant/onboarding should both be public.
+            const normalizedPathname = pathname.startsWith('/merchant')
+                ? pathname.replace(/^\/merchant/, '') || '/'
+                : pathname;
+
+            const isPublicRoute = ['/login', '/onboarding', '/reset-password'].includes(normalizedPathname);
+
+            // Allow unauthenticated access to public pages
+            if (!isAuthenticated && !isPublicRoute) {
+                const loginUrl = request.nextUrl.clone();
+                loginUrl.pathname = '/login';
+                return NextResponse.redirect(loginUrl);
+            }
+
+            // Redirect authenticated users away from login page
+            if (isAuthenticated && normalizedPathname === '/login') {
+                const dashboardUrl = request.nextUrl.clone();
+                dashboardUrl.pathname = '/dashboard';
+                return NextResponse.redirect(dashboardUrl);
+            }
+
+            // Return the response with the rewrite AND the refreshed auth cookies
+            return response
+        }
+
+        // For system paths (_next, api), just rewrite without auth check
+        const newPath = pathname.startsWith('/merchant') ? pathname : `/merchant${pathname}`
+        const newUrl = new URL(newPath, request.url)
+        return NextResponse.rewrite(newUrl)
     }
 
-    // 3. Main App (www or root) -> proceeds normally
-    return res
+    // 3. Main App (www or root) → proceeds normally
+    return NextResponse.next()
 }

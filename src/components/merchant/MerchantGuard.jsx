@@ -1,0 +1,260 @@
+'use client'
+
+import { useEffect, useState, useRef } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
+import { useTagdeer } from '@/context/TagdeerContext'
+import { Loader2, Ban, AlertTriangle, Mail } from 'lucide-react'
+import LockedFeatureOverlay from './LockedFeatureOverlay'
+
+export default function MerchantGuard({ children }) {
+    const { user, loading, supabase } = useTagdeer()
+    const router = useRouter()
+    const pathname = usePathname()
+    const [isAuthorized, setIsAuthorized] = useState(false)
+    const [subTier, setSubTier] = useState(null)
+    const [checkingSub, setCheckingSub] = useState(true)
+    const isMounted = useRef(true)
+    const redirecting = useRef(false)
+
+    // Cleanup on unmount to prevent state updates on unmounted component
+    useEffect(() => {
+        return () => { isMounted.current = false }
+    }, [])
+
+    useEffect(() => {
+        // CRITICAL: Wait for auth to fully resolve.
+        // `user` starts as `undefined` (not yet checked), then becomes
+        // null (no session) or an object (session found).
+        // We must NOT act on `undefined` — only on null or object.
+        if (loading || user === undefined) {
+            return; // Still loading — do nothing, keep showing spinner
+        }
+
+        // Don't guard the login or onboarding page itself
+        // On subdomain (merchant.tagdeer.app), usePathname() returns '/login'
+        // On path-based (localhost:3000/merchant/login), it returns '/merchant/login'
+        if (pathname === '/merchant/login' || pathname === '/login' || pathname === '/merchant/onboarding' || pathname === '/onboarding') {
+            if (isMounted.current) setIsAuthorized(true)
+            return
+        }
+
+        // Normalize the path for the redirect param to prevent double /merchant prefixes
+        // when the middleware rewrites it on the subdomain.
+        const normalizedPath = pathname.startsWith('/merchant')
+            ? pathname.replace(/^\/merchant/, '') || '/'
+            : pathname
+
+        if (!user) {
+            // user is null (confirmed no session) — redirect to login
+            redirecting.current = true;
+            router.push('/login?redirect=' + encodeURIComponent(normalizedPath))
+            return;
+        }
+
+        // If user has a non-merchant role, re-check the DB in case init-role
+        // just ran but React state hasn't caught up yet (race condition from callback)
+        if (user?.role && user.role !== 'merchant' && !user?.isDevBypass) {
+            if (!supabase) {
+                const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                redirecting.current = true;
+                router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
+                return;
+            }
+            // Fresh DB check to see if role was updated by init-role
+            // Uses AbortController with 5s timeout to prevent hanging queries
+            const recheckRole = async () => {
+                try {
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 5000);
+
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('role')
+                        .eq('id', user.id)
+                        .single()
+                        .abortSignal(controller.signal);
+
+                    clearTimeout(timeout);
+
+                    if (profile?.role === 'merchant') {
+                        // Role was updated — allow through
+                        if (isMounted.current) setIsAuthorized(true)
+                    } else {
+                        const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                        redirecting.current = true;
+                        router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
+                    }
+                } catch (err) {
+                    console.error('[MerchantGuard] recheckRole failed/aborted:', err);
+                    const normalizedPath = pathname.startsWith('/merchant') ? pathname.replace(/^\/merchant/, '') || '/' : pathname
+                    redirecting.current = true;
+                    router.push('/login?redirect=' + encodeURIComponent(normalizedPath) + '&reason=merchant_required')
+                }
+            }
+            recheckRole()
+            return;
+        }
+
+        // Allow authenticated merchants through
+        if (isMounted.current) setIsAuthorized(true)
+    }, [user, loading, router, pathname, supabase])
+
+    useEffect(() => {
+        if (isAuthorized && user && supabase) {
+            const checkSub = async () => {
+                try {
+                    const { data, error } = await supabase
+                        .from('subscriptions')
+                        .select('tier')
+                        .eq('profile_id', user.id)
+                        .eq('status', 'Active')
+                        .maybeSingle();
+
+                    if (isMounted.current) setSubTier(data?.tier || 'Free');
+                } catch (err) {
+                    console.error("Subscription check error:", err);
+                    if (isMounted.current) setSubTier('Free');
+                } finally {
+                    if (isMounted.current) setCheckingSub(false);
+                }
+            }
+            checkSub()
+        } else if (isAuthorized && !user) {
+            // Login/onboarding page with no user — skip subscription check
+            if (isMounted.current) setCheckingSub(false)
+        } else if (!isAuthorized && !loading && user !== undefined) {
+            // Auth finished, not authorized — stop checking
+            if (isMounted.current) setCheckingSub(false)
+        } else {
+            // CATCH-ALL: Covers { isAuthorized:false, user:null } and any
+            // other unhandled state. Prevents permanent checkingSub=true.
+            if (isMounted.current && !loading) {
+                setCheckingSub(false);
+            }
+        }
+        // Safety timeout: if checkingSub is still true after 8 seconds, force-resolve.
+        // This prevents permanent deadlocks from unexpected edge cases.
+        const safetyTimer = setTimeout(() => {
+            if (isMounted.current) {
+                setCheckingSub(prev => {
+                    if (prev) {
+                        console.warn('[MerchantGuard] Safety timeout: checkingSub forced to false after 8s');
+                        return false;
+                    }
+                    return prev;
+                });
+            }
+        }, 8000);
+        return () => clearTimeout(safetyTimer);
+    }, [isAuthorized, user, supabase, loading])
+
+    // MASTER SAFETY TIMEOUT — Prevents permanent spinner.
+    // If ANYTHING keeps the guard locked for 10 seconds, stop the spinner
+    // but do NOT grant access — the user will see the redirect or blocked state.
+    useEffect(() => {
+        const masterTimeout = setTimeout(() => {
+            if (isMounted.current && (checkingSub || !isAuthorized)) {
+                console.warn('[MerchantGuard] Master timeout: stopping spinner after 10s (not granting access)');
+                setCheckingSub(false);
+            }
+        }, 10000);
+        return () => clearTimeout(masterTimeout);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // If a redirect is in progress, show an informative message instead of
+    // an ambiguous spinner. The router.push() may take a moment to navigate.
+    // BUT: if we've already landed on the login/onboarding page, clear the flag
+    // so the actual login form renders instead of hanging on this message.
+    const isPublicRoute = pathname === '/merchant/login' || pathname === '/login'
+        || pathname === '/merchant/onboarding' || pathname === '/onboarding';
+    if (redirecting.current && isPublicRoute) {
+        redirecting.current = false;
+    }
+    if (redirecting.current) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FB]">
+                <p className="text-slate-500 text-sm">Redirecting to login…</p>
+            </div>
+        )
+    }
+
+    if (loading || checkingSub || !isAuthorized) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FB]">
+                <Loader2 className="h-8 w-8 animate-spin border-blue-600" />
+            </div>
+        )
+    }
+
+    // Tier Gating Logic
+    const FREE_GATED_ROUTES = ['/merchant/coupons', '/merchant/inbox'];
+    const GATED_LABELS = {
+        '/merchant/coupons': { title: 'Unlock Campaigns & Coupons', description: 'Loyalty distribution is only available for Pro and Enterprise merchants.' },
+        '/merchant/inbox': { title: 'Unlock Resolution Inbox', description: 'The dispute resolution inbox and customer chat is available for Pro and Enterprise tiers.' },
+    };
+    if (subTier === 'Free' && FREE_GATED_ROUTES.some(r => pathname === r)) {
+        const labels = GATED_LABELS[pathname] || GATED_LABELS['/merchant/coupons'];
+        return (
+            <div className="flex h-screen w-full relative bg-[#F8F9FB] p-8">
+                <LockedFeatureOverlay
+                    title={labels.title}
+                    description={labels.description}
+                />
+            </div>
+        )
+    }
+
+    // Block screen for banned/restricted merchants
+    if (user?.status === 'Banned' || user?.status === 'Restricted') {
+        const isBanned = user.status === 'Banned'
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-[#F8F9FB] p-6">
+                <div className="max-w-lg w-full text-center">
+                    <div className={`mx-auto w-20 h-20 rounded-full flex items-center justify-center mb-6 ${isBanned ? 'bg-red-100' : 'bg-amber-100'}`}>
+                        {isBanned
+                            ? <Ban className="w-10 h-10 text-red-500" />
+                            : <AlertTriangle className="w-10 h-10 text-amber-500" />
+                        }
+                    </div>
+
+                    <h1 className={`text-3xl font-bold mb-3 ${isBanned ? 'text-red-700' : 'text-amber-700'}`}>
+                        {isBanned ? 'Account Suspended' : 'Account Restricted'}
+                    </h1>
+
+                    <p className="text-slate-600 text-lg mb-6 leading-relaxed">
+                        {isBanned
+                            ? 'Your merchant account has been suspended due to a violation of Tagdeer platform policies. Your business listings have been hidden from the platform.'
+                            : 'Your merchant account has been temporarily restricted. Some features may be unavailable until the issue is resolved.'
+                        }
+                    </p>
+
+                    <div className={`rounded-xl p-5 mb-6 border ${isBanned ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+                        <p className={`text-sm font-medium ${isBanned ? 'text-red-700' : 'text-amber-700'}`}>
+                            {isBanned
+                                ? '🔴 All your businesses are currently hidden from consumers.'
+                                : '🟡 Your businesses are currently marked as restricted.'
+                            }
+                        </p>
+                    </div>
+
+                    <a
+                        href="mailto:support@tagdeer.app"
+                        className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-white transition-colors shadow-lg ${isBanned
+                            ? 'bg-red-600 hover:bg-red-700'
+                            : 'bg-amber-600 hover:bg-amber-700'
+                            }`}
+                    >
+                        <Mail className="w-5 h-5" />
+                        Contact Tagdeer Administration
+                    </a>
+
+                    <p className="text-sm text-slate-400 mt-4">
+                        If you believe this is an error, please reach out and we'll review your case.
+                    </p>
+                </div>
+            </div>
+        )
+    }
+
+    return <>{children}</>
+}

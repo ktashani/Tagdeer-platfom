@@ -5,6 +5,7 @@ import { BadgeCheck, AlertCircle, Trash2, History, Ticket, Zap } from 'lucide-re
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/lib/supabaseClient';
+import { WalletTab } from './WalletTab';
 
 /**
  * LogHistory — the Activity History + Coupons tabs showing
@@ -114,28 +115,7 @@ export function LogHistory({ user, displayLogs, historyLogs, setHistoryLogs, isL
             </TabsContent>
 
             <TabsContent value="coupons" className="mt-0 outline-none">
-                <div className="flex flex-col items-center justify-center min-h-[400px] bg-slate-50/50 rounded-2xl border border-slate-100 p-8 text-center mt-2">
-                    <div className="mb-6 bg-amber-50 p-6 rounded-full inline-flex items-center justify-center">
-                        <svg className="w-16 h-16 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z" />
-                        </svg>
-                    </div>
-                    <h3 className="text-2xl font-bold text-slate-800 mb-3 tracking-tight">
-                        {lang === 'ar' ? 'لا توجد مكافآت بعد' : 'No rewards yet'}
-                    </h3>
-                    <p className="text-slate-500 font-medium max-w-sm mb-8 leading-relaxed">
-                        {lang === 'ar'
-                            ? 'استمر في دعم شركائك المفضلين لتفتح قسائم حصرية ومكافآت خاصة تظهر هنا.'
-                            : 'Continue supporting your favorite partners to unlock exclusive vouchers and special rewards that appear here.'}
-                    </p>
-                    <Button
-                        variant="outline"
-                        className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 rounded-full px-8 py-6 text-base font-semibold shadow-sm transition-all"
-                        onClick={() => window.location.href = '/about'}
-                    >
-                        {lang === 'ar' ? 'كيف أحصل على مكافآت؟' : 'How do I get rewards?'}
-                    </Button>
-                </div>
+                <WalletTab />
             </TabsContent>
         </Tabs>
     );

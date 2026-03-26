@@ -1,343 +1,371 @@
-'use client';
+"use client";
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import {
+    Wallet, CreditCard, Clock, CheckCircle2, XCircle,
+    ArrowUpRight, Receipt, ShieldCheck, Store, Sparkles,
+    AlertCircle, Loader2, FileText
+} from "lucide-react";
+import { useTagdeer } from '@/context/TagdeerContext';
+import { useActiveBusiness } from '@/context/providers/ActiveBusinessProvider';
+import { useRouter } from 'next/navigation';
 
-/**
- * Merchant Billing & Subscription Management
- *
- * Shows: current plan, usage quotas, upgrade options, payment history.
- * Payment gateway: stub for Sadad / Mobi Cash / Tlync integration.
- */
-
-const TIER_FEATURES = {
-  Free: {
-    color: 'slate', icon: '🆓',
-    features: ['موقع واحد', 'صفحة عمل أساسية', 'مؤشر القدر'],
-  },
-  Growth: {
-    color: 'blue', icon: '📈',
-    features: ['3 مواقع', 'واجهة متجر', 'حملات كوبونات', 'تحليلات متقدمة', 'دعم أولوية'],
-  },
-  Enterprise: {
-    color: 'purple', icon: '🏢',
-    features: ['مواقع غير محدودة', 'درع السمعة', 'دعم VIP', 'API مخصص', 'تقارير مخصصة'],
-  },
+const STATUS_CONFIG = {
+    pending:   { label: 'Pending Review', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20', icon: Clock },
+    completed: { label: 'Approved',       color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', icon: CheckCircle2 },
+    rejected:  { label: 'Declined',       color: 'bg-red-500/10 text-red-400 border-red-500/20', icon: XCircle },
 };
 
-export default function BillingPage() {
-  const [subscription, setSubscription] = useState(null);
-  const [tiers, setTiers] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [upgrading, setUpgrading] = useState(null);
-  const [paymentModal, setPaymentModal] = useState(null);
+const GATEWAY_LABELS = {
+    manual_bank:  'Bank Transfer',
+    crypto_usdt:  'USDT',
+    tlync_lyd:    'Tlync',
+};
 
-  useEffect(() => {
-    const fetchData = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { setLoading(false); return; }
+export default function MerchantBilling() {
+    const { user, supabase, showToast, lang = 'en' } = useTagdeer();
+    const { activeBusiness } = useActiveBusiness();
+    const router = useRouter();
 
-      // Fetch current subscription
-      const { data: sub } = await supabase
-        .from('subscriptions')
-        .select('id, tier, status, expires_at, quotas')
-        .eq('profile_id', session.user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const [isLoading, setIsLoading] = useState(true);
+    const [subscription, setSubscription] = useState(null);
+    const [transactions, setTransactions] = useState([]);
+    const [auditLog, setAuditLog] = useState([]);
+    const [quotaUsage, setQuotaUsage] = useState({ locationsUsed: 0, shieldsAssigned: 0, storefrontsAssigned: 0 });
+    const [gatewayEnabled, setGatewayEnabled] = useState(false);
 
-      setSubscription(sub);
+    useEffect(() => {
+        if (!user || !supabase) return;
 
-      // Fetch available tiers
-      const { data: tierData } = await supabase
-        .from('subscription_tiers')
-        .select('id, name, price, description, allocations')
-        .order('price', { ascending: true });
+        const fetchBillingData = async () => {
+            setIsLoading(true);
+            try {
+                const [subRes, txnRes, auditRes, quotaRes, gwRes] = await Promise.all([
+                    // Active subscription
+                    supabase
+                        .from('subscriptions')
+                        .select('*')
+                        .eq('profile_id', user.id)
+                        .in('status', ['Active', 'Expiring Soon', 'Grace Period', 'Pending'])
+                        .maybeSingle(),
+                    // Transaction history
+                    supabase
+                        .from('transactions')
+                        .select('id, requested_tier, upgrade_from_tier, amount, currency, payment_method, payment_gateway, status, rejection_reason, created_at, confirmed_at, duration')
+                        .eq('owner_id', user.id)
+                        .order('created_at', { ascending: false })
+                        .limit(50),
+                    // Audit trail
+                    supabase
+                        .from('payment_audit_log')
+                        .select('id, action, old_status, new_status, metadata, created_at')
+                        .order('created_at', { ascending: false })
+                        .limit(20),
+                    // Quota usage counts
+                    Promise.all([
+                        supabase.from('businesses').select('id', { count: 'exact', head: true }).eq('claimed_by', user.id),
+                        supabase.from('feature_allocations').select('id', { count: 'exact', head: true }).eq('profile_id', user.id).eq('feature_type', 'shield').eq('status', 'active'),
+                        supabase.from('feature_allocations').select('id', { count: 'exact', head: true }).eq('profile_id', user.id).eq('feature_type', 'storefront').eq('status', 'active'),
+                    ]),
+                    // Payment gateway config
+                    supabase.from('platform_config').select('value').eq('key', 'payment_gateway_config').maybeSingle(),
+                ]);
 
-      setTiers(tierData || []);
+                if (subRes.data) setSubscription(subRes.data);
+                if (txnRes.data) setTransactions(txnRes.data);
+                if (auditRes.data) setAuditLog(auditRes.data);
 
-      // Fetch transaction history (upgrade requests)
-      const { data: txnData } = await supabase
-        .from('transactions')
-        .select('id, requested_tier, amount, payment_gateway, status, rejection_reason, created_at')
-        .eq('owner_id', session.user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+                const [bizCount, shieldCount, storefrontCount] = quotaRes;
+                setQuotaUsage({
+                    locationsUsed: bizCount.count || 0,
+                    shieldsAssigned: shieldCount.count || 0,
+                    storefrontsAssigned: storefrontCount.count || 0,
+                });
 
-      setPayments(txnData || []);
-      setLoading(false);
-    };
+                if (gwRes.data?.value?.enabled) {
+                    setGatewayEnabled(true);
+                }
 
-    fetchData();
-  }, []);
+                // ── GAP 4: Check for recently resolved requests → toast ──
+                const lastCheck = localStorage.getItem('tagdeer_billing_last_check');
+                if (lastCheck && txnRes.data) {
+                    const recentlyResolved = txnRes.data.filter(t =>
+                        (t.status === 'completed' || t.status === 'rejected') &&
+                        t.confirmed_at &&
+                        new Date(t.confirmed_at) > new Date(lastCheck)
+                    );
+                    recentlyResolved.forEach(t => {
+                        if (t.status === 'completed') {
+                            showToast?.(lang === 'ar'
+                                ? `تمت الموافقة على طلب الترقية إلى ${t.requested_tier}! 🎉`
+                                : `Your upgrade to ${t.requested_tier} was approved! 🎉`);
+                        } else if (t.status === 'rejected') {
+                            showToast?.(lang === 'ar'
+                                ? `تم رفض طلب الترقية. السبب: ${t.rejection_reason || 'غير محدد'}`
+                                : `Upgrade request declined. Reason: ${t.rejection_reason || 'Not specified'}`, 'error');
+                        }
+                    });
+                }
+                localStorage.setItem('tagdeer_billing_last_check', new Date().toISOString());
 
-  const handleUpgradeRequest = (tier) => {
-    setPaymentModal(tier);
-  };
+            } catch (err) {
+                console.error('Billing data fetch error:', err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
 
-  const handlePaymentSubmit = async (method) => {
-    if (!paymentModal) return;
-    setUpgrading(paymentModal.name);
+        fetchBillingData();
+    }, [user, supabase]);
 
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
+    const quotas = subscription?.quotas || {};
+    const maxLocations = quotas.max_locations ?? 1;
+    const maxShields = quotas.max_shields ?? 0;
+    const maxStorefronts = quotas.max_storefronts ?? 0;
 
-      // Insert into transactions table → flows through admin PaymentQueue
-      const { error } = await supabase
-        .from('transactions')
-        .insert({
-          owner_id: session.user.id,
-          business_id: subscription?.business_id || null,
-          requested_tier: paymentModal.name,
-          amount: paymentModal.price || 0,
-          payment_method: 'manual',
-          payment_gateway: method,
-          status: 'pending',
-        });
-
-      if (error) throw error;
-
-      // Refresh payment history
-      const { data: txnData } = await supabase
-        .from('transactions')
-        .select('id, requested_tier, amount, payment_gateway, status, rejection_reason, created_at')
-        .eq('owner_id', session.user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      setPayments(txnData || []);
-      setPaymentModal(null);
-    } catch (err) {
-      console.error('Payment error:', err);
-      alert('فشل في إرسال الطلب: ' + err.message);
+    if (isLoading) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+            </div>
+        );
     }
-    setUpgrading(null);
-  };
 
-  if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
-      </div>
-    );
-  }
+        <div className="animate-in fade-in duration-500 max-w-5xl mx-auto space-y-8">
 
-  const currentTier = subscription?.tier || 'Free';
-  const tierInfo = TIER_FEATURES[currentTier] || TIER_FEATURES.Free;
-  const daysLeft = subscription?.expires_at
-    ? Math.max(0, Math.ceil((new Date(subscription.expires_at) - Date.now()) / 86400000))
-    : null;
-
-  return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      {/* Current Plan */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">الفواتير والاشتراك</h1>
-        <p className="text-sm text-slate-500">إدارة اشتراكك وسجل المدفوعات</p>
-      </div>
-
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-2xl">{tierInfo.icon}</span>
-              <h2 className="text-xl font-bold">الباقة الحالية: {currentTier}</h2>
-            </div>
-            <p className="text-blue-100 text-sm">
-              {subscription?.status === 'Active'
-                ? `نشط${daysLeft !== null ? ` — ${daysLeft} يوم متبقي` : ''}`
-                : 'مجاني — لا حدود زمنية'}
-            </p>
-          </div>
-          {subscription?.status === 'Active' && daysLeft !== null && daysLeft <= 7 && (
-            <div className="bg-amber-500/20 backdrop-blur-sm border border-amber-400/30 px-4 py-2 rounded-xl">
-              <span className="text-amber-200 text-sm font-medium">⚠️ ينتهي خلال {daysLeft} أيام</span>
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6">
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
-            <p className="text-blue-200 text-xs">المواقع</p>
-            <p className="text-lg font-bold">{subscription?.quotas?.max_locations || 1}</p>
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
-            <p className="text-blue-200 text-xs">الحملات</p>
-            <p className="text-lg font-bold">{subscription?.quotas?.max_campaigns || 0}</p>
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
-            <p className="text-blue-200 text-xs">الكوبونات</p>
-            <p className="text-lg font-bold">{subscription?.quotas?.max_coupons || 0}</p>
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3">
-            <p className="text-blue-200 text-xs">الحالة</p>
-            <p className="text-lg font-bold">{subscription?.status === 'Active' ? '✅' : '🆓'}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Available Plans */}
-      <div>
-        <h2 className="text-lg font-bold text-slate-900 mb-4">الباقات المتاحة</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {tiers.map((tier) => {
-            const info = TIER_FEATURES[tier.name] || {};
-            const isCurrent = tier.name === currentTier;
-            return (
-              <div
-                key={tier.id}
-                className={`relative rounded-2xl border-2 p-6 transition-all ${
-                  isCurrent
-                    ? 'border-blue-500 bg-blue-50 shadow-md'
-                    : 'border-slate-200 bg-white hover:border-blue-300'
-                }`}
-              >
-                {isCurrent && (
-                  <span className="absolute -top-3 left-4 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">
-                    الحالي
-                  </span>
-                )}
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">{info.icon || '📦'}</span>
-                  <h3 className="text-lg font-bold text-slate-900">{tier.name}</h3>
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-800 tracking-tight">
+                        {lang === 'ar' ? 'الفواتير والمدفوعات' : 'Billing & Payments'}
+                    </h1>
+                    <p className="text-slate-500 mt-1">
+                        {lang === 'ar' ? 'تتبع طلبات الترقية والمدفوعات' : 'Track your upgrade requests, payments, and subscription details.'}
+                    </p>
                 </div>
-                <div className="text-3xl font-bold text-blue-600 mb-4">
-                  {tier.price || 0} <span className="text-sm font-normal text-slate-400">LYD/شهر</span>
-                </div>
-                <ul className="space-y-2 mb-6">
-                  {(info.features || []).map((f, i) => (
-                    <li key={i} className="text-sm text-slate-600 flex items-center gap-2">
-                      <span className="text-blue-500 text-xs">✓</span> {f}
-                    </li>
-                  ))}
-                </ul>
-                {!isCurrent && tier.price > 0 && (
-                  <button
-                    onClick={() => handleUpgradeRequest(tier)}
-                    disabled={upgrading === tier.name}
-                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {upgrading === tier.name && (
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                <Button
+                    variant="outline"
+                    onClick={() => router.push('/merchant/settings?tab=subscription')}
+                    className="border-indigo-200 text-indigo-600 hover:bg-indigo-50"
+                >
+                    <ArrowUpRight className="w-4 h-4 mr-2" />
+                    {lang === 'ar' ? 'ترقية الباقة' : 'Upgrade Plan'}
+                </Button>
+            </div>
+
+            {/* ─── Section 1: Active Subscription Summary ─── */}
+            <Card className="border-slate-200 shadow-sm overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-slate-100">
+                    <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
+                        <Sparkles className="w-5 h-5 text-indigo-500" />
+                        {lang === 'ar' ? 'الباقة الحالية' : 'Current Plan'}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                    {subscription ? (
+                        <div className="space-y-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div>
+                                    <h3 className="text-2xl font-bold text-slate-800">
+                                        {subscription.tier}
+                                    </h3>
+                                    <p className="text-sm text-slate-500 mt-1">
+                                        {subscription.status === 'Active' && subscription.expires_at
+                                            ? `${lang === 'ar' ? 'ينتهي في' : 'Expires'} ${new Date(subscription.expires_at).toLocaleDateString()}`
+                                            : subscription.status}
+                                    </p>
+                                </div>
+                                <Badge className={`text-sm px-3 py-1 ${subscription.status === 'Active'
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : subscription.status === 'Expiring Soon'
+                                        ? 'bg-amber-100 text-amber-700'
+                                        : 'bg-slate-100 text-slate-600'
+                                    }`}>
+                                    {subscription.status}
+                                </Badge>
+                            </div>
+
+                            {/* Quota Usage Bars */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <QuotaBar
+                                    icon={Store}
+                                    label={lang === 'ar' ? 'المواقع' : 'Locations'}
+                                    used={quotaUsage.locationsUsed}
+                                    max={maxLocations}
+                                />
+                                <QuotaBar
+                                    icon={ShieldCheck}
+                                    label={lang === 'ar' ? 'الدروع' : 'Shields'}
+                                    used={quotaUsage.shieldsAssigned}
+                                    max={maxShields}
+                                />
+                                <QuotaBar
+                                    icon={Store}
+                                    label={lang === 'ar' ? 'واجهات العرض' : 'Storefronts'}
+                                    used={quotaUsage.storefrontsAssigned}
+                                    max={maxStorefronts}
+                                />
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-center py-8">
+                            <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                                <Wallet className="w-7 h-7 text-slate-400" />
+                            </div>
+                            <p className="text-slate-500 font-medium">
+                                {lang === 'ar' ? 'لا توجد باقة فعّالة' : 'No active subscription'}
+                            </p>
+                            <p className="text-sm text-slate-400 mt-1">
+                                {lang === 'ar' ? 'قم بترقية باقتك للحصول على ميزات متقدمة' : 'Upgrade your plan to unlock advanced features'}
+                            </p>
+                        </div>
                     )}
-                    الترقية →
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+                </CardContent>
+            </Card>
 
-      {/* Payment History */}
-      <div>
-        <h2 className="text-lg font-bold text-slate-900 mb-4">سجل المدفوعات</h2>
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-          {payments.length === 0 ? (
-            <div className="p-10 text-center text-slate-500">
-              <div className="text-3xl mb-2">💳</div>
-              <p>لا توجد مدفوعات بعد</p>
+            {/* ─── Section 2: Transaction History ─── */}
+            <Card className="border-slate-200 shadow-sm">
+                <CardHeader className="border-b border-slate-100">
+                    <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
+                        <Receipt className="w-5 h-5 text-amber-500" />
+                        {lang === 'ar' ? 'سجل الطلبات' : 'Transaction History'}
+                        {transactions.length > 0 && (
+                            <Badge variant="outline" className="ml-2 text-xs">
+                                {transactions.length}
+                            </Badge>
+                        )}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                    {transactions.length === 0 ? (
+                        <div className="text-center py-10">
+                            <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                                <FileText className="w-7 h-7 text-slate-400" />
+                            </div>
+                            <p className="text-slate-500 font-medium">
+                                {lang === 'ar' ? 'لا توجد طلبات بعد' : 'No transactions yet'}
+                            </p>
+                            <p className="text-sm text-slate-400 mt-1">
+                                {lang === 'ar' ? 'طلبات الترقية ستظهر هنا' : 'Upgrade requests will appear here'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-slate-100">
+                            {transactions.map(txn => {
+                                const cfg = STATUS_CONFIG[txn.status] || STATUS_CONFIG.pending;
+                                const StatusIcon = cfg.icon;
+                                return (
+                                    <div key={txn.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/50 transition-colors">
+                                        <div className="flex items-start gap-3">
+                                            <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 border ${cfg.color}`}>
+                                                <StatusIcon className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-slate-800 text-sm">
+                                                    {txn.upgrade_from_tier && (
+                                                        <span className="text-slate-400 font-normal">{txn.upgrade_from_tier} → </span>
+                                                    )}
+                                                    {txn.requested_tier}
+                                                </p>
+                                                <p className="text-xs text-slate-400 mt-0.5">
+                                                    {new Date(txn.created_at).toLocaleDateString()} • {txn.duration} • {GATEWAY_LABELS[txn.payment_gateway] || txn.payment_method}
+                                                </p>
+                                                {txn.status === 'rejected' && txn.rejection_reason && (
+                                                    <p className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                                                        <AlertCircle className="w-3 h-3" />
+                                                        {txn.rejection_reason}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-bold text-slate-700 text-sm whitespace-nowrap">
+                                                {txn.amount} {txn.currency || 'LYD'}
+                                            </span>
+                                            <Badge variant="outline" className={`text-[11px] border ${cfg.color}`}>
+                                                {cfg.label}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* ─── Section 3: Payment Method Placeholder ─── */}
+            <Card className="border-slate-200 shadow-sm border-dashed">
+                <CardHeader className="border-b border-slate-100">
+                    <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
+                        <CreditCard className="w-5 h-5 text-blue-500" />
+                        {lang === 'ar' ? 'طرق الدفع' : 'Payment Methods'}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                    {gatewayEnabled ? (
+                        <div className="text-center py-4">
+                            <p className="text-slate-600 font-medium">
+                                {lang === 'ar' ? 'الدفع الإلكتروني متاح' : 'Online payment is available'}
+                            </p>
+                            <p className="text-sm text-slate-400 mt-1">
+                                {lang === 'ar' ? 'يمكنك الدفع مباشرة عند طلب الترقية' : 'You can pay directly when requesting an upgrade'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="text-center py-6">
+                            <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
+                                <CreditCard className="w-7 h-7 text-blue-300" />
+                            </div>
+                            <p className="text-slate-500 font-medium">
+                                {lang === 'ar' ? 'الدفع الإلكتروني قريباً' : 'Online payment coming soon'}
+                            </p>
+                            <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto">
+                                {lang === 'ar'
+                                    ? 'حالياً، تتم معالجة جميع الترقيات عبر التحويل البنكي. بمجرد تفعيل بوابة الدفع، ستتمكن من الدفع مباشرة.'
+                                    : 'Currently, all upgrades are processed via bank transfer. Once a payment gateway is activated, you\'ll be able to pay directly online.'}
+                            </p>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+/* ─── Quota Usage Bar Component ─── */
+function QuotaBar({ icon: Icon, label, used, max }) {
+    const isUnlimited = max === -1;
+    const percent = isUnlimited ? 0 : max > 0 ? Math.min((used / max) * 100, 100) : 0;
+    const isFull = !isUnlimited && max > 0 && used >= max;
+
+    return (
+        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+            <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                    <Icon className={`w-4 h-4 ${isFull ? 'text-red-500' : 'text-indigo-500'}`} />
+                    <span className="text-sm font-medium text-slate-700">{label}</span>
+                </div>
+                <span className="text-xs font-bold text-slate-500">
+                    {used}/{isUnlimited ? '∞' : max}
+                </span>
             </div>
-          ) : (
-          <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-3 font-medium text-slate-500">الباقة</th>
-                  <th className="px-6 py-3 font-medium text-slate-500">المبلغ</th>
-                  <th className="px-6 py-3 font-medium text-slate-500">الطريقة</th>
-                  <th className="px-6 py-3 font-medium text-slate-500">الحالة</th>
-                  <th className="px-6 py-3 font-medium text-slate-500">التاريخ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {payments.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-slate-900">{p.requested_tier}</td>
-                    <td className="px-6 py-4 font-bold text-slate-900">{p.amount} LYD</td>
-                    <td className="px-6 py-4 text-slate-600">{p.payment_gateway || '—'}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
-                        p.status === 'completed'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : p.status === 'pending'
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-red-50 text-red-700 border-red-200'
-                      }`}>
-                        {p.status === 'completed' ? 'مؤكد ✅' : p.status === 'pending' ? 'قيد المراجعة' : 'مرفوض'}
-                      </span>
-                      {p.rejection_reason && (
-                        <p className="text-xs text-red-500 mt-1">{p.rejection_reason}</p>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-slate-400">
-                      {new Date(p.created_at).toLocaleDateString('ar-LY', { year: 'numeric', month: 'short', day: 'numeric' })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+            {!isUnlimited && (
+                <Progress
+                    value={percent}
+                    className={`h-2 ${isFull ? '[&>div]:bg-red-500' : '[&>div]:bg-indigo-500'}`}
+                />
+            )}
+            {isUnlimited && (
+                <div className="h-2 rounded-full bg-indigo-100 overflow-hidden">
+                    <div className="h-full w-full bg-gradient-to-r from-indigo-400 to-purple-400 animate-pulse" />
+                </div>
+            )}
         </div>
-      </div>
-
-      {/* Payment Modal */}
-      {paymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl p-8 w-full max-w-md mx-4 shadow-2xl animate-in zoom-in-95 duration-200">
-            <h3 className="text-xl font-bold text-slate-900 mb-2">الترقية إلى {paymentModal.name}</h3>
-            <p className="text-sm text-slate-500 mb-6">{paymentModal.price} LYD/شهر</p>
-
-            <div className="space-y-3">
-              <button
-                onClick={() => handlePaymentSubmit('sadad')}
-                className="w-full p-4 border-2 border-slate-200 rounded-2xl hover:border-blue-400 hover:bg-blue-50 transition-all flex items-center gap-4 group"
-              >
-                <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center text-xl font-bold text-green-700 group-hover:scale-110 transition-transform">
-                  S
-                </div>
-                <div className="text-right flex-1">
-                  <p className="font-semibold text-slate-900">سداد</p>
-                  <p className="text-xs text-slate-500">الدفع عبر سداد الإلكتروني</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => handlePaymentSubmit('mobi_cash')}
-                className="w-full p-4 border-2 border-slate-200 rounded-2xl hover:border-blue-400 hover:bg-blue-50 transition-all flex items-center gap-4 group"
-              >
-                <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center text-xl font-bold text-orange-700 group-hover:scale-110 transition-transform">
-                  M
-                </div>
-                <div className="text-right flex-1">
-                  <p className="font-semibold text-slate-900">موبي كاش</p>
-                  <p className="text-xs text-slate-500">الدفع عبر المحفظة الإلكترونية</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => handlePaymentSubmit('bank_transfer')}
-                className="w-full p-4 border-2 border-slate-200 rounded-2xl hover:border-blue-400 hover:bg-blue-50 transition-all flex items-center gap-4 group"
-              >
-                <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center text-xl font-bold text-slate-600 group-hover:scale-110 transition-transform">
-                  🏦
-                </div>
-                <div className="text-right flex-1">
-                  <p className="font-semibold text-slate-900">تحويل بنكي</p>
-                  <p className="text-xs text-slate-500">تحويل يدوي — يحتاج تأكيد الإدارة</p>
-                </div>
-              </button>
-            </div>
-
-            <button
-              onClick={() => setPaymentModal(null)}
-              className="w-full mt-4 py-2.5 text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors"
-            >
-              إلغاء
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    );
 }

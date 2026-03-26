@@ -1,32 +1,116 @@
+'use client';
+
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { loginAdmin } from '@/actions/adminAuth'
+import { useTagdeer } from '@/context/TagdeerContext'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { AlertCircle, Shield, Mail, Lock, Loader2 } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+
 export default function AdminLogin() {
+    const searchParams = useSearchParams()
+    const { supabase } = useTagdeer()
+    const [email, setEmail] = useState('')
+    const [password, setPassword] = useState('')
+    const [isLoading, setIsLoading] = useState(false)
+    const [error, setError] = useState('')
+
+    const handleLogin = async (e) => {
+        e.preventDefault()
+        setError('')
+        setIsLoading(true)
+
+        try {
+            // Step 1: Server-side — validates credentials + role, sets httpOnly admin_auth cookie
+            const result = await loginAdmin(email, password)
+            if (!result.success) {
+                setError(result.error || 'Authentication failed')
+                setIsLoading(false)
+                return
+            }
+
+            // Step 2: Strict await — sign in via Supabase so the SSR session cookie is set.
+            // This MUST complete before we redirect, otherwise the browser won't have
+            // the Supabase cookie and the middleware/AdminGuard will reject the request.
+            if (supabase) {
+                const { error: signInError } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                })
+                if (signInError) {
+                    setError(signInError.message || 'Supabase authentication failed.')
+                    setIsLoading(false)
+                    return
+                }
+            }
+
+            // Step 3: Hard redirect. window.location.href forces a full page reload,
+            // ensuring the browser attaches the newly minted cookies to the next request.
+            window.location.href = '/admin'
+        } catch (err) {
+            setError('An error occurred. Please try again.')
+            setIsLoading(false)
+        }
+    }
+
     return (
         <div className="flex items-center justify-center min-h-[70vh]">
             <div className="bg-slate-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-slate-700">
-                <h1 className="text-3xl font-bold mb-6 text-center text-white">Admin Access</h1>
+                <div className="flex justify-center mb-6">
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                        <Shield className="w-8 h-8 text-emerald-400" />
+                    </div>
+                </div>
+                <h1 className="text-3xl font-bold mb-2 text-center text-white">Admin Access</h1>
                 <p className="text-slate-400 mb-8 text-center text-sm">Secure login for Tagdeer administrators.</p>
 
-                <form className="space-y-4">
+                {error && (
+                    <Alert variant="destructive" className="mb-6 bg-red-950/50 border-red-900 text-red-400">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                )}
+
+                <form className="space-y-4" onSubmit={handleLogin}>
                     <div>
                         <label className="block text-sm font-medium text-slate-300 mb-1">Admin Email</label>
-                        <input
-                            type="email"
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-                            placeholder="admin@tagdeer.com"
-                        />
+                        <div className="relative">
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                                placeholder="admin@tagdeer.co"
+                                required
+                            />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-300 mb-1">Password</label>
-                        <input
-                            type="password"
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-                            placeholder="••••••••"
-                        />
+                        <div className="relative">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                                placeholder="••••••••"
+                                required
+                            />
+                        </div>
                     </div>
                     <button
-                        type="button"
-                        className="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-semibold py-2.5 rounded-lg transition-colors mt-4"
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-4 flex items-center justify-center gap-2"
                     >
-                        Authenticate
+                        {isLoading ? (
+                            <><Loader2 className="w-5 h-5 animate-spin" /> Authenticating...</>
+                        ) : (
+                            'Authenticate'
+                        )}
                     </button>
                 </form>
             </div>

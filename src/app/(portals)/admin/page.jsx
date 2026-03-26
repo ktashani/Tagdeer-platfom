@@ -1,154 +1,246 @@
 'use client';
-
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import ClaimQueue from '@/components/admin/ClaimQueue';
-import FlaggedContentQueue from '@/components/admin/FlaggedContentQueue';
-import PaymentQueue from '@/components/admin/PaymentQueue';
-import UserManagement from '@/components/admin/UserManagement';
-import BusinessManagement from '@/components/admin/BusinessManagement';
-import AdminAnalytics from '@/components/admin/AdminAnalytics';
-import PlatformSettings from '@/components/admin/PlatformSettings';
+import Link from 'next/link'
+import { useState, useEffect } from 'react'
+import { AlertTriangle, AlertCircle, ArrowRight, TrendingUp, Users, DollarSign, Activity, CheckCircle2, Loader2 } from 'lucide-react'
+import { useTagdeer } from '@/context/TagdeerContext'
 
 export default function AdminDashboard() {
-    const [stats, setStats] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const {
+        supabase, businesses,
+        shieldPricing = { trust: 20, fatora: 50 }
+    } = useTagdeer()
+    const [stats, setStats] = useState({
+        mrr: 0,
+        vipUsers: 0,
+        pendingClaims: 0,
+        openDisputes: 0,
+        couponsRedeemed: 0,
+        systemHealth: null
+    })
+    const [recentApprovals, setRecentApprovals] = useState([])
+    const [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
-        const fetchStats = async () => {
-            const { data, error } = await supabase.rpc('admin_dashboard_stats');
-            if (!error && data) setStats(data);
-            setLoading(false);
-        };
-        fetchStats();
-    }, []);
+        if (!supabase) return;
 
-    const statCards = [
-        {
-            label: 'Total Users',
-            value: stats?.total_users,
-            icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z',
-            color: 'emerald',
-            sub: `${stats?.total_merchants || 0} merchants`,
-        },
-        {
-            label: 'Active Businesses',
-            value: stats?.total_businesses,
-            icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
-            color: 'blue',
-            sub: `${stats?.active_subscriptions || 0} subscriptions`,
-        },
-        {
-            label: 'Total Tagdeers',
-            value: stats?.total_logs,
-            icon: 'M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z',
-            color: 'purple',
-            sub: stats?.flagged_logs ? `${stats.flagged_logs} flagged` : 'None flagged',
-        },
-        {
-            label: 'Pending Claims',
-            value: stats?.pending_claims,
-            icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
-            color: 'amber',
-            sub: stats?.pending_claims > 0 ? 'Action required' : 'All clear',
-        },
-        {
-            label: 'Pending Payments',
-            value: stats?.pending_payments,
-            icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z',
-            color: 'rose',
-            sub: stats?.pending_payments > 0 ? 'Needs review' : 'None pending',
-        },
-    ];
+        const loadStats = async () => {
+            try {
+                // Fetch VIP users count
+                const { count: vipCount } = await supabase
+                    .from('profiles')
+                    .select('*', { count: 'exact', head: true })
+                    .gt('gader_points', 1000)
 
-    const colorMap = {
-        emerald: { icon: 'text-emerald-400', badge: 'text-emerald-400 bg-emerald-400/10' },
-        blue: { icon: 'text-blue-400', badge: 'text-blue-400 bg-blue-400/10' },
-        purple: { icon: 'text-purple-400', badge: 'text-purple-400 bg-purple-400/10' },
-        amber: { icon: 'text-amber-400', badge: 'text-amber-400 bg-amber-400/10' },
-        rose: { icon: 'text-rose-400', badge: 'text-rose-400 bg-rose-400/10' },
-    };
+                // Fetch pending claims count
+                const { count: claimsCount } = await supabase
+                    .from('business_claims')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('status', 'pending')
 
+                // Fetch pending disputes
+                const { count: disputesCount } = await supabase
+                    .from('disputes')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('status', 'pending_admin_review')
+
+                // MRR Approximation based on Shield Config Prices
+                let calculatedMrr = 0;
+                let topApprovals = [];
+                if (businesses) {
+                    calculatedMrr = businesses.reduce((acc, curr) => {
+                        if (curr.shield_level === 2) return acc + shieldPricing.fatora;
+                        if (curr.shield_level === 1) return acc + shieldPricing.trust;
+                        return acc;
+                    }, 0);
+
+                    // Grab newest claimed businesses for the table
+                    topApprovals = [...businesses]
+                        .filter(b => b.isClaimed)
+                        .slice(0, 5); // Just top 5
+                }
+
+                // Fetch total redeemed coupons (amount - remaining across all pools)
+                let totalCouponsRedeemed = 0;
+                try {
+                    const { data: pools } = await supabase
+                        .from('platform_coupon_pools')
+                        .select('amount, remaining');
+                    if (pools) {
+                        totalCouponsRedeemed = pools.reduce((sum, p) => sum + ((p.amount || 0) - (p.remaining || 0)), 0);
+                    }
+                } catch (_) { /* table may not exist yet */ }
+
+                setStats({
+                    mrr: calculatedMrr,
+                    vipUsers: vipCount || 0,
+                    pendingClaims: claimsCount || 0,
+                    openDisputes: disputesCount || 0,
+                    couponsRedeemed: totalCouponsRedeemed,
+                    systemHealth: null // Will be computed when monitoring is set up
+                });
+                setRecentApprovals(topApprovals);
+
+            } catch (error) {
+                console.error("Dashboard Aggregation Error", error)
+            } finally {
+                setIsLoading(false)
+            }
+        }
+        loadStats()
+    }, [supabase, businesses])
+
+    if (isLoading) {
+        return <div className="min-h-[60vh] flex items-center justify-center text-slate-400 gap-3"><Loader2 className="w-6 h-6 animate-spin" /> Loading Pulse...</div>
+    }
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
 
-            {/* Header */}
+            {/* Header Section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-white tracking-tight">System Overview</h1>
-                    <p className="text-slate-400 mt-1">Monitor Tagdeer platform health and metrics.</p>
+                    <h1 className="text-3xl font-bold text-white tracking-tight">The Pulse</h1>
+                    <p className="text-slate-400 mt-1">High-level view of Tagdeer's platform health.</p>
                 </div>
-                <div className="flex items-center gap-4">
-                    {stats?.mrr > 0 && (
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-full">
-                            <span className="text-sm font-bold text-emerald-400">{stats.mrr} LYD</span>
-                            <span className="text-xs text-emerald-400/70 ml-1">MRR</span>
+                <div className="flex items-center space-x-3 bg-slate-800/50 backdrop-blur-sm px-4 py-2 rounded-full border border-slate-700/50">
+                    <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span className="text-sm font-medium text-slate-300">Operations Normal</span>
+                </div>
+            </div>
+
+            {/* TOP: High-Level Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-medium text-slate-400">Monthly Revenue (MRR)</h3>
+                        <DollarSign className="w-5 h-5 text-emerald-400 opacity-80 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="text-3xl font-bold text-white">{stats.mrr} <span className="text-lg text-slate-500">LYD</span></div>
+                </div>
+
+                <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-medium text-slate-400">Total VIP Users</h3>
+                        <Users className="w-5 h-5 text-purple-400 opacity-80 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="text-3xl font-bold text-white">{stats.vipUsers}</div>
+                </div>
+
+                <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-medium text-slate-400">Coupon Burn Rate</h3>
+                        <Activity className="w-5 h-5 text-blue-400 opacity-80 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="text-3xl font-bold text-white">{stats.couponsRedeemed || '—'} <span className="text-lg text-slate-500">/day</span></div>
+                    {stats.couponsRedeemed > 0 && <div className="mt-2 text-xs font-medium text-amber-400 bg-amber-400/10 inline-block px-2 py-1 rounded-md">Active usage</div>}
+                </div>
+
+                <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-medium text-slate-400">System Health Score</h3>
+                        <TrendingUp className="w-5 h-5 text-emerald-400 opacity-80 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <div className="text-3xl font-bold text-white">{stats.systemHealth || '—'}<span className="text-lg font-normal text-slate-500">%</span></div>
+                    {stats.systemHealth && <div className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-400/10 inline-block px-2 py-1 rounded-md">Operational</div>}
+                </div>
+            </div>
+
+            {/* MIDDLE: Operational Tasks (Action Required) */}
+            <h2 className="text-xl font-semibold text-white mt-12 mb-4 border-b border-slate-800 pb-2">Operational Tasks</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Pending Claims */}
+                <div className="bg-slate-800/30 border border-amber-500/20 rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                    <div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="p-2 bg-amber-500/10 rounded-lg">
+                                <AlertTriangle className="w-5 h-5 text-amber-400" />
+                            </div>
+                            <h3 className="text-lg font-medium text-white">Pending Business Claims</h3>
                         </div>
-                    )}
-                    <div className="flex items-center space-x-3 bg-slate-800/50 backdrop-blur-sm px-4 py-2 rounded-full border border-slate-700/50">
-                        <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                        <span className="text-sm font-medium text-slate-300">All Systems Operational</span>
+                        <p className="text-slate-400 text-sm mb-6 pl-12">There are new businesses waiting to be verified before they can access the Merchant Portal.</p>
+                        <div className="pl-12">
+                            <span className="text-4xl font-bold text-white">{stats.pendingClaims}</span>
+                            <span className="text-slate-500 ml-2">claims require review</span>
+                        </div>
+                    </div>
+                    <div className="mt-6 pt-6 border-t border-slate-700/50 pl-12">
+                        <Link href="/admin/requests" className="inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium border border-slate-700">
+                            Review Claims
+                            <ArrowRight className="w-4 h-4" />
+                        </Link>
+                    </div>
+                </div>
+
+                {/* Open Disputes */}
+                <div className="bg-slate-800/30 border border-red-500/20 rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                    <div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="p-2 bg-red-500/10 rounded-lg">
+                                <AlertCircle className="w-5 h-5 text-red-400" />
+                            </div>
+                            <h3 className="text-lg font-medium text-white">Open Receipt Disputes</h3>
+                        </div>
+                        <p className="text-slate-400 text-sm mb-6 pl-12">Urgent unhandled disputes from merchants regarding user-uploaded receipts.</p>
+                        <div className="pl-12">
+                            <span className="text-4xl font-bold text-white">{stats.openDisputes}</span>
+                            <span className="text-slate-500 ml-2">disputes are waiting</span>
+                        </div>
+                    </div>
+                    <div className="mt-6 pt-6 border-t border-slate-700/50 pl-12">
+                        <Link href="/admin/disputes" className="inline-flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium border border-slate-700">
+                            Resolve Disputes
+                            <ArrowRight className="w-4 h-4" />
+                        </Link>
                     </div>
                 </div>
             </div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-                {statCards.map((card) => {
-                    const colors = colorMap[card.color];
-                    return (
-                        <div key={card.label} className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-sm font-medium text-slate-400">{card.label}</h3>
-                                <svg className={`w-5 h-5 ${colors.icon} opacity-80 group-hover:opacity-100 transition-opacity`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={card.icon} />
-                                </svg>
-                            </div>
-                            {loading ? (
-                                <div className="h-9 w-24 bg-slate-700/50 rounded-lg animate-pulse" />
-                            ) : (
-                                <div className="text-3xl font-bold text-white">
-                                    {(card.value ?? 0).toLocaleString()}
-                                </div>
+            {/* BOTTOM: Monitoring Lists */}
+            <h2 className="text-xl font-semibold text-white mt-12 mb-4 border-b border-slate-800 pb-2">Real-Time Registry Log</h2>
+            <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl overflow-hidden">
+                <div className="p-6 border-b border-slate-700/50 flex justify-between items-center">
+                    <h3 className="text-lg font-medium text-white">Recent Store Approvals</h3>
+                    <Link href="/admin/businesses" className="text-sm text-emerald-400 hover:text-emerald-300 font-medium transition-colors">View All Directory</Link>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm text-slate-400 min-w-[600px]">
+                        <thead className="text-xs uppercase bg-slate-800/50 border-b border-slate-700/50">
+                            <tr>
+                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Business Name</th>
+                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Category</th>
+                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Location</th>
+                                <th scope="col" className="px-6 py-4 font-medium text-slate-300">Status</th>
+                                <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {recentApprovals.map(business => (
+                                <tr key={business.id} className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
+                                    <td className="px-6 py-4 font-medium text-white">{business.name}</td>
+                                    <td className="px-6 py-4">{business.category || 'Unknown'}</td>
+                                    <td className="px-6 py-4">{business.region || 'Unknown'}</td>
+                                    <td className="px-6 py-4">
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                            Verified
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <Link href="/admin/businesses" className="text-slate-500 hover:text-slate-300 font-medium">Manage</Link>
+                                    </td>
+                                </tr>
+                            ))}
+                            {recentApprovals.length === 0 && (
+                                <tr>
+                                    <td colSpan="5" className="px-6 py-8 text-center text-slate-500">No verified businesses yet.</td>
+                                </tr>
                             )}
-                            <div className={`mt-2 text-xs font-medium ${colors.badge} inline-block px-2 py-1 rounded-md`}>
-                                {card.sub}
-                            </div>
-                        </div>
-                    );
-                })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            {/* Live Claim Queue */}
-            <ClaimQueue />
-
-            {/* Payment Confirmation Queue */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-6">
-                <PaymentQueue />
-            </div>
-
-            {/* User Management */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-6">
-                <UserManagement />
-            </div>
-
-            {/* Flagged Content Moderation */}
-            <FlaggedContentQueue />
-
-            {/* Business Management */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-6">
-                <BusinessManagement />
-            </div>
-
-            {/* Analytics Dashboard */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-6">
-                <AdminAnalytics />
-            </div>
-
-            {/* Platform Settings */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-6">
-                <PlatformSettings />
-            </div>
         </div>
     )
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import QRCode from 'react-qr-code';
 import { X } from 'lucide-react';
 
@@ -8,6 +8,25 @@ import { X } from 'lucide-react';
  * GaderPassModal — QR code modal for the user's Digital Gader Pass.
  */
 export function GaderPassModal({ user, lang, onClose }) {
+    const [qrValue, setQrValue] = useState('');
+
+    useEffect(() => {
+        // Generate a short-lived token (expires in 5 minutes)
+        const generateToken = () => {
+            const payload = {
+                id: user.id,
+                exp: Date.now() + 5 * 60 * 1000,
+            };
+            // MVP: Base64 encode. In production, this should be a JWT signed by a Supabase Edge Function
+            const token = btoa(JSON.stringify(payload));
+            setQrValue(`https://tagdeer.app/verify-user/t=${token}`);
+        };
+
+        generateToken();
+        const interval = setInterval(generateToken, 60000); // refresh every minute
+        return () => clearInterval(interval);
+    }, [user.id]);
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden relative border border-gray-100" onClick={e => e.stopPropagation()}>
@@ -34,13 +53,15 @@ export function GaderPassModal({ user, lang, onClose }) {
 
                     {/* QR Code */}
                     <div className="p-4 bg-white border-2 border-dashed border-gray-200 rounded-xl">
-                        <QRCode
-                            value={`https://tagdeer.app/verify-user/${user.id}`}
-                            size={180}
-                            bgColor="#ffffff"
-                            fgColor="#0f172a"
-                            level="H"
-                        />
+                        {qrValue && (
+                            <QRCode
+                                value={qrValue}
+                                size={180}
+                                bgColor="#ffffff"
+                                fgColor="#0f172a"
+                                level="H"
+                            />
+                        )}
                     </div>
 
                     {/* Monospace ID */}

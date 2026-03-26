@@ -1,0 +1,884 @@
+"use client";
+
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useTagdeer } from '@/context/TagdeerContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Store, UploadCloud, AlertCircle, Clock, Check, Crown, ShieldAlert, ShieldCheck, CreditCard, CheckCircle2, User, FileText, Search, MapPin, Lock, Wallet } from 'lucide-react';
+import { toast } from 'sonner';
+import { getPresignedUploadUrl } from '@/app/actions/storage';
+
+export default function MerchantOnboarding() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const {
+        supabase, user, showToast, t, lang, isRTL, loading,
+        categories = [], regions = [], shieldPricing = { trust: 20, fatora: 50 }
+    } = useTagdeer();
+
+    const trialCampaign = searchParams.get('trial_campaign');
+
+    const navigateForward = (path) => {
+        if (trialCampaign) {
+            router.push(`${path}?trial_campaign=${trialCampaign}`);
+        } else {
+            router.push(path);
+        }
+    };
+
+    // Block admin accounts from onboarding — they should never claim via this flow
+    if (!loading && user && user.role === 'admin') {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
+                <div className="max-w-md text-center">
+                    <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <AlertCircle className="w-8 h-8 text-amber-600" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">Admin Account Detected</h2>
+                    <p className="text-slate-500 mb-6">Admin accounts cannot claim businesses. Please log in with a dedicated merchant account to proceed.</p>
+                    <button onClick={() => router.push('/merchant/login?reason=merchant_required')} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors">
+                        Go to Merchant Login
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // Quota Check State
+    const [hasQuota, setHasQuota] = useState(true);
+    const [quotaData, setQuotaData] = useState(null);
+
+    useEffect(() => {
+        if (!user || !supabase) return;
+        const checkQuota = async () => {
+            const [subsRes, bizCountRes, pendingCountRes] = await Promise.all([
+                supabase.from('subscriptions').select('quotas').eq('profile_id', user.id).eq('status', 'Active').maybeSingle(),
+                supabase.from('businesses').select('id', { count: 'exact', head: true }).eq('claimed_by', user.id),
+                supabase.from('business_claims').select('id', { count: 'exact', head: true })
+                    .eq('user_id', user.id).in('status', ['pending'])
+            ]);
+
+            const activeCount = bizCountRes.count || 0;
+            const pendingCount = pendingCountRes.count || 0;
+            const used = activeCount + pendingCount;
+            const max = subsRes.data?.quotas?.max_locations || 1; // Default Free tier is 1
+
+            setQuotaData({ used, max });
+            setHasQuota(used < max);
+        };
+        checkQuota();
+    }, [user, supabase]);
+
+    // Block if quota exceeded
+    if (quotaData && !hasQuota) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-6">
+                <div className="max-w-md text-center">
+                    <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Lock className="w-8 h-8 text-amber-600" />
+                    </div>
+                    <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">Location Limit Reached</h2>
+                    <p className="text-slate-500 mb-6">Your current subscription tier allows for a maximum of <strong>{quotaData.max}</strong> locations. You currently manage <strong>{quotaData.used}</strong> locations.</p>
+                    <button onClick={() => router.push('/merchant/settings')} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors">
+                        Upgrade Tier in Settings
+                    </button>
+                    <button onClick={() => router.push('/merchant/dashboard')} className="mt-4 block w-full text-slate-500 hover:text-slate-700 font-medium">
+                        Return to Dashboard
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    // Wizard State
+    const [step, setStep] = useState(1);
+
+    // Step 1: Business Details
+    const [businessData, setBusinessData] = useState({ name: '', category: '', region: '' });
+    const [documents, setDocuments] = useState(null);
+    const [selectedExisting, setSelectedExisting] = useState(null); // existing business to claim
+
+    useEffect(() => {
+        const regionNames = regions.map(r => typeof r === 'string' ? r : r.name);
+        const categoryNames = categories.map(c => typeof c === 'string' ? c : c.name);
+
+        if (regionNames.length > 0 && !businessData.region) {
+            setBusinessData(prev => ({ ...prev, region: regionNames[0] }));
+        }
+        if (categoryNames.length > 0 && !businessData.category) {
+            setBusinessData(prev => ({ ...prev, category: categoryNames[0] }));
+        }
+    }, [regions, categories, businessData.region, businessData.category]);
+
+    // Business Search
+    const [businessSearch, setBusinessSearch] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+
+    const [shieldLevel, setShieldLevel] = useState(0);
+
+    // Step 3: Checkout
+    const [activeGateways, setActiveGateways] = useState([]);
+    const [txHash, setTxHash] = useState(''); // For crypto gateway
+    const [paymentMethod, setPaymentMethod] = useState('manual_bank');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [receiptFile, setReceiptFile] = useState(null); // Bank transfer receipt
+
+    // Pricing Math
+    const shieldPrice = shieldLevel === 1 ? shieldPricing.trust : (shieldLevel === 2 ? shieldPricing.fatora : 0);
+    const total = shieldPrice;
+
+    useEffect(() => {
+        if (!supabase) return;
+        const fetchGateways = async () => {
+            const { data } = await supabase
+                .from('platform_config')
+                .select('value')
+                .eq('key', 'payment_gateways')
+                .maybeSingle();
+
+            if (data?.value) {
+                setActiveGateways(data.value.filter(gw => gw.isActive));
+            }
+        };
+        fetchGateways();
+    }, [supabase]);
+
+    useEffect(() => {
+        if (activeGateways.length > 0 && !activeGateways.find(g => g.id === paymentMethod)) {
+            setPaymentMethod(activeGateways[0].id);
+        }
+    }, [activeGateways, paymentMethod]);
+
+    // Business search with debounce
+    const searchBusinesses = useCallback(async (query) => {
+        if (!supabase || !query || query.length < 2) {
+            setSearchResults([]);
+            return;
+        }
+        setIsSearching(true);
+        try {
+            const { data, error } = await supabase
+                .from('businesses')
+                .select('id, name, category, region, claimed_by')
+                .ilike('name', `%${query}%`)
+                .limit(10);
+
+            if (error) throw error;
+            setSearchResults(data || []);
+        } catch (err) {
+            console.error('Business search error:', err);
+            setSearchResults([]);
+        } finally {
+            setIsSearching(false);
+        }
+    }, [supabase]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            searchBusinesses(businessSearch);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [businessSearch, searchBusinesses]);
+
+    const selectExistingBusiness = async (business) => {
+        if (business.claimed_by) return; // Already claimed (approved)
+
+        // Check if ANY user has a pending/approved claim for this business
+        try {
+            const { count } = await supabase
+                .from('business_claims')
+                .select('id', { count: 'exact', head: true })
+                .eq('business_id', business.id)
+                .in('status', ['pending', 'approved']);
+
+            if ((count || 0) > 0) {
+                toast.error(lang === 'ar' ? 'هذا النشاط لديه طلب مطالبة معلق بالفعل.' : 'This business already has a pending claim.');
+                return;
+            }
+        } catch (err) {
+            console.warn('Claim conflict check failed:', err);
+            // Proceed anyway — DB trigger will catch it
+        }
+
+        setSelectedExisting(business);
+        setBusinessData({
+            name: business.name,
+            category: business.category || (categories.length > 0 ? categories[0] : ''),
+            region: business.region || (regions.length > 0 ? regions[0] : '')
+        });
+        setBusinessSearch('');
+        setSearchResults([]);
+    };
+
+    const clearSelection = () => {
+        setSelectedExisting(null);
+        setBusinessData({ name: '', category: categories[0] || '', region: regions[0] || '' });
+    };
+
+    const handleFileChange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            setDocuments(e.target.files[0]);
+        }
+    };
+
+    const submitOrder = async () => {
+        setIsSubmitting(true);
+        try {
+            let activeUser = user;
+            if (!activeUser && supabase) {
+                // Fallback attempt to retrieve session if React context dropped
+                const { data: { session } } = await supabase.auth.getSession();
+                activeUser = session?.user;
+            }
+
+            if (!activeUser) {
+                if (showToast) showToast(lang === 'ar' ? 'يرجى تسجيل الدخول أولاً' : 'Session expired. Please log in first', 'error');
+                router.push('/merchant/login?redirect=/merchant/onboarding');
+                setIsSubmitting(false);
+                return;
+            }
+
+            // 1. Upload Verification Document tracking
+            let documentUrl = null;
+            let fileMetadata = { size: null, type: null };
+
+            if (documents) {
+                const uploadInit = await getPresignedUploadUrl({
+                    folder: 'merchant_documents',
+                    filename: documents.name,
+                    contentType: documents.type || 'application/octet-stream'
+                });
+
+                if (!uploadInit?.success || !uploadInit.uploadUrl) {
+                    throw new Error("Failed to initialize secure upload");
+                }
+
+                const response = await fetch(uploadInit.uploadUrl, {
+                    method: 'PUT',
+                    body: documents,
+                    headers: {
+                        'Content-Type': documents.type || 'application/octet-stream'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error("Failed to upload document to R2 storage");
+                }
+
+                documentUrl = uploadInit.objectKey;
+                fileMetadata = {
+                    size: documents.size,
+                    type: documents.type || 'application/octet-stream'
+                };
+            }
+
+            // 2. Create or use existing business record
+            let businessId;
+
+            if (selectedExisting) {
+                // Claiming an existing unclaimed business
+                businessId = selectedExisting.id;
+                await supabase
+                    .from('businesses')
+                    .update({
+                        claimed_by: activeUser.id,
+                        is_shielded: shieldLevel > 0,
+                    })
+                    .eq('id', businessId);
+            } else {
+                // Creating a new business
+                const { data: businessObj, error: bError } = await supabase
+                    .from('businesses')
+                    .insert([{
+                        name: businessData.name,
+                        category: businessData.category,
+                        region: businessData.region,
+                        claimed_by: activeUser.id,
+                        is_shielded: shieldLevel > 0,
+                        source: 'Merchant Onboarding'
+                    }])
+                    .select('id')
+                    .single();
+
+                if (bError) throw new Error("Business creation failed: " + bError.message);
+                businessId = businessObj.id;
+            }
+
+            // 3. Create or Update the Business Claim (Handles retries / duplicate clicks)
+            const { error: claimError } = await supabase
+                .from('business_claims')
+                .upsert([{
+                    business_id: businessId,
+                    user_id: activeUser.id,
+                    status: 'pending',
+                    document_url: documentUrl,
+                    file_size: fileMetadata.size,
+                    mime_type: fileMetadata.type
+                }], { onConflict: 'business_id,user_id' });
+
+            if (claimError) {
+                if (claimError.message?.includes('CLAIM_CONFLICT')) {
+                    throw new Error(lang === 'ar'
+                        ? 'هذا النشاط لديه طلب مطالبة معلق بالفعل من تاجر آخر.'
+                        : 'This business already has a pending claim from another merchant.');
+                }
+                if (claimError.message?.includes('QUOTA_EXCEEDED')) {
+                    throw new Error(lang === 'ar'
+                        ? 'لقد وصلت إلى الحد الأقصى لعدد المواقع في باقتك. قم بترقية باقتك للمطالبة بمواقع أكثر.'
+                        : 'You have reached your tier limit. Upgrade your plan to claim more businesses.');
+                }
+                throw new Error("Claim submission failed: " + claimError.message);
+            }
+
+            // 4. Record the requested Financial Upgrade (if applicable)
+            // Skip transaction creation entirely for zero-cost onboarding
+            if (total > 0 && shieldLevel > 0) {
+                const amount = shieldLevel === 1 ? shieldPricing.trust : shieldPricing.fatora;
+                const selectedGw = activeGateways.find(g => g.id === paymentMethod) || { id: 'manual_bank', currency: 'LYD', type: 'manual' };
+                const isCrypto = selectedGw.type === 'crypto';
+                const exchangeRate = isCrypto ? (selectedGw.config?.exchange_rate_lyd_per_usdt || 6.2) : null;
+
+                // Upload receipt if provided (bank transfer)
+                let receiptUrl = null;
+                if (receiptFile) {
+                    try {
+                        const receiptUpload = await getPresignedUploadUrl({
+                            folder: 'payment_receipts',
+                            filename: receiptFile.name,
+                            contentType: receiptFile.type || 'image/jpeg'
+                        });
+                        if (receiptUpload?.success && receiptUpload.uploadUrl) {
+                            await fetch(receiptUpload.uploadUrl, {
+                                method: 'PUT',
+                                body: receiptFile,
+                                headers: { 'Content-Type': receiptFile.type || 'image/jpeg' }
+                            });
+                            receiptUrl = receiptUpload.objectKey;
+                        }
+                    } catch (uploadErr) {
+                        console.error('Receipt upload error:', uploadErr);
+                        // Non-fatal: transaction still created, admin can request receipt later
+                    }
+                }
+
+                await supabase.from('transactions').insert([{
+                    business_id: businessId,
+                    owner_id: activeUser.id,
+                    amount: amount,
+                    status: 'pending', // All gateways start as pending for admin review
+                    payment_method: selectedGw.type,
+                    requested_tier: shieldLevel === 1 ? 'Trust Shield Addon' : 'Fatora Shield Addon',
+                    duration: '1 Month',
+                    currency: selectedGw.currency,
+                    payment_gateway: selectedGw.id,
+                    gateway_reference: isCrypto ? txHash : null,
+                    exchange_rate: exchangeRate,
+                    screenshot_url: receiptUrl
+                }]);
+            }
+
+            // NOTE: Role elevation to 'merchant' happens when admin approves
+            // the claim via admin_resolve_claim RPC — not here during onboarding.
+
+            setStep(4);
+
+            // Optimistic UI lock — exhaust quota locally so re-entering onboarding is blocked
+            setQuotaData(prev => prev ? { ...prev, used: prev.used + 1 } : prev);
+            setHasQuota(false);
+
+            if (showToast) showToast(t('registration_submitted') || 'Registration submitted successfully!');
+        } catch (error) {
+            console.error(error);
+            if (showToast) showToast(error.message || 'Failed to process. Please try again.', 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center pt-8 pb-20 px-4" dir={isRTL ? 'rtl' : 'ltr'}>
+
+            <div className="w-full max-w-4xl">
+                {/* Header & Progress */}
+                <div className="mb-10 text-center">
+                    <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-4">
+                        {t('merchant_onboarding')}
+                    </h1>
+
+                    {/* Progress Bar */}
+                    <div className="flex justify-between items-center relative max-w-2xl mx-auto">
+                        {/* Connecting Line */}
+                        <div className="absolute top-1/2 left-0 right-0 h-1 bg-slate-200 dark:bg-slate-800 -z-10 -translate-y-1/2 rounded-full"></div>
+                        <div
+                            className={`absolute top-1/2 h-1 bg-blue-600 -z-10 -translate-y-1/2 rounded-full transition-all duration-500 ease-in-out ${isRTL ? 'right-0' : 'left-0'}`}
+                            style={{ width: `${((Math.min(step, 3) - 1) / 2) * 100}%` }}
+                        ></div>
+
+                        {/* Dots */}
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors duration-500 ${step >= i ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-slate-200 dark:bg-slate-800 text-slate-400'}`}>
+                                {step > i ? <Check className="w-5 h-5" /> : i}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex justify-between max-w-2xl mx-auto mt-3 text-xs font-medium text-slate-500 px-2 lg:px-4">
+                        <span>{t('onboarding_details')}</span>
+                        <span>{t('onboarding_shields')}</span>
+                        <span>{t('onboarding_checkout')}</span>
+                    </div>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-xl overflow-hidden min-h-[500px] relative">
+
+                    {/* STEP 1: BUSINESS DETAILS */}
+                    {step === 1 && (
+                        <div className="p-8 md:p-12 animate-in fade-in slide-in-from-right-8 duration-500">
+                            <h2 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                                <Store className={`w-6 h-6 text-indigo-500 ${isRTL ? 'ml-2' : 'mr-2'}`} /> {t('business_details_title')}
+                            </h2>
+                            <p className="text-slate-500 mb-8">{t('business_details_desc')}</p>
+
+                            <div className="space-y-6 max-w-2xl">
+                                {/* Search Existing Business */}
+                                {!selectedExisting && (
+                                    <div className="space-y-3 p-5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl relative">
+                                        <Label className="text-slate-700 dark:text-slate-300 font-semibold">{t('search_existing_business', 'Search Existing Business')}</Label>
+                                        <p className="text-xs text-slate-500">{t('search_existing_desc', 'Check if your business is already on Tagdeer to claim its existing experiences.')}</p>
+                                        <div className="relative">
+                                            <Search className={`absolute ${isRTL ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400`} />
+                                            <Input
+                                                placeholder={t('search_placeholder', 'Search by name...')}
+                                                value={businessSearch}
+                                                onChange={(e) => setBusinessSearch(e.target.value)}
+                                                className={`bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 ${isRTL ? 'pr-9' : 'pl-9'}`}
+                                            />
+                                        </div>
+
+                                        {/* Search Results Dropdown */}
+                                        {businessSearch.length >= 2 && (
+                                            <div className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-10 max-h-60 overflow-y-auto">
+                                                {isSearching ? (
+                                                    <div className="p-4 text-center text-sm text-slate-500">Searching...</div>
+                                                ) : searchResults.length > 0 ? (
+                                                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                        {searchResults.map(b => (
+                                                            <div
+                                                                key={b.id}
+                                                                onClick={() => selectExistingBusiness(b)}
+                                                                className={`p-3 flex justify-between items-center transition-colors ${b.claimed_by ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-slate-900' : 'cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}
+                                                            >
+                                                                <div>
+                                                                    <div className="font-semibold text-sm">{b.name}</div>
+                                                                    <div className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                                                                        <MapPin className="w-3 h-3" /> {b.region || 'Unknown'} • {b.category || 'Uncategorized'}
+                                                                    </div>
+                                                                </div>
+                                                                {b.claimed_by ? (
+                                                                    <Badge variant="outline" className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 border-0 flex items-center gap-1">
+                                                                        <Lock className="w-3 h-3" /> Claimed
+                                                                    </Badge>
+                                                                ) : (
+                                                                    <Button size="sm" variant="ghost" className="h-7 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-100 px-2 rounded-lg">
+                                                                        Claim
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-4 text-center text-sm text-slate-500">
+                                                        {t('no_business_found', 'No business found. You can create a new one below.')}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        <div className="relative pt-4 text-center">
+                                            <div className="absolute inset-0 flex items-center">
+                                                <div className="w-full border-t border-slate-200 dark:border-slate-700"></div>
+                                            </div>
+                                            <span className="relative bg-slate-50 dark:bg-slate-800/50 px-3 text-xs text-slate-500 font-medium uppercase tracking-wider">OR</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Selected Existing Display */}
+                                {selectedExisting ? (
+                                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-5 flex justify-between items-center">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-800 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-300">
+                                                <Store className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-semibold text-blue-500 tracking-wider uppercase mb-0.5">Claiming Business</div>
+                                                <div className="font-bold text-slate-800 dark:text-slate-200">{selectedExisting.name}</div>
+                                                <div className="text-xs text-slate-500 mt-1 flex gap-2">
+                                                    <span>{selectedExisting.region || 'Unknown'}</span>
+                                                    <span>•</span>
+                                                    <span>{selectedExisting.category || 'Uncategorized'}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <Button variant="ghost" size="sm" onClick={clearSelection} className="text-slate-500 hover:text-red-500 hover:bg-red-50">
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Manual Entry Form */}
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Label>{t('legal_business_name')}</Label>
+                                                <Input placeholder="e.g., Al-Saha Clinic" value={businessData.name} onChange={(e) => setBusinessData({ ...businessData, name: e.target.value })} className="rounded-xl border-slate-200 dark:border-slate-800 focus:ring-blue-500" />
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label>{t('category')}</Label>
+                                                    <select
+                                                        className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-950 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748b%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.4c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095.3c3.6-3.6%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_12px] bg-[position:right_12px_center] bg-no-repeat"
+                                                        value={businessData.category}
+                                                        onChange={(e) => setBusinessData({ ...businessData, category: e.target.value })}
+                                                        style={{ backgroundPosition: isRTL ? 'left 12px center' : 'right 12px center' }}
+                                                    >
+                                                        <option value="">{lang === 'ar' ? 'اختر...' : 'Select...'}</option>
+                                                        {categories.map(c => {
+                                                            const val = typeof c === 'string' ? c : c.name;
+                                                            const isActive = typeof c === 'string' ? true : c.isActive;
+                                                            if (!isActive) return null;
+                                                            return <option key={val} value={val}>{t(val)}</option>;
+                                                        })}
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>{t('region')}</Label>
+                                                    <select
+                                                        className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-800 dark:bg-slate-950 appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748b%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.4c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095.3c3.6-3.6%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_12px] bg-[position:right_12px_center] bg-no-repeat"
+                                                        value={businessData.region}
+                                                        onChange={(e) => setBusinessData({ ...businessData, region: e.target.value })}
+                                                        style={{ backgroundPosition: isRTL ? 'left 12px center' : 'right 12px center' }}
+                                                    >
+                                                        {regions.map(r => {
+                                                            const val = typeof r === 'string' ? r : r.name;
+                                                            const isActive = typeof r === 'string' ? true : r.isActive;
+                                                            if (!isActive) return null;
+                                                            return <option key={val} value={val}>{t(val)}</option>;
+                                                        })}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+
+                                <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                                    <Label className="mb-3 block">{t('verification_doc')}</Label>
+                                    <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all group hover:border-blue-400 relative">
+                                        <input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleFileChange} />
+                                        <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/20 text-blue-600 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                            <UploadCloud className="w-8 h-8" />
+                                        </div>
+                                        <span className="font-bold text-slate-700 dark:text-slate-300">{documents ? documents.name : t('click_to_upload')}</span>
+                                        <p className="text-xs text-slate-500 mt-2">PDF, JPG, PNG (Max 5MB)</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-6">
+                                    <Button size="lg" disabled={!businessData.name || !businessData.category || !documents} onClick={() => setStep(2)} className="rounded-full px-8 bg-blue-600 shadow-lg shadow-blue-500/20">
+                                        {t('continue_to_addons')} {isRTL ? <span className="mr-2">←</span> : <span className="ml-2">→</span>}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* STEP 2: SHIELDS */}
+                    {step === 2 && (
+                        <div className="p-8 md:p-12 animate-in fade-in slide-in-from-right-8 duration-500 flex flex-col h-full">
+                            <Button variant="ghost" className={`self-start -ml-4 mb-4 text-slate-500 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 ${isRTL ? 'mr-auto ml-0' : 'ml-auto mr-0'}`} onClick={() => setStep(1)}>{isRTL ? '→' : '←'} {t('back')}</Button>
+
+                            <h2 className="text-2xl font-bold mb-2">{t('enhance_shields')}</h2>
+                            <p className="text-slate-500 mb-8 max-w-xl">{t('shield_desc').replace('{name}', businessData.name || (lang === 'ar' ? 'هذا النشاط' : 'this location'))}</p>
+
+                            <div className="space-y-4 mb-10">
+                                <div className={`p-6 rounded-3xl border-2 transition-all flex flex-col sm:flex-row gap-6 items-start sm:items-center justify-between ${shieldLevel >= 1 ? 'border-amber-400 bg-amber-50/50 dark:bg-amber-900/10 shadow-lg shadow-amber-500/10' : 'border-slate-100 dark:border-slate-800'}`}>
+                                    <div className="flex gap-4">
+                                        <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner"><ShieldCheck className="w-8 h-8" /></div>
+                                        <div>
+                                            <h3 className="font-bold flex items-center gap-2 text-lg">{t('trust_shield')} <Badge variant="outline" className="bg-amber-100 border-0 text-amber-700 font-bold px-3 py-0.5 rounded-full">{lang === 'ar' ? 'المستوى 1' : 'Level 1'}</Badge></h3>
+                                            <p className="text-sm text-slate-500 mt-1 max-w-sm leading-relaxed">{t('trust_shield_desc')}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-6 w-full sm:w-auto justify-between border-t border-amber-100 sm:border-0 pt-4 sm:pt-0">
+                                        <div className={isRTL ? 'text-left' : 'text-right'}>
+                                            <div className="font-black text-xl text-slate-900 dark:text-white">{t('price_per_month').replace('{price}', shieldPricing.trust)}</div>
+                                        </div>
+                                        <Switch checked={shieldLevel >= 1} onCheckedChange={(c) => setShieldLevel(c ? (shieldLevel === 2 ? 2 : 1) : 0)} className="data-[state=checked]:bg-amber-500 scale-110" />
+                                    </div>
+                                </div>
+
+                                <div className={`p-6 rounded-3xl border-2 transition-all flex flex-col sm:flex-row gap-6 items-start sm:items-center justify-between ${shieldLevel === 2 ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-900/10 shadow-lg shadow-blue-500/10' : 'border-slate-100 dark:border-slate-800'}`}>
+                                    <div className="flex gap-4">
+                                        <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center shrink-0 shadow-inner"><ShieldAlert className="w-8 h-8" /></div>
+                                        <div>
+                                            <h3 className="font-bold flex items-center gap-2 text-lg">{t('fatora_shield')} <Badge variant="outline" className="bg-blue-100 border-0 text-blue-700 font-bold px-3 py-0.5 rounded-full">{lang === 'ar' ? 'المستوى 2' : 'Level 2'}</Badge></h3>
+                                            <p className="text-sm text-slate-500 mt-1 max-w-sm leading-relaxed">{t('fatora_shield_desc')}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-6 w-full sm:w-auto justify-between border-t border-blue-100 sm:border-0 pt-4 sm:pt-0">
+                                        <div className={isRTL ? 'text-left' : 'text-right'}>
+                                            <div className="font-black text-xl text-slate-900 dark:text-white">{t('price_per_month').replace('{price}', shieldPricing.fatora)}</div>
+                                        </div>
+                                        <Switch checked={shieldLevel === 2} onCheckedChange={(c) => setShieldLevel(c ? 2 : 1)} disabled={shieldLevel === 0} className="data-[state=checked]:bg-blue-600 scale-110" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between items-center border-t border-slate-100 dark:border-slate-800 pt-8 mt-auto">
+                                <span className="text-sm font-bold text-slate-400 border-b border-dashed border-slate-300 cursor-pointer hover:text-slate-600 transition-colors" onClick={() => setStep(3)}>{t('skip_addons')}</span>
+                                <Button size="lg" onClick={() => setStep(3)} className="rounded-full px-8 bg-slate-900 dark:bg-slate-800 text-white shadow-xl">
+                                    {t('review_checkout')} {isRTL ? <span className="mr-2">←</span> : <span className="ml-2">→</span>}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* STEP 3: CHECKOUT */}
+                    {step === 3 && (
+                        <div className="p-8 md:p-12 animate-in fade-in slide-in-from-right-8 duration-500 overflow-y-auto">
+                            <Button variant="ghost" className={`self-start -ml-4 mb-4 text-slate-500 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 ${isRTL ? 'mr-auto ml-0' : 'ml-auto mr-0'}`} onClick={() => setStep(2)}>{isRTL ? '→' : '←'} {t('back')}</Button>
+
+                            <h2 className="text-2xl font-bold mb-2">{t('review_checkout')}</h2>
+                            <p className="text-slate-500 mb-8">{t('checkout_summary')}</p>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+                                <div className="lg:col-span-3 space-y-6">
+                                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-3xl p-6 border border-slate-100 dark:border-slate-800">
+                                        <div className="flex justify-between items-center mb-6">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center"><User className="w-6 h-6" /></div>
+                                                <div className={isRTL ? 'text-right' : 'text-left'}>
+                                                    <p className="text-xs text-slate-500 uppercase tracking-wider font-bold">{t('active_tier')}</p>
+                                                    <p className="font-bold text-slate-900 dark:text-white">Professional Account</p>
+                                                </div>
+                                            </div>
+                                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 px-3 py-1 rounded-full border-0">{t('tier_desc')}</Badge>
+                                        </div>
+
+                                        <div className="space-y-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-slate-500">{lang === 'ar' ? `النشاط: ${businessData.name}` : `Business: ${businessData.name}`}</span>
+                                                <span className="font-medium">{t(businessData.region)}</span>
+                                            </div>
+                                            {shieldLevel > 0 && (
+                                                <div className="flex justify-between text-sm">
+                                                    <span className="text-slate-500">{shieldLevel === 1 ? t('trust_shield') : t('fatora_shield')}</span>
+                                                    <span className="font-medium text-blue-600">{shieldLevel === 1 ? '20' : '50'} LYD</span>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between items-center pt-4 border-t border-slate-200 dark:border-slate-700">
+                                                <span className="font-bold text-lg">{t('total_monthly')}</span>
+                                                <span className="font-black text-2xl text-blue-600">{total} LYD</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Zero-Cost Bypass: skip payment UI entirely when total is 0 */}
+                                    {total === 0 ? (
+                                        <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-6 text-center">
+                                            <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto mb-3" />
+                                            <p className="font-bold text-emerald-800 dark:text-emerald-300 text-lg">{lang === 'ar' ? 'لا يتطلب دفع' : 'No payment required'}</p>
+                                            <p className="text-sm text-emerald-600 dark:text-emerald-400 mt-1">{lang === 'ar' ? 'سيتم تقديم طلبك للمراجعة بدون تكلفة.' : 'Your claim will be submitted for admin review at no cost.'}</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                    <div className="space-y-4">
+                                        <Label className="text-base font-bold text-slate-700 dark:text-slate-300 px-1 block">{t('payment_method')}</Label>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            {activeGateways.map(gw => (
+                                                <div
+                                                    key={gw.id}
+                                                    onClick={() => setPaymentMethod(gw.id)}
+                                                    className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex flex-col gap-3 group ${paymentMethod === gw.id ? 'border-blue-600 bg-blue-50/30 dark:bg-blue-950/20' : 'border-slate-100 dark:border-slate-800 hover:border-slate-300'}`}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${paymentMethod === gw.id ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}>
+                                                            {gw.type === 'manual' && <FileText className="w-6 h-6" />}
+                                                            {gw.type === 'crypto' && <Wallet className="w-6 h-6" />}
+                                                            {gw.type === 'api' && <CreditCard className="w-6 h-6" />}
+                                                        </div>
+                                                        <div className={`w-5 h-5 rounded-full border-2 p-1 flex items-center justify-center ${paymentMethod === gw.id ? 'border-blue-600' : 'border-slate-300'}`}>
+                                                            {paymentMethod === gw.id && <div className="w-full h-full bg-blue-600 rounded-full" />}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <span className={`font-bold block ${paymentMethod === gw.id ? 'text-blue-900 dark:text-blue-400' : 'text-slate-600'}`}>
+                                                            {lang === 'ar' ? gw.name_ar : gw.name}
+                                                        </span>
+                                                        <span className="text-xs text-slate-400">{gw.currency}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Gateway-Specific Checkout Info */}
+                                    {paymentMethod === 'manual_bank' && (() => {
+                                        const bankGw = activeGateways.find(g => g.id === 'manual_bank');
+                                        return bankGw ? (
+                                            <div className="space-y-4">
+                                                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 space-y-3">
+                                                    <h4 className="font-bold text-amber-800 dark:text-amber-400 text-sm">Bank Transfer Details</h4>
+                                                    <div className="text-sm space-y-1">
+                                                        <p><strong>Bank:</strong> {bankGw.config?.bank_name}</p>
+                                                        <p><strong>Account:</strong> <span className="font-mono">{bankGw.config?.account_number}</span></p>
+                                                        <p className="text-xs text-amber-600 dark:text-amber-400">{bankGw.config?.instructions}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Receipt Upload */}
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                                        {lang === 'ar' ? 'ارفع إيصال التحويل' : 'Upload Transfer Receipt'}
+                                                    </Label>
+                                                    <div
+                                                        className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-colors ${
+                                                            receiptFile
+                                                                ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-950/20'
+                                                                : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 hover:bg-blue-50/30'
+                                                        }`}
+                                                        onClick={() => document.getElementById('receipt-upload').click()}
+                                                    >
+                                                        <input
+                                                            id="receipt-upload"
+                                                            type="file"
+                                                            accept="image/*,.pdf"
+                                                            className="hidden"
+                                                            onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+                                                        />
+                                                        {receiptFile ? (
+                                                            <div className="flex items-center justify-center gap-3">
+                                                                <FileText className="w-5 h-5 text-blue-600 shrink-0" />
+                                                                <span className="font-medium text-blue-700 dark:text-blue-300 truncate max-w-[200px]">{receiptFile.name}</span>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); setReceiptFile(null); }}
+                                                                    className="text-red-400 hover:text-red-600 text-xs font-bold shrink-0"
+                                                                >
+                                                                    {lang === 'ar' ? 'إزالة' : 'Remove'}
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                                                                <p className="text-sm text-slate-500">
+                                                                    {lang === 'ar' ? 'اضغط لرفع الإيصال (صورة أو PDF)' : 'Click to upload receipt (image or PDF)'}
+                                                                </p>
+                                                                <p className="text-xs text-slate-400 mt-1">
+                                                                    {lang === 'ar' ? 'الحد الأقصى 5MB' : 'Max 5MB'}
+                                                                </p>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : null;
+                                    })()}
+
+                                    {paymentMethod === 'crypto_usdt' && (() => {
+                                        const cryptoGw = activeGateways.find(g => g.id === 'crypto_usdt');
+                                        const rate = cryptoGw?.config?.exchange_rate_lyd_per_usdt || 6.2;
+                                        const usdtAmount = (total / rate).toFixed(2);
+                                        return cryptoGw ? (
+                                            <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-5 space-y-4">
+                                                <h4 className="font-bold text-purple-800 dark:text-purple-400 text-sm">USDT Payment (TRC-20)</h4>
+                                                <div className="bg-white dark:bg-slate-900 rounded-xl p-4 text-center">
+                                                    <p className="text-3xl font-black text-purple-700 dark:text-purple-300">{usdtAmount} USDT</p>
+                                                    <p className="text-xs text-slate-500 mt-1">≈ {total} LYD @ {rate} LYD/USDT</p>
+                                                </div>
+                                                <div className="text-sm space-y-2">
+                                                    <p><strong>Wallet:</strong> <span className="font-mono text-xs break-all">{cryptoGw.config?.wallet_address}</span></p>
+                                                    <p><strong>Network:</strong> {cryptoGw.config?.network || 'TRC-20'}</p>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-bold text-purple-700 dark:text-purple-300 uppercase">Transaction Hash</label>
+                                                    <input
+                                                        value={txHash}
+                                                        onChange={e => setTxHash(e.target.value)}
+                                                        placeholder="Paste your TX hash here..."
+                                                        className="w-full bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800 rounded-lg px-4 py-2 text-sm font-mono"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ) : null;
+                                    })()}
+
+                                    {paymentMethod === 'tlync_lyd' && (
+                                        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-5 text-center">
+                                            <h4 className="font-bold text-blue-800 dark:text-blue-400 text-sm mb-2">Tlync Online Payment</h4>
+                                            <p className="text-sm text-slate-500">You will be redirected to Tlync's secure payment page after submitting.</p>
+                                            <p className="text-xs text-blue-500 mt-2 italic">Integration pending — gateway is not yet active.</p>
+                                        </div>
+                                    )}
+                                        </>
+                                    )}
+                                </div>
+
+                                <div className="lg:col-span-2">
+                                    <div className="bg-slate-900 text-white rounded-3xl p-8 sticky top-0 shadow-2xl overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/20 blur-3xl rounded-full -mr-16 -mt-16 group-hover:bg-blue-600/40 transition-colors duration-700"></div>
+                                        <h3 className="text-xl font-bold mb-4 relative z-10">{t('ready')}</h3>
+                                        <p className="text-slate-400 text-sm mb-8 leading-relaxed relative z-10">
+                                            {paymentMethod === 'online' ? t('online_desc') : t('manual_desc')}
+                                        </p>
+
+                                        <Button
+                                            size="lg"
+                                            className="w-full rounded-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-6 text-lg shadow-xl shadow-blue-500/20 active:scale-95 transition-all relative z-10"
+                                            onClick={submitOrder}
+                                            disabled={isSubmitting}
+                                        >
+                                            {isSubmitting ? (
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                    {lang === 'ar' ? 'جاري المعالجة...' : 'Processing...'}
+                                                </div>
+                                            ) : (
+                                                paymentMethod === 'online' ? t('proceed_payment') : t('submit_request')
+                                            )}
+                                        </Button>
+                                        <p className="text-[10px] text-slate-500 mt-6 text-center italic relative z-10">By clicking, you agree to Tagdeer Business Terms of Focus and Merchant Guidelines.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* STEP 4: SUCCESS */}
+                    {step === 4 && (
+                        <div className="p-12 text-center animate-in zoom-in duration-500 flex flex-col items-center justify-center h-[500px]">
+                            <div className="w-24 h-24 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white rounded-full flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/30">
+                                <CheckCircle2 className="w-12 h-12" />
+                            </div>
+                            <h2 className="text-3xl font-black mb-3">{t('success_title')}</h2>
+                            {paymentMethod === 'online' ? (
+                                <p className="text-slate-500 max-w-md mx-auto mb-10 text-lg">{t('success_online').replace('{name}', businessData.name)}</p>
+                            ) : (
+                                <p className="text-slate-500 max-w-md mx-auto mb-10 text-lg">{t('success_manual').replace('{name}', businessData.name)}</p>
+                            )}
+
+                            <Button size="lg" onClick={() => navigateForward('/merchant/dashboard')} className="px-10 rounded-full bg-slate-900 border-0 hover:bg-slate-800 shadow-xl">
+                                {t('enter_dashboard')}
+                            </Button>
+                        </div>
+                    )}
+
+                </div>
+            </div>
+        </div>
+    );
+}
