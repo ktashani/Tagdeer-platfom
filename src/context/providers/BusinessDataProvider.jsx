@@ -137,9 +137,17 @@ export function BusinessDataProvider({ children }) {
                                     unhelpful_votes: log.unhelpful_votes || 0,
                                     fingerprint: log.fingerprint,
                                     profile_id: log.profile_id
-                                }))
+                                })),
+                            // Last Activity: most recent log or business creation
+                            last_activity: rawLogs.length > 0
+                                ? Math.max(...rawLogs.map(l => new Date(l.created_at).getTime()))
+                                : new Date(b.created_at).getTime()
                         };
                     });
+
+                    // Sort by last activity globally (most recently active first)
+                    formattedData.sort((a, b) => (b.last_activity || 0) - (a.last_activity || 0));
+
                     setBusinesses(formattedData);
                 }
             } catch (err) {
@@ -192,31 +200,36 @@ export function BusinessDataProvider({ children }) {
                         })));
                     } else if (payload.eventType === 'INSERT') {
                         const newLog = payload.new;
-                        setBusinesses(prev => prev.map(b => {
-                            if (b.id === newLog.business_id) {
-                                // Phase 2e fix: Skip if already added by optimistic update
-                                if (b.logs.some(l => l.id === newLog.id)) return b;
-                                return {
-                                    ...b,
-                                    logs: [
-                                        {
-                                            id: newLog.id,
-                                            type: newLog.interaction_type,
-                                            text: newLog.reason_text || (newLog.interaction_type === 'recommend' ? 'User recommended' : 'User complained'),
-                                            date: new Date(newLog.created_at).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US'),
-                                            created_at: newLog.created_at,
-                                            is_verified: !!newLog.profile_id,
-                                            helpful_votes: newLog.helpful_votes || 0,
-                                            unhelpful_votes: newLog.unhelpful_votes || 0,
-                                            fingerprint: newLog.fingerprint,
-                                            profile_id: newLog.profile_id
-                                        },
-                                        ...b.logs
-                                    ]
-                                };
-                            }
-                            return b;
-                        }));
+                        setBusinesses(prev => {
+                            const updated = prev.map(b => {
+                                if (b.id === newLog.business_id) {
+                                    // Phase 2e fix: Skip if already added by optimistic update
+                                    if (b.logs.some(l => l.id === newLog.id)) return b;
+                                    return {
+                                        ...b,
+                                        last_activity: new Date(newLog.created_at).getTime(),
+                                        logs: [
+                                            {
+                                                id: newLog.id,
+                                                type: newLog.interaction_type,
+                                                text: newLog.reason_text || (newLog.interaction_type === 'recommend' ? 'User recommended' : 'User complained'),
+                                                date: new Date(newLog.created_at).toLocaleDateString(lang === 'ar' ? 'ar-LY' : 'en-US'),
+                                                created_at: newLog.created_at,
+                                                is_verified: !!newLog.profile_id,
+                                                helpful_votes: newLog.helpful_votes || 0,
+                                                unhelpful_votes: newLog.unhelpful_votes || 0,
+                                                fingerprint: newLog.fingerprint,
+                                                profile_id: newLog.profile_id
+                                            },
+                                            ...b.logs
+                                        ]
+                                    };
+                                }
+                                return b;
+                            });
+                            // Re-sort: most recently active business goes to top
+                            return updated.sort((a, b) => (b.last_activity || 0) - (a.last_activity || 0));
+                        });
                     }
                 })
                 .subscribe();

@@ -7,6 +7,7 @@
 --   1. Merchant account blocking
 --   2. Anonymous weekly limit (7 votes / 7 days / fingerprint)
 --   3. 24-hour same-business cooldown
+--   NOTE: Anonymous voters have 0.5 impact weight (not 1.0)
 --   4. 30-day diminishing returns weight calculation
 --   5. Shield enforcement (Level 1 = anonymous blocked, Level 2 = receipt required)
 --   6. Log insertion with content flagging
@@ -24,7 +25,8 @@ CREATE OR REPLACE FUNCTION public.submit_vote(
     p_reason_text TEXT DEFAULT NULL,
     p_profile_id UUID DEFAULT NULL,
     p_fingerprint TEXT DEFAULT NULL,
-    p_is_flagged BOOLEAN DEFAULT FALSE
+    p_is_flagged BOOLEAN DEFAULT FALSE,
+    p_receipt_url TEXT DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -60,16 +62,23 @@ BEGIN
     -- ═══════════════════════════════════════════════
     -- 2. SHIELD ENFORCEMENT
     --    Level 1 (Trust Shield): Blocks anonymous complaints
-    --    Level 2 (Fatora Shield): Requires receipt (handled client-side)
+    --    Level 2 (Fatora Shield): Requires receipt for complaints
     -- ═══════════════════════════════════════════════
     SELECT COALESCE(b.shield_level, 0), b.claimed_by
     INTO v_shield_level, v_claimed_by
     FROM public.businesses b
     WHERE b.id = p_business_id;
 
-    -- Shield Level 1+: Block anonymous complaints
+    -- Shield Level 1+: Block anonymous complaints (must be verified)
     IF v_shield_level >= 1 AND p_profile_id IS NULL AND p_interaction_type = 'complain' THEN
         RETURN jsonb_build_object('error', 'shield_requires_verification');
+    END IF;
+
+    -- Shield Level 2: Require receipt image for complaints (even verified users)
+    IF v_shield_level >= 2 AND p_interaction_type = 'complain' THEN
+        IF p_receipt_url IS NULL OR p_receipt_url = '' THEN
+            RETURN jsonb_build_object('error', 'shield_requires_receipt');
+        END IF;
     END IF;
 
     -- ═══════════════════════════════════════════════
@@ -108,11 +117,15 @@ BEGIN
     END IF;
 
     -- ═══════════════════════════════════════════════
-    -- 5. WEIGHT CALCULATION (30-day diminishing returns)
-    --    First vote on a business: weight = 1.0
-    --    Second vote (within 30 days): weight = 0.5
-    --    Third+: weight = 0.25
-    --    Verified users: base weight * (1 + gader_points/1000)
+    -- 5. WEIGHT CALCULATION
+    --    Tier multipliers (from trustEngine.js):
+    --      Bronze (0-999):       1.0x
+    --      Silver (1000-4999):   1.5x
+    --      Gold   (5000-19999):  2.0x
+    --      VIP    (20000+):      2.5x
+    --    Diminishing returns (30-day same-business):
+    --      First vote: 1.0, Second: 0.5, Third+: 0.25
+    --    Anonymous: flat 0.5 weight (half impact)
     -- ═══════════════════════════════════════════════
     IF p_profile_id IS NOT NULL THEN
         SELECT COUNT(*) INTO v_past_vote_count
@@ -121,7 +134,7 @@ BEGIN
           AND profile_id = p_profile_id
           AND created_at > v_now - INTERVAL '30 days';
 
-        -- Diminishing returns
+        -- Diminishing returns for repeated votes on same business
         IF v_past_vote_count = 0 THEN
             v_weight := 1.0;
         ELSIF v_past_vote_count = 1 THEN
@@ -130,13 +143,20 @@ BEGIN
             v_weight := 0.25;
         END IF;
 
-        -- Verified user bonus: weight * (1 + gader/1000)
-        IF v_profile_gader IS NOT NULL AND v_profile_gader > 0 THEN
-            v_weight := v_weight * (1.0 + (v_profile_gader::NUMERIC / 1000.0));
+        -- Tier-based multiplier (matches trustEngine.js)
+        IF v_profile_gader IS NOT NULL THEN
+            IF v_profile_gader >= 20000 THEN
+                v_weight := v_weight * 2.5;     -- VIP/Diamond tier
+            ELSIF v_profile_gader >= 5000 THEN
+                v_weight := v_weight * 2.0;     -- Gold tier
+            ELSIF v_profile_gader >= 1000 THEN
+                v_weight := v_weight * 1.5;     -- Silver tier
+            END IF;
+            -- Bronze (0-999): multiplier stays 1.0x (no change)
         END IF;
     ELSE
-        -- Anonymous: always weight 1.0 (no diminishing, no bonus)
-        v_weight := 1.0;
+        -- Anonymous: 0.5 weight (half impact, no tier bonus)
+        v_weight := 0.5;
     END IF;
 
     -- ═══════════════════════════════════════════════
@@ -150,6 +170,7 @@ BEGIN
         fingerprint,
         weight,
         is_flagged,
+        receipt_url,
         created_at
     ) VALUES (
         p_business_id,
@@ -159,6 +180,7 @@ BEGIN
         p_fingerprint,
         v_weight,
         p_is_flagged,
+        p_receipt_url,
         v_now
     )
     RETURNING id INTO v_log_id;
@@ -233,6 +255,20 @@ BEGIN
     ) THEN
         ALTER TABLE public.logs ADD COLUMN fingerprint TEXT;
         RAISE NOTICE 'Added fingerprint column to logs';
+    END IF;
+END $$;
+
+-- Add receipt_url column to logs if it doesn't exist (for Fatora Shield L2)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'logs'
+          AND column_name = 'receipt_url'
+    ) THEN
+        ALTER TABLE public.logs ADD COLUMN receipt_url TEXT;
+        RAISE NOTICE 'Added receipt_url column to logs';
     END IF;
 END $$;
 
