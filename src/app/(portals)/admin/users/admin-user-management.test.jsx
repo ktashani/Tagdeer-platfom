@@ -23,6 +23,20 @@ vi.mock('@/context/TagdeerContext', () => ({
     })
 }));
 
+vi.mock('@/hooks/usePlatformConfig', () => ({
+    usePlatformConfig: () => ({
+        categories: [],
+        regions: [],
+        shieldPricing: { trust: 20, fatora: 50 },
+        tierPricing: [],
+        vipThresholds: { guest: 0, bronze: 20, silver: 1000, gold: 5000, vip: 20000 },
+        adminRoles: ['super_admin', 'admin', 'assistant_admin', 'support_agent'],
+        loading: false,
+        error: null,
+        refreshConfig: vi.fn()
+    })
+}));
+
 vi.mock('date-fns', () => ({
     formatDistanceToNow: () => '1 hour ago'
 }));
@@ -64,9 +78,10 @@ describe('Admin Users Page', () => {
         });
 
         expect(screen.getByText('User Management')).toBeDefined();
-        expect(screen.getByText(/All Users/)).toBeDefined();
-        expect(screen.getByText(/Consumers/)).toBeDefined();
-        expect(screen.getByText(/Merchants/)).toBeDefined();
+        // Tab text appears in both desktop buttons and mobile select options
+        expect(screen.getAllByText(/All Users/).length).toBeGreaterThanOrEqual(1);
+        expect(screen.getAllByText(/Consumers/).length).toBeGreaterThanOrEqual(1);
+        expect(screen.getAllByText(/Merchants/).length).toBeGreaterThanOrEqual(1);
     });
 
     it('displays all users on the All tab', async () => {
@@ -112,7 +127,8 @@ describe('Admin Users Page', () => {
             render(<UsersPage />);
         });
 
-        const consumersTab = screen.getByText(/Consumers/);
+        // Target the desktop button (not the mobile <option>) by finding the button element
+        const consumersTab = screen.getAllByText(/Consumers/).find(el => el.closest('button'));
         await act(async () => {
             fireEvent.click(consumersTab);
         });
@@ -128,7 +144,8 @@ describe('Admin Users Page', () => {
             render(<UsersPage />);
         });
 
-        const merchantsTab = screen.getByText(/Merchants/);
+        // Target the desktop button (not the mobile <option>) by finding the button element
+        const merchantsTab = screen.getAllByText(/Merchants/).find(el => el.closest('button'));
         await act(async () => {
             fireEvent.click(merchantsTab);
         });

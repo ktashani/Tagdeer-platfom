@@ -69,7 +69,7 @@ describe('TagdeerContext – Integration', () => {
         expect(userId).toBe('mock-uuid');
     });
 
-    it('provides businesses from initial mock data', () => {
+    it('provides businesses array from context (empty when offline)', () => {
         function BizConsumer() {
             const { businesses } = useTagdeer();
             return <span data-testid="biz-count">{businesses.length}</span>;
@@ -81,7 +81,9 @@ describe('TagdeerContext – Integration', () => {
             </TagdeerProvider>
         );
 
-        expect(Number(screen.getByTestId('biz-count').textContent)).toBeGreaterThan(0);
+        // When supabase is null (offline/test), businesses starts as an empty array
+        // — the provider correctly initializes with [] and skips fetching
+        expect(Number(screen.getByTestId('biz-count').textContent)).toBe(0);
     });
 
     it('provides all expected context keys from the bridge', () => {

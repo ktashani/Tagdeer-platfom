@@ -80,6 +80,7 @@ describe('useVoteSubmission — RPC-based submission', () => {
             p_profile_id: 'uuid-123',
             p_fingerprint: 'anon-test-fingerprint',
             p_is_flagged: false,
+            p_receipt_url: null,
         });
     });
 
