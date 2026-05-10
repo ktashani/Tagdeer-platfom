@@ -73,8 +73,9 @@ export function ClientLayout({ children }) {
         let weight = calculateVoteWeight(user, 0); // default for offline
 
         // ── Phone Verification Gate ──
-        // Complaints (not recommendations) require phone verification for logged-in users
-        if (type === 'complain' && user && !user.phone_verified) {
+        // Complaints on SHIELDED businesses require phone verification
+        const targetBusiness = businesses.find(b => b.id === businessId);
+        if (type === 'complain' && user && !user.phone_verified && targetBusiness?.isClaimed) {
             setVoteModal({ isOpen: false, businessId: null, type: null });
             setShowPhoneVerify(true);
             return;

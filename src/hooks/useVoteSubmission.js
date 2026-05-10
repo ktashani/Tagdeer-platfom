@@ -63,8 +63,9 @@ export function useVoteSubmission({
                 return false;
             }
 
-            // Phone verification gate: complaints require verified phone for logged-in users
-            if (type === 'complain' && user && !user.phone_verified) {
+            // Phone verification gate: complaints on SHIELDED businesses require verified phone
+            // Unclaimed/unshielded businesses allow complaints from anyone
+            if (type === 'complain' && user && !user.phone_verified && isClaimed) {
                 return { error: 'phone_verification_required' };
             }
 
