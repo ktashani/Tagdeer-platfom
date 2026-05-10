@@ -11,6 +11,7 @@ import { LimitModal } from '../components/Modals/LimitModal';
 import { VerifySoonModal } from '../components/Modals/VerifySoonModal';
 import { LoginModal } from '../components/Auth/LoginModal';
 import { Toast } from '../components/Toast';
+import { PhoneVerifyPrompt } from '../components/Auth/PhoneVerifyPrompt';
 import { Facebook, Twitter, BadgeCheck } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -54,6 +55,7 @@ export function ClientLayout({ children }) {
 
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [impactBubble, setImpactBubble] = useState(null); // { weight: number, type: string }
+    const [showPhoneVerify, setShowPhoneVerify] = useState(false);
     const router = useRouter();
     const pathname = usePathname();
 
@@ -69,6 +71,14 @@ export function ClientLayout({ children }) {
         const { businessId, type } = voteModal;
         const fingerprint = getDeviceFingerprint();
         let weight = calculateVoteWeight(user, 0); // default for offline
+
+        // ── Phone Verification Gate ──
+        // Complaints (not recommendations) require phone verification for logged-in users
+        if (type === 'complain' && user && !user.phone_verified) {
+            setVoteModal({ isOpen: false, businessId: null, type: null });
+            setShowPhoneVerify(true);
+            return;
+        }
 
         if (supabase) {
             try {
@@ -139,6 +149,7 @@ export function ClientLayout({ children }) {
         }
 
         // Award +10 Gader Points to verified users
+        // Facebook-only users can still earn points, but only phone-verified users get the shield badge
         if (user?.id && supabase) {
             try {
                 const newPoints = (user.gader || 0) + 10;
@@ -277,6 +288,20 @@ export function ClientLayout({ children }) {
             />
 
             <LoginModal />
+
+            <PhoneVerifyPrompt
+                isOpen={showPhoneVerify}
+                onClose={() => setShowPhoneVerify(false)}
+                onVerified={(verifiedPhone) => {
+                    // Update user state with verified phone
+                    if (user) {
+                        user.phone = verifiedPhone;
+                        user.phone_verified = true;
+                    }
+                    setShowPhoneVerify(false);
+                    showToast(lang === 'ar' ? 'تم التحقق من رقم هاتفك بنجاح! 🎉' : 'Phone verified successfully! 🎉');
+                }}
+            />
 
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />
 

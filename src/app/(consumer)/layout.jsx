@@ -12,6 +12,7 @@ import { LimitModal } from '@/components/Modals/LimitModal';
 import { VerifySoonModal } from '@/components/Modals/VerifySoonModal';
 import { LoginModal } from '@/components/Auth/LoginModal';
 import { CouponAwardModal } from '@/components/consumer/CouponAwardModal';
+import { PhoneVerifyPrompt } from '@/components/Auth/PhoneVerifyPrompt';
 import { Toast } from '@/components/Toast';
 import { BadgeCheck } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -35,6 +36,7 @@ export default function ClientLayout({ children }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [globalImpactBubble, setGlobalImpactBubble] = useState(null);
     const [awardModalData, setAwardModalData] = useState(null);
+    const [showPhoneVerify, setShowPhoneVerify] = useState(false);
 
     useEffect(() => {
         const handleVoteEvent = (e) => {
@@ -97,11 +99,15 @@ export default function ClientLayout({ children }) {
                 onClose={() => setVoteModal({ isOpen: false, businessId: null, type: null })}
                 voteReason={voteReason}
                 setVoteReason={setVoteReason}
-                onSubmit={() => {
+                onSubmit={async () => {
                     const { businessId, type } = voteModal;
                     const targetBusiness = businesses.find(b => b.id === businessId);
-                    submitVote(businessId, type, voteReason, targetBusiness?.isClaimed);
+                    const result = await submitVote(businessId, type, voteReason, targetBusiness?.isClaimed);
                     setVoteModal({ isOpen: false, businessId: null, type: null });
+                    // If phone verification required, show the prompt
+                    if (result && result.error === 'phone_verification_required') {
+                        setShowPhoneVerify(true);
+                    }
                 }}
                 t={t}
                 type={voteModal.type}
@@ -129,6 +135,18 @@ export default function ClientLayout({ children }) {
             />
 
             <LoginModal />
+
+            <PhoneVerifyPrompt
+                isOpen={showPhoneVerify}
+                onClose={() => setShowPhoneVerify(false)}
+                onVerified={(verifiedPhone) => {
+                    if (user) {
+                        setUser(prev => prev ? { ...prev, phone: verifiedPhone, phone_verified: true } : prev);
+                    }
+                    setShowPhoneVerify(false);
+                    showToast(lang === 'ar' ? 'تم التحقق من رقم هاتفك بنجاح! 🎉' : 'Phone verified successfully! 🎉');
+                }}
+            />
 
             <Toast message={toastMessage} onClose={() => setToastMessage('')} />
 

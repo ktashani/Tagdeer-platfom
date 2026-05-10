@@ -63,6 +63,11 @@ export function useVoteSubmission({
                 return false;
             }
 
+            // Phone verification gate: complaints require verified phone for logged-in users
+            if (type === 'complain' && user && !user.phone_verified) {
+                return { error: 'phone_verification_required' };
+            }
+
             const fingerprint = getDeviceFingerprint();
 
             // Phase 1b: Content filter — flag if bad words detected

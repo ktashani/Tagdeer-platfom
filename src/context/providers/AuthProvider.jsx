@@ -130,6 +130,7 @@ export function AuthProvider({ children }) {
                             role: profile.role || 'consumer',
                             status: profile.status || 'Active',
                             has_password: profile.has_password || false,
+                            phone_verified: profile.phone_verified ?? (!!profile.phone),
                             weekly_log_count: profile.weekly_log_count || 0,
                             coupon_difficulty_level: profile.coupon_difficulty_level || 0,
                         };
