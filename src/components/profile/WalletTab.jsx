@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, Clock, Gift, Loader2, Lock, Store, Ticket, Zap } from 'lucide-react';
+import { AlertCircle, Clock, Gift, Loader2, Lock, Phone, ShieldCheck, Store, Ticket, Zap } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { getBarrierProgress } from '@/lib/couponEngine';
 
 export function WalletTab() {
     const { user, supabase, loading, lang, t, isRTL } = useTagdeer();
@@ -17,8 +18,9 @@ export function WalletTab() {
     const [isLoadingCoupons, setIsLoadingCoupons] = useState(true);
     const [selectedCoupon, setSelectedCoupon] = useState(null);
 
-    // Eligibility Check
-    const isEligible = user?.status === 'Active' && user?.gader >= 50;
+    // Barrier + Phone Gate (200 Gader + phone_verified)
+    const barrierProgress = getBarrierProgress(user);
+    const isEligible = barrierProgress.isFullyEligible;
 
     useEffect(() => {
         if (!loading && !user) {
@@ -34,15 +36,15 @@ export function WalletTab() {
                     const { data, error } = await supabase
                         .from('user_coupons')
                         .select(`
-                            id, serial_code, generated_at, valid_until, status,
-                            merchant_coupons (
+                            id, serial_code, generated_at, valid_until, status, source,
+                            merchant_coupons:campaign_id (
                                 id, title, offer_type, discount_value, item_name,
-                                businesses ( name, region, category )
+                                businesses:business_id ( name, region, category )
                             )
                         `)
-                        .eq('profile_id', user.id)
+                        .eq('user_id', user.id)
                         .in('status', ['ACTIVE'])
-                        .order('valid_until', { ascending: true }); // Closest expiry first
+                        .order('valid_until', { ascending: true });
 
                     if (error) throw error;
                     setCoupons(data || []);
@@ -66,11 +68,12 @@ export function WalletTab() {
         );
     }
 
+    // ═══ Locked State — Phone not verified OR Gader < 200 ═══
     if (!isEligible) {
         return (
             <div className="min-h-[400px] flex items-center justify-center p-6 bg-slate-50/50 rounded-2xl border border-slate-100 mt-2">
-                <div className="max-w-md w-full text-center space-y-4">
-                    <div className="w-20 h-20 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6">
+                <div className="max-w-md w-full text-center space-y-5">
+                    <div className="w-20 h-20 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto">
                         <Lock className="w-10 h-10 text-slate-400" />
                     </div>
                     <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
@@ -78,12 +81,55 @@ export function WalletTab() {
                     </h1>
                     <p className="text-slate-500">
                         {lang === 'ar'
-                            ? 'لفتح محفظة الخصومات والمكافآت، يجب أن يكون حسابك نشطاً وأن تمتلك على الأقل 50 نقطة تقدير.'
-                            : 'To unlock your rewards wallet, your account must be Active and you need at least 50 Gader Points.'}
+                            ? 'لفتح المحفظة، تحتاج إلى استيفاء شرطين:'
+                            : 'To unlock your wallet, you need to meet two requirements:'}
                     </p>
-                    <div className="pt-6">
+
+                    {/* Gate checklist */}
+                    <div className="space-y-3 text-left max-w-xs mx-auto">
+                        {/* Gader Gate */}
+                        <div className={`flex items-center gap-3 p-3 rounded-xl border ${
+                            barrierProgress.meetsBarrier
+                                ? 'bg-emerald-50 border-emerald-200'
+                                : 'bg-slate-50 border-slate-200'
+                        }`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                barrierProgress.meetsBarrier ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-400'
+                            }`}>
+                                {barrierProgress.meetsBarrier ? <ShieldCheck className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-grow">
+                                <p className="text-sm font-semibold text-slate-700">
+                                    {lang === 'ar' ? `${barrierProgress.current} / ${barrierProgress.required} قدر` : `${barrierProgress.current} / ${barrierProgress.required} Gader`}
+                                </p>
+                                <div className="w-full h-2 bg-slate-200 rounded-full mt-1 overflow-hidden">
+                                    <div className="h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full transition-all" style={{ width: `${barrierProgress.percentage}%` }} />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Phone Gate */}
+                        <div className={`flex items-center gap-3 p-3 rounded-xl border ${
+                            barrierProgress.meetsPhone
+                                ? 'bg-emerald-50 border-emerald-200'
+                                : 'bg-orange-50 border-orange-200'
+                        }`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                barrierProgress.meetsPhone ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-500'
+                            }`}>
+                                {barrierProgress.meetsPhone ? <ShieldCheck className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+                            </div>
+                            <p className="text-sm font-semibold text-slate-700">
+                                {barrierProgress.meetsPhone
+                                    ? (lang === 'ar' ? 'هاتف موثّق ✓' : 'Phone Verified ✓')
+                                    : (lang === 'ar' ? 'هاتف غير موثّق' : 'Phone Not Verified')}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="pt-4">
                         <Button onClick={() => router.push('/discover')} className="rounded-full px-8">
-                            {lang === 'ar' ? 'اكتشف الأنشطة واكسب النقاط' : 'Discover Places & Earn Points'}
+                            {lang === 'ar' ? 'اكتشف واكسب قدر' : 'Discover & Earn Gader'}
                         </Button>
                     </div>
                 </div>
@@ -93,13 +139,13 @@ export function WalletTab() {
 
     const renderCouponCard = (coupon) => {
         const mc = coupon.merchant_coupons;
+        if (!mc) return null;
         const biz = mc.businesses;
         const couponName = mc.offer_type === 'free_item' ? mc.item_name : `${mc.discount_value}${mc.offer_type === 'percentage' ? '%' : ' LYD'} Off`;
 
         // Check Hot Coupon status (< 48 hours from acquired)
         const ageHours = (new Date() - new Date(coupon.generated_at)) / (1000 * 60 * 60);
         const isHot = ageHours < 48;
-        const hoursLeftForHot = Math.max(0, 48 - ageHours).toFixed(1);
 
         const expiryDate = new Date(coupon.valid_until);
         const daysToExpiry = Math.ceil((expiryDate - new Date()) / (1000 * 60 * 60 * 24));
@@ -115,9 +161,16 @@ export function WalletTab() {
                     <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-xl group-hover:scale-150 transition-transform"></div>
                     <div className="relative z-10 flex justify-between items-start">
                         <div>
-                            <Badge className="bg-white/20 hover:bg-white/30 text-white border-0 mb-3 backdrop-blur-md">
-                                {mc.title || (lang === 'ar' ? 'مكافأة تقدير' : 'Tagdeer Reward')}
-                            </Badge>
+                            <div className="flex items-center gap-2 mb-3">
+                                <Badge className="bg-white/20 hover:bg-white/30 text-white border-0 backdrop-blur-md">
+                                    {mc.title || (lang === 'ar' ? 'مكافأة تقدير' : 'Tagdeer Reward')}
+                                </Badge>
+                                {coupon.source === 'DIRECT' && (
+                                    <Badge className="bg-emerald-500/30 hover:bg-emerald-500/40 text-white border-0 backdrop-blur-md text-xs">
+                                        {lang === 'ar' ? 'مباشر' : 'Direct'}
+                                    </Badge>
+                                )}
+                            </div>
                             <h3 className="text-2xl font-black text-white mb-1">{couponName}</h3>
                             <p className="text-blue-100 flex items-center gap-1 text-sm font-medium">
                                 <Store className="w-4 h-4" /> {biz?.name}
@@ -146,7 +199,13 @@ export function WalletTab() {
                         {isHot && (
                             <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-0 flex items-center gap-1 animate-pulse">
                                 <Zap className="w-3 h-3" />
-                                {lang === 'ar' ? 'مكافأة مضاعفة' : '1.5x Bonus'}
+                                {lang === 'ar' ? '🔥 جديد!' : '🔥 Hot!'}
+                            </Badge>
+                        )}
+                        {isExpiringSoon && !isHot && (
+                            <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-0 flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" />
+                                {lang === 'ar' ? `${daysToExpiry} يوم` : `${daysToExpiry}d left`}
                             </Badge>
                         )}
                     </div>
@@ -217,20 +276,17 @@ export function WalletTab() {
                                 ✕
                             </button>
                             <h3 className="text-2xl font-black text-white mb-2">
-                                {selectedCoupon.merchant_coupons.offer_type === 'free_item'
+                                {selectedCoupon.merchant_coupons?.offer_type === 'free_item'
                                     ? selectedCoupon.merchant_coupons.item_name
-                                    : `${selectedCoupon.merchant_coupons.discount_value}${selectedCoupon.merchant_coupons.offer_type === 'percentage' ? '%' : ' LYD'} Off`}
+                                    : `${selectedCoupon.merchant_coupons?.discount_value}${selectedCoupon.merchant_coupons?.offer_type === 'percentage' ? '%' : ' LYD'} Off`}
                             </h3>
                             <p className="text-indigo-100 font-medium bg-black/20 inline-block px-3 py-1 rounded-full text-sm">
-                                {selectedCoupon.merchant_coupons.businesses.name}
+                                {selectedCoupon.merchant_coupons?.businesses?.name}
                             </p>
                         </div>
 
                         {/* QR Section */}
                         <div className="p-8 flex flex-col items-center bg-white relative">
-                            {/* Jagged border effect */}
-                            <div className="absolute top-0 left-0 right-0 h-2 bg-[url('/img/jagged-border.svg')] bg-repeat-x -mt-2"></div>
-
                             <p className="text-slate-500 text-sm mb-6 text-center">
                                 {lang === 'ar' ? 'أظهر هذا الرمز للتاجر عند الدفع' : 'Show this QR code to the merchant at checkout'}
                             </p>

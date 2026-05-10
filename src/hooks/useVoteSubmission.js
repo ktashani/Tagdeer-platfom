@@ -63,6 +63,12 @@ export function useVoteSubmission({
                 return false;
             }
 
+            // Phone verification gate: complaints on SHIELDED businesses require verified phone
+            // Unclaimed/unshielded businesses allow complaints from anyone
+            if (type === 'complain' && user && !user.phone_verified && isClaimed) {
+                return { error: 'phone_verification_required' };
+            }
+
             const fingerprint = getDeviceFingerprint();
 
             // Phase 1b: Content filter — flag if bad words detected

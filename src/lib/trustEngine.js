@@ -60,3 +60,48 @@ export function calculateVoteWeight(user, pastVoteCount) {
     const diminishing = getDiminishingMultiplier(pastVoteCount);
     return Math.round(tier * diminishing * 100) / 100;
 }
+
+/**
+ * Calculates the level decay multiplier based on current Gader points.
+ * Higher points = lower decay = fewer points earned per vote.
+ * Mirrors the server-side formula in submit_vote v3.
+ *
+ * @param {number} currentGader - Current Gader point total
+ * @returns {number} The decay multiplier (1.0 → 0.2)
+ */
+export function calculateLevelDecay(currentGader) {
+    const gader = currentGader || 0;
+    return Math.max(0.2, 1.0 - Math.floor(gader / 200) * 0.1);
+}
+
+/**
+ * Calculates the estimated Gader points a user will earn for a vote.
+ * Triple-layer formula: category_base × phone_multiplier × level_decay
+ * Mirrors the server-side submit_vote v3 logic for client-side preview.
+ *
+ * @param {object} params
+ * @param {number} params.categoryBasePoints - Base points for the business category
+ * @param {boolean} params.phoneVerified - Whether user has verified phone
+ * @param {number} params.currentGader - User's current Gader total
+ * @param {number} [params.phoneMultiplier=0.25] - Penalty for unverified (from config)
+ * @returns {object} { earned, breakdown: { categoryBase, phoneMult, levelDecay } }
+ */
+export function calculatePointsEarned({
+    categoryBasePoints = 3,
+    phoneVerified = false,
+    currentGader = 0,
+    phoneMultiplier = 0.25
+}) {
+    const phoneMult = phoneVerified ? 1.0 : phoneMultiplier;
+    const levelDecay = calculateLevelDecay(currentGader);
+    const earned = Math.max(1, Math.round(categoryBasePoints * phoneMult * levelDecay));
+
+    return {
+        earned,
+        breakdown: {
+            categoryBase: categoryBasePoints,
+            phoneMult,
+            levelDecay
+        }
+    };
+}

@@ -6,7 +6,7 @@ import { useTagdeer } from '@/context/TagdeerContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mail, KeyRound, Lock, ArrowRight, Loader2, Eye, EyeOff, Info } from 'lucide-react';
+import { Mail, KeyRound, Lock, ArrowRight, Loader2, Eye, EyeOff, Info, Facebook } from 'lucide-react';
 import { toast } from 'sonner';
 import SetPasswordPrompt from '@/components/merchant/SetPasswordPrompt';
 
@@ -20,6 +20,7 @@ export default function MerchantLogin() {
     const [isLoading, setIsLoading] = useState(false);
     const [isCheckingPassword, setIsCheckingPassword] = useState(false);
     const [isRedirecting, setIsRedirecting] = useState(false);
+    const [fbLoading, setFbLoading] = useState(false);
     const router = useRouter();
     const searchParams = useSearchParams();
     const {
@@ -340,6 +341,52 @@ export default function MerchantLogin() {
                                         <>Continue <ArrowRight className="ml-2 w-4 h-4" /></>
                                     )}
                                 </Button>
+
+                                {/* ── Divider ── */}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 h-px bg-slate-200"></div>
+                                    <span className="text-xs text-slate-400 uppercase font-medium">or</span>
+                                    <div className="flex-1 h-px bg-slate-200"></div>
+                                </div>
+
+                                {/* ── Facebook Login Button ── */}
+                                <button
+                                    type="button"
+                                    disabled={fbLoading}
+                                    onClick={async () => {
+                                        setFbLoading(true);
+                                        try {
+                                            const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+                                            const redirectOrigin = envSiteUrl || window.location.origin;
+                                            const callbackUrl = `${redirectOrigin}/auth/callback?from=merchant${trialCampaign ? `&trial_campaign=${trialCampaign}` : ''}`;
+                                            const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+                                                provider: 'facebook',
+                                                options: {
+                                                    redirectTo: callbackUrl,
+                                                    scopes: 'public_profile,email',
+                                                }
+                                            });
+                                            if (oauthErr) {
+                                                console.error('Facebook OAuth error:', oauthErr);
+                                                toast.error(oauthErr.message || 'Facebook login failed');
+                                                setFbLoading(false);
+                                            }
+                                        } catch (err) {
+                                            console.error('Facebook login exception:', err);
+                                            toast.error('Connection error');
+                                            setFbLoading(false);
+                                        }
+                                    }}
+                                    className="w-full h-12 flex items-center justify-center gap-2.5 rounded-xl font-bold text-base text-white transition-all shadow-md hover:shadow-lg"
+                                    style={{ backgroundColor: '#1877F2' }}
+                                >
+                                    {fbLoading ? (
+                                        <Loader2 className="h-5 w-5 animate-spin" />
+                                    ) : (
+                                        <Facebook className="h-5 w-5" />
+                                    )}
+                                    Continue with Facebook
+                                </button>
                             </form>
                         )}
 

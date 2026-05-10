@@ -11,7 +11,7 @@ import {
     DialogTitle,
     DialogDescription,
 } from '@/components/ui/dialog';
-import { Phone, ShieldCheck, Loader2, ArrowLeft, Sparkles, Mail, Timer } from 'lucide-react';
+import { Phone, ShieldCheck, Loader2, ArrowLeft, Sparkles, Mail, Timer, Facebook } from 'lucide-react';
 
 export function LoginModal() {
     const { showLoginModal, setShowLoginModal, loginWithOtp, login, t, lang, isRTL, supabase } = useTagdeer();
@@ -23,6 +23,7 @@ export function LoginModal() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [otpChannel, setOtpChannel] = useState('whatsapp'); // 'whatsapp' or 'email'
+    const [fbLoading, setFbLoading] = useState(false);
     const inputRefs = useRef([]);
 
     // Safely detect localhost on client to avoid Next.js hydration mismatch
@@ -255,6 +256,7 @@ export function LoginModal() {
             setEmail('');
             setOtpDigits(['', '', '', '', '', '']);
             setOtpChannel('whatsapp');
+            setFbLoading(false);
         }, 500);
     };
 
@@ -274,7 +276,7 @@ export function LoginModal() {
 
     return (
         <Dialog open={showLoginModal} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-md overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
+            <DialogContent className="sm:max-w-md overflow-y-auto max-h-[90vh]" dir={isRTL ? 'rtl' : 'ltr'}>
                 {/* Decorative top gradient */}
                 <div className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${step === 'email' ? 'from-blue-400 via-indigo-500 to-purple-500'
                     : step === 'otp' ? 'from-blue-400 via-blue-500 to-indigo-500'
@@ -352,6 +354,57 @@ export function LoginModal() {
                                 )}
                             </Button>
 
+                            {/* ── Divider ── */}
+                            <div className="relative my-2">
+                                <div className="absolute inset-0 flex items-center">
+                                    <div className="w-full border-t border-slate-200" />
+                                </div>
+                                <div className="relative flex justify-center text-xs">
+                                    <span className="bg-white px-3 text-slate-400 font-medium">
+                                        {lang === 'ar' ? 'أو' : 'or'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* ── Facebook Login Button ── */}
+                            <button
+                                type="button"
+                                disabled={fbLoading}
+                                onClick={async () => {
+                                    setFbLoading(true);
+                                    setError('');
+                                    try {
+                                        const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+                                        const redirectOrigin = envSiteUrl || window.location.origin;
+                                        const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+                                            provider: 'facebook',
+                                            options: {
+                                                redirectTo: `${redirectOrigin}/auth/callback`,
+                                                scopes: 'public_profile,email',
+                                            }
+                                        });
+                                        if (oauthErr) {
+                                            console.error('Facebook OAuth error:', oauthErr);
+                                            setError(oauthErr.message || (lang === 'ar' ? 'فشل تسجيل الدخول عبر فيسبوك' : 'Facebook login failed'));
+                                            setFbLoading(false);
+                                        }
+                                    } catch (err) {
+                                        console.error('Facebook login exception:', err);
+                                        setError(lang === 'ar' ? 'حدث خطأ في الاتصال' : 'Connection error');
+                                        setFbLoading(false);
+                                    }
+                                }}
+                                className="w-full h-12 flex items-center justify-center gap-2.5 rounded-xl font-bold text-base text-white transition-all shadow-md hover:shadow-lg"
+                                style={{ backgroundColor: '#1877F2' }}
+                            >
+                                {fbLoading ? (
+                                    <Loader2 className="h-5 w-5 animate-spin" />
+                                ) : (
+                                    <Facebook className="h-5 w-5" />
+                                )}
+                                {lang === 'ar' ? 'الدخول عبر فيسبوك' : 'Continue with Facebook'}
+                            </button>
+
                             {/* Email fallback link */}
                             <button
                                 type="button"
@@ -359,12 +412,12 @@ export function LoginModal() {
                                 className="w-full flex items-center justify-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 mt-1 hover:underline"
                             >
                                 <Mail className="w-3.5 h-3.5" />
-                                {lang === 'ar' ? 'لم يصلك الرمز؟ أرسل عبر البريد الإلكتروني' : "Didn't get the code? Send via Email instead"}
+                                {lang === 'ar' ? 'أو سجّل عبر البريد الإلكتروني' : 'Or sign in with Email'}
                             </button>
 
                             {/* DEV BYPASS button on phone screen */}
                             {(process.env.NODE_ENV === 'development' || isLocalhost) && (
-                                <div className="mt-3 pt-3 border-t border-slate-100">
+                                <div className="mt-2 pt-2 border-t border-slate-100">
                                     <button
                                         type="button"
                                         onClick={(e) => handleSendOtp(e, true)}
@@ -459,7 +512,7 @@ export function LoginModal() {
                             <div className="flex items-center justify-center gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
                                 <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
                                 <span className="text-xs text-amber-700 font-medium">
-                                    {lang === 'ar' ? 'مكافأة ترحيبية +500 نقطة للحسابات الجديدة!' : '+500 point welcome bonus for new accounts!'}
+                                    {lang === 'ar' ? 'مكافأة ترحيبية +20 قدر للحسابات الجديدة!' : '+20 Gader welcome bonus for new accounts!'}
                                 </span>
                             </div>
 
