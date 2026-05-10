@@ -21,6 +21,7 @@ export default function ScannerModal({ isOpen, onClose, businessId }) {
     const [scannedUserId, setScannedUserId] = useState(null);
     const [errorMessage, setErrorMessage] = useState('');
     const [showCoupons, setShowCoupons] = useState(false);
+    const [scanResult, setScanResult] = useState(null);
 
     useEffect(() => {
         let scanner = null;
@@ -110,23 +111,26 @@ export default function ScannerModal({ isOpen, onClose, businessId }) {
                 if (isDevEnv && targetUserId === 'mock-user-id') {
                     // UI testing mock bypass
                 } else {
-                    // 2. Award Scan Points and register interaction via new RPC
+                    // 2. Award Scan Points via economy-aligned RPC v2
                     const { data, error } = await supabase.rpc('award_scan_points', {
                         p_user_id: targetUserId,
                         p_business_id: businessId
                     });
 
                     if (error) {
-                        if (error.message.includes('Wait 24 hours')) {
-                            throw new Error('User has already been scanned here today.');
+                        if (error.message.includes('Wait 24 hours') || error.message.includes('Daily scan limit')) {
+                            throw new Error(error.message);
                         }
                         throw error;
                     }
                     if (!data.success) throw new Error(data.error);
+
+                    // Store scan result for display
+                    setScanResult(data);
                 }
 
                 setScanStatus('success');
-                toast.success('Interaction logged and Gader Points awarded!');
+                toast.success(`Gader Points awarded! (+${scanResult?.points_awarded || 5})`);
             }
 
         } catch (err) {
@@ -136,29 +140,58 @@ export default function ScannerModal({ isOpen, onClose, businessId }) {
         }
     };
 
-    const handleManualSubmit = (e) => {
+    const handleManualSubmit = async (e) => {
         e.preventDefault();
-        if (!otpCode || otpCode.length < 5) {
+        if (!otpCode || otpCode.length < 3) {
             toast.error("Please enter a valid code.");
             return;
         }
 
         setScanStatus('processing');
-        const isDevEnv = process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
 
-        if (isDevEnv) {
-            // Simulate network call for manual OTP in dev
-            setTimeout(() => {
-                setScannedUserId("mock-user-id");
+        try {
+            const code = otpCode.trim();
+
+            // Check if it's a coupon serial (TAG-XXXX format)
+            if (code.startsWith('TAG-')) {
+                const { data, error } = await supabase.rpc('redeem_coupon', {
+                    p_serial_code: code,
+                    p_merchant_id: businessId
+                });
+                if (error) throw error;
+                if (!data.success) throw new Error(data.message);
+                toast.success(`🎉 Coupon Redeemed! ${data.coupon_details?.item_name || 'Discount Applied'}`);
                 setScanStatus('success');
-                toast.success('Interaction logged successfully via dev code bypass!');
-            }, 1000);
-        } else {
-            // In production, block mock bypass until we hook it up to real logic
-            setTimeout(() => {
-                setErrorMessage('Manual verification is currently unavailable.');
-                setScanStatus('error');
-            }, 500);
+            }
+            // Check if it's a VIP-XXXXX user ID
+            else if (code.startsWith('VIP-')) {
+                // Look up user by user_id
+                const { data: profile, error: profileErr } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('user_id', code)
+                    .single();
+                if (profileErr || !profile) throw new Error('User not found with that VIP code.');
+
+                const { data, error } = await supabase.rpc('award_scan_points', {
+                    p_user_id: profile.id,
+                    p_business_id: businessId
+                });
+                if (error) throw error;
+                if (!data.success) throw new Error(data.error);
+
+                setScannedUserId(profile.id);
+                setScanResult(data);
+                setScanStatus('success');
+                toast.success(`Gader Points awarded! (+${data.points_awarded})`);
+            }
+            else {
+                throw new Error('Invalid code. Enter a TAG-XXXX coupon serial or VIP-XXXXX user code.');
+            }
+        } catch (err) {
+            console.error('Manual submit error:', err);
+            setErrorMessage(err.message || 'Failed to process code.');
+            setScanStatus('error');
         }
     };
 
@@ -169,6 +202,7 @@ export default function ScannerModal({ isOpen, onClose, businessId }) {
     const handleReset = () => {
         setScanStatus('scanning');
         setScannedUserId(null);
+        setScanResult(null);
         setErrorMessage('');
         setOtpCode('');
         setShowCoupons(false);
@@ -178,21 +212,17 @@ export default function ScannerModal({ isOpen, onClose, businessId }) {
         const couponName = coupon.offer_type === 'free_item' ? coupon.item_name : `${coupon.discount_value}${coupon.offer_type === 'percentage' ? '%' : ' LYD'} Off`;
 
         try {
-            const { error: redemptionError } = await supabase
-                .from('coupon_redemptions')
-                .insert({
-                    coupon_id: coupon.id,
-                    profile_id: scannedUserId
-                });
+            // Use the grant_direct_coupon RPC — bypasses 200 Gader barrier, requires phone_verified
+            const { data, error } = await supabase.rpc('grant_direct_coupon', {
+                p_campaign_id: coupon.id,
+                p_target_user_id: scannedUserId,
+                p_merchant_id: user?.id
+            });
 
-            if (redemptionError) {
-                if (redemptionError.code === '23505') {
-                    throw new Error('User already claimed this coupon.');
-                }
-                throw redemptionError;
-            }
+            if (error) throw error;
+            if (!data.success) throw new Error(data.error);
 
-            toast.success(`Coupon "${couponName}" has been pushed to the user's wallet!`);
+            toast.success(`🎟️ Coupon "${couponName}" pushed to ${data.user_name}'s wallet!`);
             onClose();
         } catch (err) {
             toast.error(err.message || "Failed to allocate coupon");
@@ -288,9 +318,18 @@ export default function ScannerModal({ isOpen, onClose, businessId }) {
                                 <CheckCircle2 className="w-10 h-10" />
                             </div>
                             <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Verification Successful!</h3>
-                            <p className="text-slate-500 mb-6 font-medium">
-                                VIP Customer acknowledged. +5 Trust Points awarded.
-                            </p>
+                            {scanResult && (
+                                <div className="text-sm text-slate-600 mb-4 space-y-1">
+                                    <p className="font-semibold text-emerald-600">+{scanResult.points_awarded} Gader Points awarded</p>
+                                    {scanResult.milestone_bonus > 0 && (
+                                        <p className="text-amber-600">🏆 +{scanResult.milestone_bonus} Milestone Bonus!</p>
+                                    )}
+                                    <p className="text-xs text-slate-400">Streak: {scanResult.current_streak} days • Tier: {scanResult.business_tier}</p>
+                                </div>
+                            )}
+                            {!scanResult && (
+                                <p className="text-slate-500 mb-6 font-medium">Customer interaction logged.</p>
+                            )}
 
                             <div className="w-full space-y-3">
                                 {!showCoupons ? (

@@ -133,6 +133,17 @@ export function AuthProvider({ children }) {
                             phone_verified: profile.phone_verified ?? (!!profile.phone),
                             weekly_log_count: profile.weekly_log_count || 0,
                             coupon_difficulty_level: profile.coupon_difficulty_level || 0,
+                            // Milestone tracking
+                            unique_businesses_count: profile.unique_businesses_count || 0,
+                            current_streak: profile.current_streak || 0,
+                            longest_streak: profile.longest_streak || 0,
+                            milestones_completed: profile.milestones_completed || {},
+                            // Profile extras
+                            avatarUrl: profile.avatar_url || prev.avatarUrl,
+                            city: profile.city,
+                            gender: profile.gender,
+                            birth_date: profile.birth_date,
+                            profile_email: profile.email,
                         };
                         localStorage.setItem('tagdeer-user', JSON.stringify(enriched));
                         return enriched;

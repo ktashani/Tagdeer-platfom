@@ -276,7 +276,7 @@ export function LoginModal() {
 
     return (
         <Dialog open={showLoginModal} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-md overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
+            <DialogContent className="sm:max-w-md overflow-y-auto max-h-[90vh]" dir={isRTL ? 'rtl' : 'ltr'}>
                 {/* Decorative top gradient */}
                 <div className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${step === 'email' ? 'from-blue-400 via-indigo-500 to-purple-500'
                     : step === 'otp' ? 'from-blue-400 via-blue-500 to-indigo-500'
@@ -354,18 +354,8 @@ export function LoginModal() {
                                 )}
                             </Button>
 
-                            {/* Email fallback link */}
-                            <button
-                                type="button"
-                                onClick={() => { setStep('email'); setError(''); }}
-                                className="w-full flex items-center justify-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 mt-1 hover:underline"
-                            >
-                                <Mail className="w-3.5 h-3.5" />
-                                {lang === 'ar' ? 'لم يصلك الرمز؟ أرسل عبر البريد الإلكتروني' : "Didn't get the code? Send via Email instead"}
-                            </button>
-
                             {/* ── Divider ── */}
-                            <div className="relative my-3">
+                            <div className="relative my-2">
                                 <div className="absolute inset-0 flex items-center">
                                     <div className="w-full border-t border-slate-200" />
                                 </div>
@@ -398,7 +388,6 @@ export function LoginModal() {
                                             setError(oauthErr.message || (lang === 'ar' ? 'فشل تسجيل الدخول عبر فيسبوك' : 'Facebook login failed'));
                                             setFbLoading(false);
                                         }
-                                        // If successful, browser redirects — no need to setFbLoading(false)
                                     } catch (err) {
                                         console.error('Facebook login exception:', err);
                                         setError(lang === 'ar' ? 'حدث خطأ في الاتصال' : 'Connection error');
@@ -416,9 +405,19 @@ export function LoginModal() {
                                 {lang === 'ar' ? 'الدخول عبر فيسبوك' : 'Continue with Facebook'}
                             </button>
 
+                            {/* Email fallback link */}
+                            <button
+                                type="button"
+                                onClick={() => { setStep('email'); setError(''); }}
+                                className="w-full flex items-center justify-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 mt-1 hover:underline"
+                            >
+                                <Mail className="w-3.5 h-3.5" />
+                                {lang === 'ar' ? 'أو سجّل عبر البريد الإلكتروني' : 'Or sign in with Email'}
+                            </button>
+
                             {/* DEV BYPASS button on phone screen */}
                             {(process.env.NODE_ENV === 'development' || isLocalhost) && (
-                                <div className="mt-3 pt-3 border-t border-slate-100">
+                                <div className="mt-2 pt-2 border-t border-slate-100">
                                     <button
                                         type="button"
                                         onClick={(e) => handleSendOtp(e, true)}

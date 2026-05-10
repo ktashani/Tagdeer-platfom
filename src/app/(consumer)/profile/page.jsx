@@ -5,16 +5,18 @@ import { useTagdeer } from '@/context/TagdeerContext';
 import { usePlatformConfig } from '@/hooks/usePlatformConfig';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Mail, User, ShieldCheck, Phone, AlertTriangle, Target } from 'lucide-react';
+import { Mail, User, ShieldCheck, Phone, AlertTriangle, Target, Lock } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Toast } from '@/components/Toast';
 import { AccountStatusBanner } from '@/components/profile/AccountStatusBanner';
+import { getBarrierProgress } from '@/lib/couponEngine';
 
 // Extracted components
 import { ProfileHeader } from '@/components/profile/ProfileHeader';
 import { LogHistory } from '@/components/profile/LogHistory';
 import { GaderPassModal } from '@/components/profile/GaderPassModal';
+import { MilestoneChecklist } from '@/components/profile/MilestoneChecklist';
 
 export default function ProfilePage() {
     const { user, logout, t, isRTL, setShowLoginModal, lang, supabase } = useTagdeer();
@@ -198,6 +200,10 @@ export default function ProfilePage() {
 
     const progressInfo = getProgressInfo(user.gader);
 
+    // Barrier progress for reward eligibility
+    const minGaderForRewards = platformConfig?.minGaderForRewards || 200;
+    const barrierProgress = getBarrierProgress(user, minGaderForRewards);
+
     // Step 1: Confirm email → show OTP input
     const handleConfirmEmail = () => {
         if (!email || !email.includes('@')) {
@@ -315,55 +321,132 @@ export default function ProfilePage() {
                     </button>
                 )}
 
-                <button
-                    onClick={() => {
-                        setActiveTab('coupons');
-                        // Scroll down to the tabs area
-                        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                    }}
-                    className="w-full max-w-xs py-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:from-amber-500 hover:to-orange-600 transition-all flex justify-center items-center gap-2"
-                >
-                    💳 {lang === 'ar' ? 'محفظة المكافآت' : 'My Wallet'}
-                </button>
+                {barrierProgress.isFullyEligible ? (
+                    <button
+                        onClick={() => {
+                            setActiveTab('coupons');
+                            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                        }}
+                        className="w-full max-w-xs py-3 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:from-amber-500 hover:to-orange-600 transition-all flex justify-center items-center gap-2"
+                    >
+                        💳 {lang === 'ar' ? 'محفظة المكافآت' : 'My Wallet'}
+                    </button>
+                ) : (
+                    <button
+                        disabled
+                        className="w-full max-w-xs py-3 bg-gray-200 text-gray-400 rounded-xl font-bold shadow-sm flex justify-center items-center gap-2 cursor-not-allowed relative"
+                    >
+                        <Lock className="w-4 h-4" />
+                        {lang === 'ar'
+                            ? `محفظة مقفلة (${barrierProgress.remaining} قدر متبقي)`
+                            : `Wallet Locked (${barrierProgress.remaining} Gader left)`}
+                    </button>
+                )}
             </div>
 
-            {/* 🎯 Weekly Log Meter (Coupon Eligibility) */}
-            <div className="bg-white rounded-2xl shadow-sm border border-indigo-100 overflow-hidden mb-8 p-6 sm:p-8">
-                <div className="flex justify-between items-end mb-3">
-                    <div className="flex items-center gap-2">
-                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                            <Target className="w-6 h-6" />
+            {/* 📱 Onboarding Guidance — shown when user hasn't verified phone */}
+            {!user?.phone_verified && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 mb-8">
+                    <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                            <Phone className="w-5 h-5 text-blue-600" />
                         </div>
-                        <div className="flex flex-col">
-                            <h3 className="text-lg font-bold text-slate-800">
-                                {lang === 'ar' ? 'مؤشر المكافآت الأسبوعي' : 'Weekly Rewards Meter'}
+                        <div className="flex-grow">
+                            <h3 className="font-bold text-blue-900 text-lg mb-2">
+                                {lang === 'ar' ? 'وثّق حسابك واكسب أكثر!' : 'Verify Your Account to Earn More!'}
                             </h3>
-                            <p className="text-sm text-slate-500 font-medium">
+                            <p className="text-blue-700 text-sm mb-3">
                                 {lang === 'ar'
-                                    ? 'سجل تجاربك لتفتح تصاريح الخصم الحصرية.'
-                                    : 'Log experiences to unlock exclusive discount coupons.'}
+                                    ? 'حسابك غير موثق. المستخدمون الموثقون يكسبون 4 أضعاف النقاط ويفتحون المكافآت والكوبونات.'
+                                    : 'Your account is unverified. Verified users earn 4× more Gader points and unlock rewards & coupons.'}
                             </p>
+                            <div className="space-y-2 mb-4">
+                                <div className="flex items-center gap-2 text-sm text-blue-800">
+                                    <span className="w-5 h-5 rounded-full bg-blue-200 flex items-center justify-center text-xs font-bold">1</span>
+                                    {lang === 'ar' ? 'وثّق رقم هاتفك عبر واتساب' : 'Verify your phone via WhatsApp'}
+                                </div>
+                                <div className="flex items-center gap-2 text-sm text-blue-800">
+                                    <span className="w-5 h-5 rounded-full bg-blue-200 flex items-center justify-center text-xs font-bold">2</span>
+                                    {lang === 'ar' ? 'اجمع 200 قدر من خلال التقييمات' : 'Collect 200 Gader by giving evaluations'}
+                                </div>
+                                <div className="flex items-center gap-2 text-sm text-blue-800">
+                                    <span className="w-5 h-5 rounded-full bg-blue-200 flex items-center justify-center text-xs font-bold">3</span>
+                                    {lang === 'ar' ? 'افتح المحفظة واحصل على كوبونات مجانية!' : 'Unlock wallet & earn free coupons!'}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-100 rounded-lg px-3 py-2">
+                                <AlertTriangle className="w-3.5 h-3.5" />
+                                {lang === 'ar'
+                                    ? `أنت تكسب حالياً 0.25× فقط من النقاط. وثّق لتحصل على 1× (كامل).`
+                                    : `You're currently earning only 0.25× points. Verify to earn full 1× rate.`}
+                            </div>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <span className="text-2xl font-black text-indigo-600">{user?.weekly_log_count || 0}</span>
-                        <span className="text-slate-400 font-medium"> / {3 + (user?.coupon_difficulty_level || 0)}</span>
+                </div>
+            )}
+
+            {/* 🎯 Weekly Log Meter — Only visible when user is fully eligible for rewards */}
+            {barrierProgress.isFullyEligible ? (() => {
+                const threshold = 3 + (user?.coupon_difficulty_level || 1);
+                const weeklyLogs = user?.weekly_log_count || 0;
+                const remaining = Math.max(0, threshold - weeklyLogs);
+                const pct = Math.min(100, (weeklyLogs / threshold) * 100);
+
+                return (
+                    <div className="bg-white rounded-2xl shadow-sm border border-indigo-100 overflow-hidden mb-8 p-6 sm:p-8">
+                        <div className="flex justify-between items-end mb-3">
+                            <div className="flex items-center gap-2">
+                                <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                                    <Target className="w-6 h-6" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <h3 className="text-lg font-bold text-slate-800">
+                                        {lang === 'ar' ? 'مؤشر المكافآت الأسبوعي' : 'Weekly Rewards Meter'}
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-medium">
+                                        {lang === 'ar'
+                                            ? 'سجل تجاربك لتفتح تصاريح الخصم الحصرية.'
+                                            : 'Log experiences to unlock exclusive discount coupons.'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-2xl font-black text-indigo-600">{weeklyLogs}</span>
+                                <span className="text-slate-400 font-medium"> / {threshold}</span>
+                            </div>
+                        </div>
+
+                        <div className="relative h-4 bg-slate-100 rounded-full overflow-hidden mb-3">
+                            <div
+                                className="absolute top-0 left-0 h-full bg-gradient-to-r from-indigo-500 to-blue-500 transition-all duration-500 rounded-full"
+                                style={{ width: `${pct}%` }}
+                            ></div>
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                            <p className="text-xs text-slate-500 font-medium">
+                                {remaining > 0
+                                    ? (lang === 'ar'
+                                        ? `تحتاج ${remaining} تقييم إضافي للكوبون التالي`
+                                        : `${remaining} more logs for next coupon`)
+                                    : (lang === 'ar'
+                                        ? '🎉 كوبون جاهز للتسليم!'
+                                        : '🎉 Coupon ready to award!')}
+                            </p>
+                            <span className="text-xs font-semibold bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full">
+                                {lang === 'ar' ? `المستوى ${user?.coupon_difficulty_level || 1}` : `Level ${user?.coupon_difficulty_level || 1}`}
+                            </span>
+                        </div>
                     </div>
-                </div>
+                );
+            })() : null}
 
-                <div className="relative h-4 bg-slate-100 rounded-full overflow-hidden mb-2">
-                    <div
-                        className="absolute top-0 left-0 h-full bg-gradient-to-r from-indigo-500 to-blue-500 transition-all duration-500 rounded-full"
-                        style={{ width: `${Math.min(100, ((user?.weekly_log_count || 0) / (3 + (user?.coupon_difficulty_level || 0))) * 100)}%` }}
-                    ></div>
-                </div>
-
-                <p className="text-xs text-slate-500 text-center font-medium">
-                    {lang === 'ar'
-                        ? `تحتاج إلى ${Math.max(0, (3 + (user?.coupon_difficulty_level || 0)) - (user?.weekly_log_count || 0))} تقييمات إضافية للحصول على مكافأة جديدة.`
-                        : `Need ${Math.max(0, (3 + (user?.coupon_difficulty_level || 0)) - (user?.weekly_log_count || 0))} more logs to earn a new reward.`}
-                </p>
-            </div>
+            {/* 🏆 Milestone Checklist + Barrier Progress */}
+            <MilestoneChecklist
+                user={user}
+                lang={lang}
+                barrierProgress={barrierProgress}
+            />
 
             {/* ═══ Personal Details & Email Section ═══ */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8 p-6 sm:p-10">
