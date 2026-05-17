@@ -131,8 +131,12 @@ export default function ProfilePage() {
         }
     };
 
-    // Derive a clean phone number (exclude emails that may leak into profile.phone)
-    const safePhone = (user?.phone && !user.phone.includes('@')) ? user.phone : null;
+    // Derive a clean phone number (exclude emails, string "NULL", and too-short values)
+    const safePhone = (() => {
+        const p = user?.phone;
+        if (!p || p === 'NULL' || p === 'null' || p === 'undefined' || p.trim() === '' || p.includes('@') || p.trim().length < 8) return null;
+        return p;
+    })();
 
     // Protect route
     useEffect(() => {
