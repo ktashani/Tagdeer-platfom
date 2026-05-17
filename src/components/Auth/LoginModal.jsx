@@ -583,6 +583,14 @@ export function LoginModal() {
                         </form>
                     )}
                 </div>
+
+                {/* ToS + Privacy footer */}
+                <p className="text-[10px] text-slate-400 text-center mt-4 leading-relaxed">
+                    {lang === 'ar'
+                        ? <>بتسجيل الدخول، فإنك توافق على <a href="/terms" target="_blank" className="text-blue-500 hover:underline font-semibold">شروط الاستخدام</a> و <a href="/privacy" target="_blank" className="text-blue-500 hover:underline font-semibold">سياسة الخصوصية</a>.</>
+                        : <>By logging in, you agree to our <a href="/terms" target="_blank" className="text-blue-500 hover:underline font-semibold">Terms of Service</a> and <a href="/privacy" target="_blank" className="text-blue-500 hover:underline font-semibold">Privacy Policy</a>.</>
+                    }
+                </p>
             </DialogContent>
         </Dialog>
     );

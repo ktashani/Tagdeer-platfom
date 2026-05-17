@@ -111,6 +111,8 @@ export default function ClientLayout({ children }) {
                 }}
                 t={t}
                 type={voteModal.type}
+                isAnonymous={!user}
+                lang={lang}
             />
 
             {/* Adding a placeholder for PreRegModal state, we'll recreate the state if needed locally or inside modal later */}

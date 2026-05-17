@@ -7,7 +7,8 @@ import StorefrontLiveScore from './StorefrontLiveScore';
 import { InlineReviewBlock } from './InlineReviewBlock';
 import {
     Store, MapPin, Phone, Globe, ExternalLink, ShieldCheck,
-    Sparkles, Star, MessageCircle, Instagram, Facebook, ChevronRight
+    Sparkles, Star, MessageCircle, Instagram, Facebook, ChevronRight,
+    AlertTriangle, Info
 } from 'lucide-react';
 import StorefrontGalleryUI from '@/components/consumer/StorefrontGalleryUI';
 import StorefrontProductsUI from '@/components/consumer/StorefrontProductsUI';
@@ -129,7 +130,7 @@ export default async function PublicStorefront({ params, searchParams }) {
         .select(`
             *,
             businesses (
-                id, name, category, region, external_url, recommends, complains, display_score,
+                id, name, category, region, external_url, recommends, complains, display_score, claimed_by,
                 feature_allocations ( feature_type, status ),
                 logs ( id, interaction_type, reason_text, created_at, profile_id, fingerprint, helpful_votes, unhelpful_votes, weight )
             ),
@@ -303,6 +304,37 @@ export default async function PublicStorefront({ params, searchParams }) {
                         <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg whitespace-pre-wrap">
                             {storefront.description}
                         </p>
+                    </div>
+                )}
+
+                {/* ═══ LEGAL DISCLAIMER ═══ */}
+                <div className="mt-6 bg-slate-100 dark:bg-slate-800/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed flex items-start gap-2">
+                        <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>
+                            {isRTL
+                                ? 'التقييمات والمراجعات المعروضة هنا مقدمة من أعضاء مجتمع تقدير وتمثل آراءهم الشخصية. لا تتحقق تقدير من هذا المحتوى أو تؤيده أو تتحمل مسؤوليته.'
+                                : 'The reviews and ratings shown here are submitted by Tagdeer community members and represent their personal opinions. Tagdeer does not verify, endorse, or take responsibility for this content.'}
+                        </span>
+                    </p>
+                </div>
+
+                {/* Community listing notice for unclaimed businesses */}
+                {!business.claimed_by && (
+                    <div className="mt-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl p-4 border border-amber-200 dark:border-amber-800">
+                        <div className="flex items-start gap-2.5">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                            <div>
+                                <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                                    {isRTL
+                                        ? 'هذه القائمة أنشأها أحد أعضاء مجتمع تقدير. هل أنت صاحب هذا النشاط التجاري؟'
+                                        : 'This listing was created by a Tagdeer community member. Are you the owner of this business?'}
+                                </p>
+                                <a href="/merchant/login" className="text-xs text-amber-800 dark:text-amber-300 font-bold hover:underline mt-1 inline-block">
+                                    {isRTL ? 'طالب بنشاطك التجاري ←' : 'Claim your business →'}
+                                </a>
+                            </div>
+                        </div>
                     </div>
                 )}
 

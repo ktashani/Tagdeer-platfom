@@ -125,7 +125,7 @@ export function AuthProvider({ children }) {
                             phone: profile.phone || prev.phone,
                             userId: profile.user_id || `AUTH-${prev.id.substring(0, 5).toUpperCase()}`,
                             gader: profile.gader_points || 0,
-                            vipTier: profile.vip_tier || 'Bronze',
+                            vipTier: profile.vip_tier || calculateTier(profile.gader_points || 0, lang, platformConfig?.vipThresholds).name,
                             full_name: profile.full_name || prev.email?.split('@')[0] || 'Tagdeer User',
                             role: profile.role || 'consumer',
                             status: profile.status || 'Active',
@@ -150,13 +150,13 @@ export function AuthProvider({ children }) {
                     });
                 } else {
                     // No profile row — mark as enriched with defaults so we don't re-fetch
-                    setUser(prev => prev ? { ...prev, gader: 0, vipTier: 'Bronze' } : prev);
+                    setUser(prev => prev ? { ...prev, gader: 0, vipTier: calculateTier(0, lang, platformConfig?.vipThresholds).name } : prev);
                 }
             } catch (err) {
                 console.error('Profile enrichment exception:', err);
                 // Mark as enriched with defaults to prevent infinite re-fetch loop
                 if (!cancelled) {
-                    setUser(prev => prev ? { ...prev, gader: 0, vipTier: 'Bronze' } : prev);
+                    setUser(prev => prev ? { ...prev, gader: 0, vipTier: calculateTier(0, lang, platformConfig?.vipThresholds).name } : prev);
                 }
             }
         };

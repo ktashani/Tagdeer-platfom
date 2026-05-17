@@ -544,7 +544,10 @@ export default function MerchantLogin() {
                 {/* Footer info */}
                 <div className="text-center mt-6 space-y-3">
                     <p className="text-xs text-slate-400">
-                        By signing in, you agree to Tagdeer's Terms of Service and Privacy Policy.
+                        {lang === 'ar' 
+                            ? <>بتسجيل الدخول، فإنك توافق على <a href="/terms" target="_blank" className="text-blue-600 hover:underline font-semibold">شروط الاستخدام</a> و <a href="/privacy" target="_blank" className="text-blue-600 hover:underline font-semibold">سياسة الخصوصية</a>.</>
+                            : <>By signing in, you agree to Tagdeer's <a href="/terms" target="_blank" className="text-blue-600 hover:underline font-semibold">Terms of Service</a> and <a href="/privacy" target="_blank" className="text-blue-600 hover:underline font-semibold">Privacy Policy</a>.</>
+                        }
                     </p>
                     {step === 'email' && (
                         <p className="text-sm text-slate-500">

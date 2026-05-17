@@ -19,9 +19,15 @@ export function Footer({ t }) {
                     <a href="/merchant/login" className="hover:text-white transition-colors font-medium text-blue-400 hover:text-blue-300">Merchant Login</a>
                 </div>
                 <div className="flex flex-col items-center md:items-end gap-2">
-                    <Link href="/privacy" className="text-sm hover:text-white transition-colors">
-                        Privacy Policy | سياسة الخصوصية
-                    </Link>
+                    <div className="flex items-center gap-3 text-sm">
+                        <Link href="/terms" className="hover:text-white transition-colors">
+                            Terms of Service | شروط الاستخدام
+                        </Link>
+                        <span className="text-slate-700">•</span>
+                        <Link href="/privacy" className="hover:text-white transition-colors">
+                            Privacy Policy | سياسة الخصوصية
+                        </Link>
+                    </div>
                     <p className="text-sm">© 2026 Tagdeer Libya.</p>
                 </div>
             </div>
