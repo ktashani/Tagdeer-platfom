@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, memo } from 'react';
+import Link from 'next/link';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { calculateBusinessScore } from '@/lib/mathEngine';
 import { Phone, Globe, Instagram, Facebook, MessageCircle, Navigation, Share2, BadgeCheck, MessageSquare, ChevronUp, ChevronDown, ThumbsUp, ThumbsDown, Zap, Store, MapPin } from 'lucide-react';
@@ -16,6 +17,7 @@ function BusinessCard({ business, t, lang, isRTL, shareToFacebook, expandedLogs,
     const avatarLetter = business.name ? business.name.charAt(0).toUpperCase() : '?';
     const [inlineSubmitting, setInlineSubmitting] = useState(false);
     const [inlineReason, setInlineReason] = useState('');
+    const [inlineConsent, setInlineConsent] = useState(false);
 
     // Contact icons data
     const contactLinks = [
@@ -245,26 +247,45 @@ function BusinessCard({ business, t, lang, isRTL, shareToFacebook, expandedLogs,
                         rows={2}
                         dir={isRTL ? 'rtl' : 'ltr'}
                     />
-                    <div className="flex gap-2 mt-2">
+
+                    {/* Legal Consent Checkbox */}
+                    <label className="flex items-start gap-2 mt-3 cursor-pointer select-none group">
+                        <input
+                            type="checkbox"
+                            checked={inlineConsent}
+                            onChange={(e) => setInlineConsent(e.target.checked)}
+                            className="mt-0.5 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                        />
+                        <span className="text-xs text-slate-500 leading-relaxed group-hover:text-slate-700">
+                            {lang === 'ar' ? (
+                                <>أقر بأن هذا التقييم يعبّر عن رأيي الشخصي وأتحمل المسؤولية الكاملة عنه. أوافق على <Link href="/terms" target="_blank" className="text-blue-600 underline hover:text-blue-800">شروط الاستخدام</Link>.</>
+                            ) : (
+                                <>I confirm this is my personal opinion and I take full responsibility. I agree to the <Link href="/terms" target="_blank" className="text-blue-600 underline hover:text-blue-800">Terms of Service</Link>.</>
+                            )}
+                        </span>
+                    </label>
+
+                    <div className="flex gap-2 mt-3">
                         <button
                             onClick={async () => {
                                 setInlineSubmitting(true);
                                 setVoteReason(inlineReason);
                                 await submitVote(business.id, inlineVoteType, inlineReason, business.isClaimed);
                                 setInlineReason('');
+                                setInlineConsent(false);
                                 toggleInlineVote(business.id, inlineVoteType);
                                 setInlineSubmitting(false);
                             }}
-                            disabled={inlineSubmitting}
+                            disabled={inlineSubmitting || !inlineConsent}
                             className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${inlineVoteType === 'recommend' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
-                                } ${inlineSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                } ${(inlineSubmitting || !inlineConsent) ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             {inlineSubmitting
                                 ? (lang === 'ar' ? 'جارٍ الإرسال...' : 'Submitting...')
                                 : (lang === 'ar' ? 'إرسال' : 'Submit')}
                         </button>
                         <button
-                            onClick={() => { setInlineReason(''); toggleInlineVote(business.id, inlineVoteType); }}
+                            onClick={() => { setInlineReason(''); setInlineConsent(false); toggleInlineVote(business.id, inlineVoteType); }}
                             className="px-4 py-2.5 rounded-lg font-bold text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
                         >
                             {lang === 'ar' ? 'إلغاء' : 'Cancel'}
