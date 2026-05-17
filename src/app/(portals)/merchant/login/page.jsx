@@ -25,7 +25,7 @@ export default function MerchantLogin() {
     const searchParams = useSearchParams();
     const {
         loginWithEmail, verifyEmailOtp, loginWithPassword,
-        setMerchantPassword, user, loading, logout, supabase, setUser
+        setMerchantPassword, user, loading, logout, supabase, setUser, lang = 'en'
     } = useTagdeer();
 
     // Detect if user was redirected here because they need a merchant account

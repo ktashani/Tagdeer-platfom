@@ -1,6 +1,6 @@
 // --- Gamification Helpers ---
 export const calculateTier = (points, lang, vipThresholds) => {
-    const thresholds = vipThresholds || { guest: 20, bronze: 1000, silver: 5000, gold: 20000 };
+    const thresholds = vipThresholds || { guest: 0, bronze: 20, silver: 1000, gold: 5000, vip: 20000 };
 
     if (!points || points < thresholds.guest) return { name: lang === 'ar' ? 'ضيف' : 'Guest', emoji: '👤', color: 'text-slate-600', max: thresholds.guest };
     if (points < thresholds.bronze) return { name: lang === 'ar' ? 'برونزي' : 'Bronze', emoji: '🥉', color: 'text-amber-700', max: thresholds.bronze };

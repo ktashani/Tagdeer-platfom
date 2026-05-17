@@ -67,18 +67,16 @@ export default function UsersPage() {
             setIsLoading(true)
             const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
             if (!error && data) {
-                const th = platformConfig?.vipThresholds || { guest: 20, bronze: 1000, silver: 5000, gold: 20000 };
+                const th = platformConfig?.vipThresholds || { guest: 0, bronze: 20, silver: 1000, gold: 5000, vip: 20000 };
 
                 const mapped = data.map(dbUser => {
                     const pts = dbUser.gader_points || 0;
-                    let tier = 'Bronze';
-                    if (pts >= th.gold) tier = 'VIP'; // Wait, standard logic calls > 20k VIP. Let's use 'Gold'/'VIP' mapping correctly based on prev logic.
-                    // Previous logic: > 5000 ? 'Gold' : > 1000 ? 'Silver' : 'Bronze'
-                    // New logic derived from calculateTier:
-                    if (pts >= th.gold) tier = 'VIP';
-                    else if (pts >= th.silver) tier = 'Gold';
-                    else if (pts >= th.bronze) tier = 'Silver';
-                    else tier = 'Bronze';
+                    let tier = 'Guest';
+                    if (pts >= (th.vip || 20000)) tier = 'VIP';
+                    else if (pts >= th.gold) tier = 'Gold';
+                    else if (pts >= th.silver) tier = 'Silver';
+                    else if (pts >= th.bronze) tier = 'Bronze';
+                    else tier = 'Guest';
 
                     return {
                         id: dbUser.id,
