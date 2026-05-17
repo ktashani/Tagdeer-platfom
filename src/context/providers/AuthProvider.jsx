@@ -122,7 +122,12 @@ export function AuthProvider({ children }) {
                         if (!prev || prev.id !== profile.id) return prev;
                         const enriched = {
                             ...prev,
-                            phone: profile.phone || prev.phone,
+                            // Sanitize phone: reject string "NULL", empty strings, and too-short values
+                            phone: (() => {
+                                const p = profile.phone || prev.phone;
+                                if (!p || p === 'NULL' || p === 'null' || p === 'undefined' || p.trim() === '' || p.includes('@') || p.trim().length < 8) return null;
+                                return p;
+                            })(),
                             userId: profile.user_id || `AUTH-${prev.id.substring(0, 5).toUpperCase()}`,
                             gader: profile.gader_points || 0,
                             vipTier: profile.vip_tier || calculateTier(profile.gader_points || 0, lang, platformConfig?.vipThresholds).name,
@@ -130,7 +135,8 @@ export function AuthProvider({ children }) {
                             role: profile.role || 'consumer',
                             status: profile.status || 'Active',
                             has_password: profile.has_password || false,
-                            phone_verified: profile.phone_verified ?? (!!profile.phone),
+                            // STRICT: phone_verified is ONLY true when DB says true AND phone is a real number
+                            phone_verified: profile.phone_verified === true && !!profile.phone && profile.phone !== 'NULL' && profile.phone !== 'null' && profile.phone.trim().length >= 8,
                             weekly_log_count: profile.weekly_log_count || 0,
                             coupon_difficulty_level: profile.coupon_difficulty_level || 0,
                             // Milestone tracking
