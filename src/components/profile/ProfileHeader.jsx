@@ -38,7 +38,7 @@ export function ProfileHeader({ user, displayLogs, progressInfo, isRTL, t, lang,
                             <img src={user.avatarUrl} alt="User Avatar" className="w-full h-full object-cover" />
                         ) : (() => {
                             const pts = user.gader || 0;
-                            const th = progressInfo?.thresholds || { guest: 20, bronze: 1000, silver: 5000, gold: 20000 };
+                            const th = progressInfo?.thresholds || { guest: 0, bronze: 20, silver: 1000, gold: 5000, vip: 20000 };
                             if (pts >= th.gold) return <span>💎</span>;
                             if (pts >= th.silver) return <span>🥇</span>;
                             if (pts >= th.bronze) return <span>🥈</span>;
