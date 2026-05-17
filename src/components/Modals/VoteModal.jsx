@@ -15,7 +15,7 @@ export function VoteModal({ isOpen, onClose, voteReason, setVoteReason, onSubmit
   };
 
   const handleSubmit = () => {
-    if (!tosAccepted) return;
+    if (isAnonymous && !tosAccepted) return;
     onSubmit();
     setTosAccepted(false);
   };
@@ -45,21 +45,32 @@ export function VoteModal({ isOpen, onClose, voteReason, setVoteReason, onSubmit
           placeholder={t('vote_reason')}
         ></textarea>
 
-        {/* ═══ LEGAL CONSENT GATE ═══ */}
-        <label className="flex items-start gap-2.5 text-xs text-slate-500 mb-4 cursor-pointer select-none bg-slate-50 border border-slate-200 rounded-xl p-3 hover:bg-slate-100 transition-colors">
-          <input
-            type="checkbox"
-            checked={tosAccepted}
-            onChange={(e) => setTosAccepted(e.target.checked)}
-            className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0"
-          />
-          <span className="leading-relaxed">
+        {/* ═══ LEGAL CONSENT ═══ */}
+        {isAnonymous ? (
+          /* Anonymous: mandatory checkbox */
+          <label className="flex items-start gap-2.5 text-xs text-slate-500 mb-4 cursor-pointer select-none bg-slate-50 border border-slate-200 rounded-xl p-3 hover:bg-slate-100 transition-colors">
+            <input
+              type="checkbox"
+              checked={tosAccepted}
+              onChange={(e) => setTosAccepted(e.target.checked)}
+              className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0"
+            />
+            <span className="leading-relaxed">
+              {isAr
+                ? <>أفهم أن هذا رأيي الشخصي وأتحمل المسؤولية الكاملة عن كلماتي. أوافق على <Link href="/terms" className="text-blue-600 hover:underline font-semibold" target="_blank">شروط الاستخدام</Link>.</>
+                : <>I understand this is my personal opinion and I take full responsibility for my words. I agree to the <Link href="/terms" className="text-blue-600 hover:underline font-semibold" target="_blank">Terms of Use</Link>.</>
+              }
+            </span>
+          </label>
+        ) : (
+          /* Logged-in: non-blocking reminder */
+          <p className="text-xs text-slate-400 mb-4 leading-relaxed bg-slate-50 border border-slate-100 rounded-xl p-3">
             {isAr
-              ? <>أفهم أن هذا رأيي الشخصي وأتحمل المسؤولية الكاملة عن كلماتي. أوافق على <Link href="/terms" className="text-blue-600 hover:underline font-semibold" target="_blank">شروط الاستخدام</Link>.</>
-              : <>I understand this is my personal opinion and I take full responsibility for my words. I agree to the <Link href="/terms" className="text-blue-600 hover:underline font-semibold" target="_blank">Terms of Use</Link>.</>
+              ? <>بالإرسال، أقر بأن هذا التقييم يعبّر عن رأيي الشخصي وفقاً <Link href="/terms" className="text-blue-500 hover:underline font-semibold" target="_blank">لشروط الاستخدام</Link>.</>
+              : <>By submitting, I confirm this is my personal opinion per the <Link href="/terms" className="text-blue-500 hover:underline font-semibold" target="_blank">Terms of Service</Link>.</>
             }
-          </span>
-        </label>
+          </p>
+        )}
         
         <div className="flex gap-3">
           <button onClick={handleClose} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-4 rounded-xl font-bold transition-colors">
@@ -67,9 +78,9 @@ export function VoteModal({ isOpen, onClose, voteReason, setVoteReason, onSubmit
           </button>
           <button 
             onClick={handleSubmit}
-            disabled={!tosAccepted}
+            disabled={isAnonymous && !tosAccepted}
             className={`flex-1 text-white py-4 rounded-xl font-bold transition-all ${
-              !tosAccepted 
+              (isAnonymous && !tosAccepted)
                 ? 'bg-slate-300 cursor-not-allowed' 
                 : type === 'recommend' 
                   ? 'bg-green-600 hover:bg-green-700' 

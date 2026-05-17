@@ -247,29 +247,40 @@ export function InlineReviewBlock({ businessId, business, isRTL, theme }) {
                                 <p className="text-rose-500 text-sm text-center">{error}</p>
                             )}
 
-                            {/* ═══ LEGAL CONSENT GATE ═══ */}
-                            <label className="flex items-start gap-2.5 text-xs text-slate-500 cursor-pointer select-none bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-                                <input
-                                    type="checkbox"
-                                    checked={tosAccepted}
-                                    onChange={(e) => setTosAccepted(e.target.checked)}
-                                    className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0"
-                                />
-                                <span className="leading-relaxed">
+                            {/* ═══ LEGAL CONSENT ═══ */}
+                            {!user?.id ? (
+                                /* Anonymous: mandatory checkbox */
+                                <label className="flex items-start gap-2.5 text-xs text-slate-500 cursor-pointer select-none bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={tosAccepted}
+                                        onChange={(e) => setTosAccepted(e.target.checked)}
+                                        className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                                    />
+                                    <span className="leading-relaxed">
+                                        {isRTL
+                                            ? <>أفهم أن هذا رأيي الشخصي وأتحمل المسؤولية الكاملة عن كلماتي. أوافق على <Link href="/terms" className="text-blue-600 hover:underline font-semibold" target="_blank">شروط الاستخدام</Link>.</>
+                                            : <>I understand this is my personal opinion and I take full responsibility for my words. I agree to the <Link href="/terms" className="text-blue-600 hover:underline font-semibold" target="_blank">Terms of Use</Link>.</>
+                                        }
+                                    </span>
+                                </label>
+                            ) : (
+                                /* Logged-in: non-blocking reminder */
+                                <p className="text-xs text-slate-400 leading-relaxed bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 rounded-xl p-3">
                                     {isRTL
-                                        ? <>أفهم أن هذا رأيي الشخصي وأتحمل المسؤولية الكاملة عن كلماتي. أوافق على <Link href="/terms" className="text-blue-600 hover:underline font-semibold" target="_blank">شروط الاستخدام</Link>.</>
-                                        : <>I understand this is my personal opinion and I take full responsibility for my words. I agree to the <Link href="/terms" className="text-blue-600 hover:underline font-semibold" target="_blank">Terms of Use</Link>.</>
+                                        ? <>بالإرسال، أقر بأن هذا التقييم يعبّر عن رأيي الشخصي وفقاً <Link href="/terms" className="text-blue-500 hover:underline font-semibold" target="_blank">لشروط الاستخدام</Link>.</>
+                                        : <>By submitting, I confirm this is my personal opinion per the <Link href="/terms" className="text-blue-500 hover:underline font-semibold" target="_blank">Terms of Service</Link>.</>
                                     }
-                                </span>
-                            </label>
+                                </p>
+                            )}
 
                             <button
                                 type="submit"
-                                disabled={loading || !tosAccepted}
+                                disabled={loading || (!user?.id && !tosAccepted)}
                                 className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-lg hover:shadow-xl disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2.5 active:scale-[0.98]"
                                 style={{
-                                    backgroundColor: tosAccepted ? primaryColor : '#94a3b8',
-                                    boxShadow: tosAccepted ? `0 8px 24px ${primaryColor}30` : 'none'
+                                    backgroundColor: (user?.id || tosAccepted) ? primaryColor : '#94a3b8',
+                                    boxShadow: (user?.id || tosAccepted) ? `0 8px 24px ${primaryColor}30` : 'none'
                                 }}
                             >
                                 {loading ? (
