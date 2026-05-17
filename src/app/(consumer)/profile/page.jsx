@@ -168,25 +168,29 @@ export default function ProfilePage() {
 
     // Helper: Gamification Progress matching dynamic thresholds
     const getProgressInfo = (points) => {
-        const th = platformConfig?.vipThresholds || { guest: 20, bronze: 1000, silver: 5000, gold: 20000 };
+        const th = platformConfig?.vipThresholds || { guest: 0, bronze: 20, silver: 1000, gold: 5000, vip: 20000 };
         let currentTier = "Guest";
         let nextTier = "Bronze";
-        let maxPoints = th.guest;
+        let maxPoints = th.bronze;
         let p = points || 0;
 
-        if (p >= th.guest && p < th.bronze) {
-            currentTier = "Bronze";
-            nextTier = "Silver";
+        if (p < th.bronze) {
+            currentTier = "Guest";
+            nextTier = "Bronze";
             maxPoints = th.bronze;
         } else if (p >= th.bronze && p < th.silver) {
-            currentTier = "Silver";
-            nextTier = "Gold";
+            currentTier = "Bronze";
+            nextTier = "Silver";
             maxPoints = th.silver;
         } else if (p >= th.silver && p < th.gold) {
+            currentTier = "Silver";
+            nextTier = "Gold";
+            maxPoints = th.gold;
+        } else if (p >= th.gold && p < th.vip) {
             currentTier = "Gold";
             nextTier = "VIP";
-            maxPoints = th.gold;
-        } else if (p >= th.gold) {
+            maxPoints = th.vip;
+        } else if (p >= th.vip) {
             currentTier = "VIP";
             nextTier = "Max";
             maxPoints = p; // already at max

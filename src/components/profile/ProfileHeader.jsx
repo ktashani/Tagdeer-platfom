@@ -22,8 +22,8 @@ export function ProfileHeader({ user, displayLogs, progressInfo, isRTL, t, lang,
                     <Button
                         variant="ghost"
                         className="text-white hover:bg-white/20 hover:text-white border-white/20"
-                        onClick={() => {
-                            logout();
+                        onClick={async () => {
+                            await logout();
                             router.push('/');
                         }}
                     >
