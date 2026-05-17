@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ThumbsUp, ThumbsDown, Loader2, SendHorizontal, Sparkles } from 'lucide-react';
+import Link from 'next/link';
 import { useTagdeer } from '@/context/TagdeerContext';
 import { getDeviceFingerprint } from '@/lib/fingerprint';
 import { calculateVoteWeight } from '@/lib/trustEngine';
@@ -33,6 +34,7 @@ export function InlineReviewBlock({ businessId, business, isRTL, theme }) {
     const [selectedType, setSelectedType] = useState(null);
     const [reasonText, setReasonText] = useState('');
     const [impactWeight, setImpactWeight] = useState(null);
+    const [tosAccepted, setTosAccepted] = useState(false);
 
     const primaryColor = theme?.primaryColor || '#10b981';
 
@@ -245,13 +247,29 @@ export function InlineReviewBlock({ businessId, business, isRTL, theme }) {
                                 <p className="text-rose-500 text-sm text-center">{error}</p>
                             )}
 
+                            {/* ═══ LEGAL CONSENT GATE ═══ */}
+                            <label className="flex items-start gap-2.5 text-xs text-slate-500 cursor-pointer select-none bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                <input
+                                    type="checkbox"
+                                    checked={tosAccepted}
+                                    onChange={(e) => setTosAccepted(e.target.checked)}
+                                    className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                                />
+                                <span className="leading-relaxed">
+                                    {isRTL
+                                        ? <>أفهم أن هذا رأيي الشخصي وأتحمل المسؤولية الكاملة عن كلماتي. أوافق على <Link href="/terms" className="text-blue-600 hover:underline font-semibold" target="_blank">شروط الاستخدام</Link>.</>
+                                        : <>I understand this is my personal opinion and I take full responsibility for my words. I agree to the <Link href="/terms" className="text-blue-600 hover:underline font-semibold" target="_blank">Terms of Use</Link>.</>
+                                    }
+                                </span>
+                            </label>
+
                             <button
                                 type="submit"
-                                disabled={loading}
+                                disabled={loading || !tosAccepted}
                                 className="w-full py-4 rounded-2xl text-white font-bold text-base shadow-lg hover:shadow-xl disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2.5 active:scale-[0.98]"
                                 style={{
-                                    backgroundColor: primaryColor,
-                                    boxShadow: `0 8px 24px ${primaryColor}30`
+                                    backgroundColor: tosAccepted ? primaryColor : '#94a3b8',
+                                    boxShadow: tosAccepted ? `0 8px 24px ${primaryColor}30` : 'none'
                                 }}
                             >
                                 {loading ? (

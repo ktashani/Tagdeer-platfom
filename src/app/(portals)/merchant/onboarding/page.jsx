@@ -851,7 +851,12 @@ export default function MerchantOnboarding() {
                                                 paymentMethod === 'online' ? t('proceed_payment') : t('submit_request')
                                             )}
                                         </Button>
-                                        <p className="text-[10px] text-slate-500 mt-6 text-center italic relative z-10">By clicking, you agree to Tagdeer Business Terms of Focus and Merchant Guidelines.</p>
+                                        <p className="text-[10px] text-slate-500 mt-6 text-center italic relative z-10">
+                                            {lang === 'ar'
+                                                ? <>بالنقر، فإنك توافق على <a href="/terms" target="_blank" className="text-blue-400 hover:underline">شروط الاستخدام</a> و <a href="/privacy" target="_blank" className="text-blue-400 hover:underline">سياسة الخصوصية</a> وإرشادات التجار.</>
+                                                : <>By clicking, you agree to Tagdeer <a href="/terms" target="_blank" className="text-blue-400 hover:underline">Terms of Service</a>, <a href="/privacy" target="_blank" className="text-blue-400 hover:underline">Privacy Policy</a>, and Merchant Guidelines.</>
+                                            }
+                                        </p>
                                     </div>
                                 </div>
                             </div>

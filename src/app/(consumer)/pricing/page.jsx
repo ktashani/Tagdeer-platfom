@@ -119,7 +119,7 @@ export default function PricingPage() {
                             </Button>
                         </Link>
                         <Link href="#pricing">
-                            <Button size="lg" variant="outline" className="h-14 px-8 text-lg font-bold border-white/30 text-white hover:bg-white/10 rounded-full w-full sm:w-auto">
+                            <Button size="lg" className="h-14 px-8 text-lg font-bold bg-white/10 border-2 border-white/40 text-white hover:bg-white/20 backdrop-blur-sm rounded-full w-full sm:w-auto">
                                 {lang === 'ar' ? 'عرض الباقات' : 'View Pricing Plans'}
                             </Button>
                         </Link>
