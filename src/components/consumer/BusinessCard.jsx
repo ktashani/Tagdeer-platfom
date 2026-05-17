@@ -248,22 +248,34 @@ function BusinessCard({ business, t, lang, isRTL, shareToFacebook, expandedLogs,
                         dir={isRTL ? 'rtl' : 'ltr'}
                     />
 
-                    {/* Legal Consent Checkbox */}
-                    <label className="flex items-start gap-2 mt-3 cursor-pointer select-none group">
-                        <input
-                            type="checkbox"
-                            checked={inlineConsent}
-                            onChange={(e) => setInlineConsent(e.target.checked)}
-                            className="mt-0.5 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0"
-                        />
-                        <span className="text-xs text-slate-500 leading-relaxed group-hover:text-slate-700">
+                    {/* Legal Consent: Reminder for logged-in, mandatory checkbox for anonymous */}
+                    {user?.id ? (
+                        /* Logged-in: non-blocking reminder */
+                        <p className="text-xs text-slate-400 mt-3 leading-relaxed">
                             {lang === 'ar' ? (
-                                <>أقر بأن هذا التقييم يعبّر عن رأيي الشخصي وأتحمل المسؤولية الكاملة عنه. أوافق على <Link href="/terms" target="_blank" className="text-blue-600 underline hover:text-blue-800">شروط الاستخدام</Link>.</>
+                                <>بالإرسال، أقر بأن هذا التقييم يعبّر عن رأيي الشخصي وفقاً <Link href="/terms" target="_blank" className="text-blue-500 underline hover:text-blue-700">لشروط الاستخدام</Link>.</>
                             ) : (
-                                <>I confirm this is my personal opinion and I take full responsibility. I agree to the <Link href="/terms" target="_blank" className="text-blue-600 underline hover:text-blue-800">Terms of Service</Link>.</>
+                                <>By submitting, I confirm this is my personal opinion per the <Link href="/terms" target="_blank" className="text-blue-500 underline hover:text-blue-700">Terms of Service</Link>.</>
                             )}
-                        </span>
-                    </label>
+                        </p>
+                    ) : (
+                        /* Anonymous: mandatory checkbox */
+                        <label className="flex items-start gap-2 mt-3 cursor-pointer select-none group">
+                            <input
+                                type="checkbox"
+                                checked={inlineConsent}
+                                onChange={(e) => setInlineConsent(e.target.checked)}
+                                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                            />
+                            <span className="text-xs text-slate-500 leading-relaxed group-hover:text-slate-700">
+                                {lang === 'ar' ? (
+                                    <>أقر بأن هذا التقييم يعبّر عن رأيي الشخصي وأتحمل المسؤولية الكاملة عنه. أوافق على <Link href="/terms" target="_blank" className="text-blue-600 underline hover:text-blue-800">شروط الاستخدام</Link>.</>
+                                ) : (
+                                    <>I confirm this is my personal opinion and I take full responsibility. I agree to the <Link href="/terms" target="_blank" className="text-blue-600 underline hover:text-blue-800">Terms of Service</Link>.</>
+                                )}
+                            </span>
+                        </label>
+                    )}
 
                     <div className="flex gap-2 mt-3">
                         <button
@@ -276,9 +288,9 @@ function BusinessCard({ business, t, lang, isRTL, shareToFacebook, expandedLogs,
                                 toggleInlineVote(business.id, inlineVoteType);
                                 setInlineSubmitting(false);
                             }}
-                            disabled={inlineSubmitting || !inlineConsent}
+                            disabled={inlineSubmitting || (!user?.id && !inlineConsent)}
                             className={`flex-1 py-2.5 rounded-lg font-bold text-sm text-white transition-colors ${inlineVoteType === 'recommend' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
-                                } ${(inlineSubmitting || !inlineConsent) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                } ${(inlineSubmitting || (!user?.id && !inlineConsent)) ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             {inlineSubmitting
                                 ? (lang === 'ar' ? 'جارٍ الإرسال...' : 'Submitting...')
