@@ -1,14 +1,12 @@
 "use client";
 
 import { useTagdeer } from "@/context/TagdeerContext";
-import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import CouponWallet from "@/components/profile/CouponWallet";
+import { WalletTab } from "@/components/profile/WalletTab";
 import { Wallet } from "lucide-react";
 
 export default function WalletPage() {
     const { user, lang, setShowLoginModal } = useTagdeer();
-    const router = useRouter();
 
     useEffect(() => {
         if (user === null) {
@@ -42,14 +40,8 @@ export default function WalletPage() {
 
     return (
         <div className="container max-w-4xl mx-auto py-8 px-4">
-            <h1 className="text-2xl font-black mb-6 flex items-center gap-2">
-                <Wallet className="w-6 h-6 text-emerald-600" />
-                {lang === 'ar' ? 'محفظة القسائم' : 'Coupon Wallet'}
-            </h1>
-            
-            <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800">
-                <CouponWallet />
-            </div>
+            <WalletTab />
         </div>
     );
 }
+

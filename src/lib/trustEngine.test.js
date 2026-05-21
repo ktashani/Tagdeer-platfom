@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getTierMultiplier, getDiminishingMultiplier, calculateVoteWeight } from './trustEngine';
 
 describe('trustEngine – getTierMultiplier', () => {
-    it('returns 0.2 for anonymous users (null)', () => {
-        expect(getTierMultiplier(null)).toBe(0.2);
+    it('returns 0.25 for anonymous users (null)', () => {
+        expect(getTierMultiplier(null)).toBe(0.25);
     });
 
-    it('returns 0.2 for undefined user', () => {
-        expect(getTierMultiplier(undefined)).toBe(0.2);
+    it('returns 0.25 for undefined user', () => {
+        expect(getTierMultiplier(undefined)).toBe(0.25);
     });
 
     it('returns 1.0 for Bronze Tier users (string)', () => {
@@ -85,16 +85,16 @@ describe('trustEngine – getDiminishingMultiplier', () => {
 });
 
 describe('trustEngine – calculateVoteWeight', () => {
-    it('calculates anonymous + 0 past votes = 0.2', () => {
-        expect(calculateVoteWeight(null, 0)).toBe(0.2);
+    it('calculates anonymous + 0 past votes = 0.25', () => {
+        expect(calculateVoteWeight(null, 0)).toBe(0.25);
     });
 
-    it('calculates anonymous + 1 past vote = 0.1', () => {
-        expect(calculateVoteWeight(null, 1)).toBe(0.1);
+    it('calculates anonymous + 1 past vote = 0.13', () => {
+        expect(calculateVoteWeight(null, 1)).toBe(0.13);
     });
 
-    it('calculates anonymous + 2+ past votes = 0.05', () => {
-        expect(calculateVoteWeight(null, 3)).toBe(0.05);
+    it('calculates anonymous + 2+ past votes = 0.06', () => {
+        expect(calculateVoteWeight(null, 3)).toBe(0.06);
     });
 
     it('calculates Bronze + 0 past votes = 1.0', () => {
