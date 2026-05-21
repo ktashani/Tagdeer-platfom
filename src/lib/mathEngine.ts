@@ -34,7 +34,7 @@ export function calculateBusinessScore(logs: Log[]): ScoreResult {
     });
 
     const totalWeighted = p + n;
-    // 5. Business Health Score (The "Gader Index")
+    // 5. Business Gader Index
     // Formula: (Positive Weighted Logs / Total Weighted Logs) * 100
     // If no logs, score is 0.
     const gaderIndex = totalWeighted === 0 ? 0 : Math.round((p / totalWeighted) * 100);

@@ -14,7 +14,7 @@
  * @returns {number} The tier multiplier
  */
 export function getTierMultiplier(user) {
-    if (!user) return 0.2; // Anonymous
+    if (!user) return 0.25; // Anonymous (quarter impact)
 
     // Determine tier from the stored vipTier string
     const tier = (user.vipTier || '').toLowerCase();

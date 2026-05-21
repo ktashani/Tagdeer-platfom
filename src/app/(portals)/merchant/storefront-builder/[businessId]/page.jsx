@@ -141,48 +141,32 @@ export default function StorefrontBuilder() {
                 }
             }
 
-            // Bypass Supabase JS client entirely — use raw fetch to PostgREST
-            // This avoids the async generator hang caused by Next.js HMR/Fast Refresh
-            const { data: sessionData } = await supabase.auth.getSession();
-            const jwt = sessionData?.session?.access_token;
-            if (!jwt) throw new Error('Session expired. Please refresh the page and log in again.');
+            // Use AbortController for clean timeout
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 12000);
 
-            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-            const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+            const { data, error } = await supabase
+                .from('storefronts')
+                .upsert(payload, { onConflict: 'business_id' })
+                .select()
+                .abortSignal(controller.signal);
 
-            console.log('[SAVE] Sending upsert via raw fetch...');
-            const res = await fetch(`${supabaseUrl}/rest/v1/storefronts?on_conflict=business_id`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${jwt}`,
-                    'apikey': supabaseAnonKey,
-                    'Prefer': 'resolution=merge-duplicates,return=representation',
-                },
-                body: JSON.stringify(payload),
-                signal: AbortSignal.timeout(12000),
-            });
+            clearTimeout(timeout);
 
-            const result = await res.json();
-            console.log('[SAVE] Response status:', res.status, 'Data:', result);
-
-            if (!res.ok) {
-                const errMsg = result?.message || result?.error || JSON.stringify(result);
-                if (errMsg.includes('unique') || errMsg.includes('23505')) throw new Error('That URL slug is already taken by another business.');
-                if (errMsg.includes('foreign') || errMsg.includes('23503')) throw new Error('Business ID does not exist in the database.');
-                throw new Error(errMsg);
+            if (error) {
+                if (error.code === '23505') throw new Error('That URL slug is already taken by another business.');
+                if (error.code === '23503') throw new Error('Business ID does not exist in the database.');
+                throw new Error(error.message || 'Save failed');
             }
 
-            // Update local state with returned data
-            const saved = Array.isArray(result) ? result[0] : result;
+            const saved = Array.isArray(data) ? data[0] : data;
             if (saved) {
                 setStorefront(prev => ({ ...prev, ...saved, status: publish ? 'published' : prev.status }));
             }
             setOriginalSlug(storefront.slug);
             showToast(publish ? 'Storefront Published Successfully!' : 'Draft Saved!', 'success');
         } catch (err) {
-            console.error('[SAVE] Error:', err);
-            if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+            if (err.name === 'AbortError') {
                 showToast('Save timed out. Please check your connection and try again.', 'error');
             } else {
                 showToast(err.message || 'Failed to save storefront.', 'error');

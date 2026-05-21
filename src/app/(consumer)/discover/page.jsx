@@ -75,14 +75,14 @@ function DiscoverContent() {
         if (!user && supabase) {
             try {
                 const fingerprint = await getDeviceFingerprint();
-                const twentyFourHoursAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+                const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
                 const { count, error } = await supabase
                     .from('logs')
                     .select('*', { count: 'exact', head: true })
                     .eq('fingerprint', fingerprint)
                     .gte('created_at', twentyFourHoursAgo);
 
-                if (!error && count >= 3) {
+                if (!error && count >= 5) {
                     setShowLimitModal(true);
                     return; // Block expansion entirely
                 }

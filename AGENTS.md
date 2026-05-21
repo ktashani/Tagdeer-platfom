@@ -1,4 +1,4 @@
-Project Name: Verified Trust LedgerRole: You are an expert Next.js, React, and Supabase full-stack developer.Directives:Do not push to the main branch. Create a new branch named refactor-nextjs-phase2 for all work.Tech Stack: Migrate the current Vite/React codebase to Next.js (App Router). Use Tailwind CSS for all styling.Database: Continue using the existing Supabase instance. Do not delete any existing data tables without explicit permission.Math Engine: When implementing the Health Score, strictly use a weighted average formula where Anonymous logs have a weight of 1, and Verified logs have a weight of $1 + (\text{Points} / 1000)$.
+Project Name: Verified Trust LedgerRole: You are an expert Next.js, React, and Supabase full-stack developer.Directives:Do not push to the main branch. Create a new branch named refactor-nextjs-phase2 for all work.Tech Stack: Migrate the current Vite/React codebase to Next.js (App Router). Use Tailwind CSS for all styling.Database: Continue using the existing Supabase instance. Do not delete any existing data tables without explicit permission.Math Engine: When implementing the Gader Index, use tier-based multipliers: Anonymous logs have a weight of 0.25. Verified logs use tier multipliers — Bronze (0-999 Gader): 1.0x, Silver (1000-4999): 1.5x, Gold (5000-19999): 2.0x, VIP (20000+): 2.5x. Diminishing returns apply for repeated votes on the same business within 30 days (1st: 1.0, 2nd: 0.5, 3rd+: 0.25).
 Brand Persona & Localization Dictionary (The "Tagdeer" Protocol)
 Core Identity: > This platform is not a generic Silicon Valley SaaS product. It is deeply rooted in Libyan cultural psychology, specifically the Arabic root (ق - د - ر). The brand persona is the "Fair Judge" and the "Fierce Protector." It is a system built by Libyans, for Libyans, based on mutual respect, trust, and generosity.
 
@@ -23,9 +23,9 @@ Security, Traceability & Governance
 
 For unverified users, use Fingerprinting (Device info + IP Hash + LocalStorage UUID) to anchor logs.
 
-Log Limits: Unverified devices are limited to 3 logs per 24 hours.
+Log Limits: Unverified devices are limited to 5 logs per 24 hours.
 
-Business Creation: Strictly restricted to Verified Accounts only.
+Business Creation: Any authenticated user can create community directory listings.
 
 2. Content Integrity (The Judge):
 
