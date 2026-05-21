@@ -14,6 +14,7 @@ import { DisputeButtonLocked, MessageUserButtonLocked } from '@/components/merch
 import ScannerModal from '@/components/merchant/ScannerModal';
 import Link from 'next/link';
 import { useTagdeer } from '@/context/TagdeerContext';
+import { PlatformHelp } from '@/components/profile/PlatformHelp';
 import { getPresignedUploadUrl } from '@/app/actions/storage';
 import {
     Dialog,
@@ -892,8 +893,10 @@ export default function MerchantDashboard() {
                         ))}
                     </CardContent>
                 </Card>
-
             </div>
+
+            {/* Platform Help & Feature Directory */}
+            <PlatformHelp defaultTab="merchant" />
 
             <ScannerModal
                 isOpen={isScannerOpen}
