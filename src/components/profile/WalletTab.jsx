@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { AlertCircle, Clock, Gift, Loader2, Lock, Phone, ShieldCheck, Store, Ticket, Zap } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getBarrierProgress } from '@/lib/couponEngine';
+import { PlatformHelp } from './PlatformHelp';
 
 export function WalletTab() {
     const { user, supabase, loading, lang, t, isRTL } = useTagdeer();
@@ -71,68 +72,71 @@ export function WalletTab() {
     // ═══ Locked State — Phone not verified OR Gader < 200 ═══
     if (!isEligible) {
         return (
-            <div className="min-h-[400px] flex items-center justify-center p-6 bg-slate-50/50 rounded-2xl border border-slate-100 mt-2">
-                <div className="max-w-md w-full text-center space-y-5">
-                    <div className="w-20 h-20 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto">
-                        <Lock className="w-10 h-10 text-slate-400" />
-                    </div>
-                    <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                        {lang === 'ar' ? 'المحفظة مقفلة' : 'Wallet Locked'}
-                    </h1>
-                    <p className="text-slate-500">
-                        {lang === 'ar'
-                            ? 'لفتح المحفظة، تحتاج إلى استيفاء شرطين:'
-                            : 'To unlock your wallet, you need to meet two requirements:'}
-                    </p>
+            <div className="w-full max-w-4xl mx-auto pt-4 space-y-8">
+                <div className="min-h-[400px] flex items-center justify-center p-6 bg-slate-50/50 rounded-2xl border border-slate-100 mt-2">
+                    <div className="max-w-md w-full text-center space-y-5">
+                        <div className="w-20 h-20 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto">
+                            <Lock className="w-10 h-10 text-slate-400" />
+                        </div>
+                        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+                            {lang === 'ar' ? 'المحفظة مقفلة' : 'Wallet Locked'}
+                        </h1>
+                        <p className="text-slate-500">
+                            {lang === 'ar'
+                                ? 'لفتح المحفظة، تحتاج إلى استيفاء شرطين:'
+                                : 'To unlock your wallet, you need to meet two requirements:'}
+                        </p>
 
-                    {/* Gate checklist */}
-                    <div className="space-y-3 text-left max-w-xs mx-auto">
-                        {/* Gader Gate */}
-                        <div className={`flex items-center gap-3 p-3 rounded-xl border ${
-                            barrierProgress.meetsBarrier
-                                ? 'bg-emerald-50 border-emerald-200'
-                                : 'bg-slate-50 border-slate-200'
-                        }`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                barrierProgress.meetsBarrier ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-400'
+                        {/* Gate checklist */}
+                        <div className="space-y-3 text-left max-w-xs mx-auto">
+                            {/* Gader Gate */}
+                            <div className={`flex items-center gap-3 p-3 rounded-xl border ${
+                                barrierProgress.meetsBarrier
+                                    ? 'bg-emerald-50 border-emerald-200'
+                                    : 'bg-slate-50 border-slate-200'
                             }`}>
-                                {barrierProgress.meetsBarrier ? <ShieldCheck className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                            </div>
-                            <div className="flex-grow">
-                                <p className="text-sm font-semibold text-slate-700">
-                                    {lang === 'ar' ? `${barrierProgress.current} / ${barrierProgress.required} قدر` : `${barrierProgress.current} / ${barrierProgress.required} Gader`}
-                                </p>
-                                <div className="w-full h-2 bg-slate-200 rounded-full mt-1 overflow-hidden">
-                                    <div className="h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full transition-all" style={{ width: `${barrierProgress.percentage}%` }} />
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                    barrierProgress.meetsBarrier ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-400'
+                                }`}>
+                                    {barrierProgress.meetsBarrier ? <ShieldCheck className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                                </div>
+                                <div className="flex-grow">
+                                    <p className="text-sm font-semibold text-slate-700">
+                                        {lang === 'ar' ? `${barrierProgress.current} / ${barrierProgress.required} قدر` : `${barrierProgress.current} / ${barrierProgress.required} Gader`}
+                                    </p>
+                                    <div className="w-full h-2 bg-slate-200 rounded-full mt-1 overflow-hidden">
+                                        <div className="h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full transition-all" style={{ width: `${barrierProgress.percentage}%` }} />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* Phone Gate */}
-                        <div className={`flex items-center gap-3 p-3 rounded-xl border ${
-                            barrierProgress.meetsPhone
-                                ? 'bg-emerald-50 border-emerald-200'
-                                : 'bg-orange-50 border-orange-200'
-                        }`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                barrierProgress.meetsPhone ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-500'
+                            {/* Phone Gate */}
+                            <div className={`flex items-center gap-3 p-3 rounded-xl border ${
+                                barrierProgress.meetsPhone
+                                    ? 'bg-emerald-50 border-emerald-200'
+                                    : 'bg-orange-50 border-orange-200'
                             }`}>
-                                {barrierProgress.meetsPhone ? <ShieldCheck className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                    barrierProgress.meetsPhone ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-500'
+                                }`}>
+                                    {barrierProgress.meetsPhone ? <ShieldCheck className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+                                </div>
+                                <p className="text-sm font-semibold text-slate-700">
+                                    {barrierProgress.meetsPhone
+                                        ? (lang === 'ar' ? 'هاتف موثّق ✓' : 'Phone Verified ✓')
+                                        : (lang === 'ar' ? 'هاتف غير موثّق' : 'Phone Not Verified')}
+                                </p>
                             </div>
-                            <p className="text-sm font-semibold text-slate-700">
-                                {barrierProgress.meetsPhone
-                                    ? (lang === 'ar' ? 'هاتف موثّق ✓' : 'Phone Verified ✓')
-                                    : (lang === 'ar' ? 'هاتف غير موثّق' : 'Phone Not Verified')}
-                            </p>
                         </div>
-                    </div>
 
-                    <div className="pt-4">
-                        <Button onClick={() => router.push('/discover')} className="rounded-full px-8">
-                            {lang === 'ar' ? 'اكتشف واكسب قدر' : 'Discover & Earn Gader'}
-                        </Button>
+                        <div className="pt-4">
+                            <Button onClick={() => router.push('/discover')} className="rounded-full px-8">
+                                {lang === 'ar' ? 'اكتشف واكسب قدر' : 'Discover & Earn Gader'}
+                            </Button>
+                        </div>
                     </div>
                 </div>
+                <PlatformHelp defaultTab="consumer" />
             </div>
         );
     }
@@ -256,6 +260,9 @@ export function WalletTab() {
                     </div>
                 )}
             </div>
+
+            {/* Platform Help & Feature Directory */}
+            <PlatformHelp defaultTab="consumer" />
 
             {/* Modal for QR Code Display */}
             {selectedCoupon && (
