@@ -136,7 +136,7 @@ export default function AdminDashboard() {
 
                 <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 p-6 rounded-2xl hover:bg-slate-800 transition-all group">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-medium text-slate-400">System Health Score</h3>
+                        <h3 className="text-sm font-medium text-slate-400">System Gader Index</h3>
                         <TrendingUp className="w-5 h-5 text-emerald-400 opacity-80 group-hover:opacity-100 transition-opacity" />
                     </div>
                     <div className="text-3xl font-bold text-white">{stats.systemHealth || '—'}<span className="text-lg font-normal text-slate-500">%</span></div>

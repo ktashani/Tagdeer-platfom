@@ -184,7 +184,7 @@ export default function UsersPage() {
 
     const handlePurge = async () => {
         if (!supabase || !selectedUser) return;
-        if (confirm(`Are you sure you want to purge logs and reset Trust Points for ${selectedUser.name}? This cannot be undone.`)) {
+        if (confirm(`Are you sure you want to purge logs and reset Gader for ${selectedUser.name}? This cannot be undone.`)) {
             const { error } = await supabase.rpc('admin_purge_user', { p_user_id: selectedUser.id });
             if (error) {
                 console.error('Purge RPC Error:', error);
@@ -466,7 +466,7 @@ export default function UsersPage() {
                                     <tr>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300">User Details</th>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300">Role</th>
-                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-center">Trust Points & Tier</th>
+                                        <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-center">Gader & Tier</th>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300">Status</th>
                                         <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-right">Action</th>
                                     </tr>
@@ -564,7 +564,7 @@ export default function UsersPage() {
                             {/* Key Stats */}
                             <div className="grid grid-cols-3 gap-4 mt-6">
                                 <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-center">
-                                    <div className="text-xs text-slate-500 font-medium mb-1">Trust Points</div>
+                                    <div className="text-xs text-slate-500 font-medium mb-1">Gader</div>
                                     <div className="text-xl font-bold text-emerald-400">{selectedUser.trustPoints}</div>
                                 </div>
                                 <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 text-center">

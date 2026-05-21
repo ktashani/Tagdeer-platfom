@@ -2,10 +2,10 @@ import { createClient } from '@supabase/supabase-js';
 
 export const metadata = {
     title: 'Discover Businesses — Tagdeer تقدير',
-    description: 'Find and review trusted businesses in Tripoli, Benghazi, and across Libya. Read real community reviews and share your experience on Tagdeer.',
+    description: 'Find and evaluate trusted businesses in Tripoli, Benghazi, and across Libya. Read real community evaluations and share your experience on Tagdeer.',
     openGraph: {
         title: 'Discover Businesses — Tagdeer',
-        description: 'Find and review trusted businesses across Libya.',
+        description: 'Find and evaluate trusted businesses across Libya.',
         type: 'website',
     },
 };
@@ -39,7 +39,7 @@ export default async function DiscoverLayout({ children }) {
             <noscript>
                 <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
                     <h1>Discover Businesses on Tagdeer</h1>
-                    <p>Community-verified business reviews in Libya</p>
+                    <p>Community-verified business evaluations in Libya</p>
                     <ul>
                         {businesses.map(b => {
                             const slug = Array.isArray(b.storefronts) && b.storefronts[0]?.slug;

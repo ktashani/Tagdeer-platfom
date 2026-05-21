@@ -194,7 +194,7 @@ export function LoginModal() {
         }
 
         // Dev-only master code bypass
-        if ((process.env.NODE_ENV === 'development' || isLocalhost) && token === '999999') {
+        if (process.env.NODE_ENV === 'development' && token === '999999') {
             setIsLoading(true);
             try {
                 const identifier = otpChannel === 'email' ? email : phone;
@@ -416,7 +416,7 @@ export function LoginModal() {
                             </button>
 
                             {/* DEV BYPASS button on phone screen */}
-                            {(process.env.NODE_ENV === 'development' || isLocalhost) && (
+                            {process.env.NODE_ENV === 'development' && (
                                 <div className="mt-2 pt-2 border-t border-slate-100">
                                     <button
                                         type="button"
@@ -517,7 +517,7 @@ export function LoginModal() {
                             </div>
 
                             {/* Dev skip validation interactive bypass */}
-                            {(process.env.NODE_ENV === 'development' || isLocalhost) && (
+                            {process.env.NODE_ENV === 'development' && (
                                 <div className="mt-2 text-center">
                                     <button
                                         type="button"

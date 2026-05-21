@@ -265,7 +265,7 @@ export default function BusinessRegistry() {
                                     {isMergeMode && <th scope="col" className="px-6 py-4 font-medium text-slate-300 w-16">Select</th>}
                                     <th scope="col" className="px-6 py-4 font-medium text-slate-300">Business Profile</th>
                                     <th scope="col" className="px-6 py-4 font-medium text-slate-300">Category & Location</th>
-                                    <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-center">Health Score</th>
+                                    <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-center">Gader Index</th>
                                     <th scope="col" className="px-6 py-4 font-medium text-slate-300">Shield Status</th>
                                     {!isMergeMode && <th scope="col" className="px-6 py-4 font-medium text-slate-300 text-right">Actions</th>}
                                 </tr>

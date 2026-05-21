@@ -149,7 +149,7 @@ export function AuthProvider({ children }) {
                             city: profile.city,
                             gender: profile.gender,
                             birth_date: profile.birth_date,
-                            profile_email: profile.email,
+                            profile_email: profile.email || prev.email,
                         };
                         localStorage.setItem('tagdeer-user', JSON.stringify(enriched));
                         return enriched;

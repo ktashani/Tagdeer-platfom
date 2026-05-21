@@ -129,12 +129,12 @@ export default function ReportsPage() {
                     </div>
                 </div>
 
-                {/* 2. System Health Score Trends */}
+                {/* 2. System Gader Index Trends */}
                 <div className="bg-slate-800/30 border border-slate-700/50 rounded-2xl p-6 flex flex-col min-h-[350px]">
                     <div className="flex justify-between items-center mb-6">
                         <div>
                             <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                                <Activity className="w-5 h-5 text-emerald-400" /> Platform Health Score
+                                <Activity className="w-5 h-5 text-emerald-400" /> Platform Gader Index
                             </h3>
                             <p className="text-sm text-slate-400">Average trust rating across all registered locations.</p>
                         </div>

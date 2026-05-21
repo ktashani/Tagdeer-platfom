@@ -25,13 +25,13 @@ const labels = {
     en: {
         recommend: 'Recommend',
         complain: 'Complain',
-        gaderScore: 'Gader Score',
+        gaderScore: 'Gader Index',
         gallery: 'Gallery',
         products: 'Products',
-        communityReviews: 'Community Reviews',
+        communityReviews: 'Community Tagdeer',
         rateExperience: 'Rate Your Experience',
-        rateDesc: 'Help {name} improve by leaving a verified public review through Tagdeer.',
-        leaveReview: 'Leave a Review',
+        rateDesc: 'Help {name} improve by leaving a verified public tagdeer through Tagdeer.',
+        leaveReview: 'Share Your Tagdeer',
         callNow: 'Call Now',
         directions: 'Directions',
         whatsapp: 'WhatsApp',
@@ -314,7 +314,7 @@ export default async function PublicStorefront({ params, searchParams }) {
                         <span>
                             {isRTL
                                 ? 'التقييمات والمراجعات المعروضة هنا مقدمة من أعضاء مجتمع تقدير وتمثل آراءهم الشخصية. لا تتحقق تقدير من هذا المحتوى أو تؤيده أو تتحمل مسؤوليته.'
-                                : 'The reviews and ratings shown here are submitted by Tagdeer community members and represent their personal opinions. Tagdeer does not verify, endorse, or take responsibility for this content.'}
+                                : 'The evaluations and ratings shown here are submitted by Tagdeer community members and represent their personal opinions. Tagdeer does not verify, endorse, or take responsibility for this content.'}
                         </span>
                     </p>
                 </div>

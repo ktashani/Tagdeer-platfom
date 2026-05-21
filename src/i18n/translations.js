@@ -49,7 +49,7 @@ export const translations = {
     discover_title: "Discover Trusted Local Businesses",
     search_placeholder: "Search businesses by name...",
     no_biz_found: "No businesses found matching your criteria.",
-    health_score: "Gader Score",
+    health_score: "Gader Index",
     gader_index: "Gader Index",
     migdar: "Migdar",
     recommend: "Recommend",

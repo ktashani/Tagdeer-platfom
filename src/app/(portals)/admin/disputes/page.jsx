@@ -188,7 +188,7 @@ export default function DisputesPage() {
                                         <p className="text-sm text-slate-300 italic">"{selectedDispute.userNotes}"</p>
                                         <div className="mt-4 flex justify-between items-center text-xs">
                                             <span className="text-slate-400">User: <strong className="text-emerald-400">{selectedDispute.user}</strong></span>
-                                            <span className="text-slate-500">Trust Points: 450</span>
+                                            <span className="text-slate-500">Gader: 450</span>
                                         </div>
                                     </div>
                                 </div>
