@@ -136,7 +136,7 @@ export function WalletTab() {
                         </div>
                     </div>
                 </div>
-                <PlatformHelp defaultTab="consumer" />
+                <PlatformHelp defaultTab="consumer" role="consumer" />
             </div>
         );
     }
@@ -262,7 +262,7 @@ export function WalletTab() {
             </div>
 
             {/* Platform Help & Feature Directory */}
-            <PlatformHelp defaultTab="consumer" />
+            <PlatformHelp defaultTab="consumer" role="consumer" />
 
             {/* Modal for QR Code Display */}
             {selectedCoupon && (

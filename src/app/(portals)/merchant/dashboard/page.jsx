@@ -896,7 +896,7 @@ export default function MerchantDashboard() {
             </div>
 
             {/* Platform Help & Feature Directory */}
-            <PlatformHelp defaultTab="merchant" />
+            <PlatformHelp defaultTab="merchant" role="merchant" />
 
             <ScannerModal
                 isOpen={isScannerOpen}

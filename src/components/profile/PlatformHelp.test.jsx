@@ -38,7 +38,7 @@ describe('PlatformHelp Component', () => {
         // Consumer specific cards should be visible
         expect(screen.getByText('Gader Wallet')).toBeDefined();
         expect(screen.getByText('QR Code Scanning')).toBeDefined();
-        expect(screen.getByText('Anti-Cheat Rules & Platform Integrity')).toBeDefined();
+        expect(screen.getByText('Fair Use & Platform Integrity')).toBeDefined();
         expect(screen.getByText('Evaluation (Tagdeer) Rules')).toBeDefined();
 
         // Merchant specific elements should NOT be visible initially
@@ -59,7 +59,7 @@ describe('PlatformHelp Component', () => {
 
         // Consumer specific elements should NOT be visible
         expect(screen.queryByText('Gader Wallet')).toBeNull();
-        expect(screen.queryByText('Anti-Cheat Rules & Platform Integrity')).toBeNull();
+        expect(screen.queryByText('Fair Use & Platform Integrity')).toBeNull();
     });
 
     it('switches tabs correctly when buttons are clicked', () => {
@@ -103,9 +103,9 @@ describe('PlatformHelp Component', () => {
         // Consumer details in Arabic
         expect(screen.getByText('محفظة قَدْر (Gader Wallet)')).toBeDefined();
         expect(screen.getByText('مسح الكود (QR Scanning)')).toBeDefined();
-        expect(screen.getByText('قواعد مكافحة الغش وأمان المنصة (Anti-Cheat)')).toBeDefined();
+        expect(screen.getByText('إرشادات الاستخدام العادل وأمان المنصة')).toBeDefined();
         
-        // Assert anti-cheat rules mentions
+        // Assert fair use rules mentions
         expect(screen.getByText(/فترة انتظار المتجر الواحد/)).toBeDefined();
         expect(screen.getByText(/حماية التجوال/)).toBeDefined();
         expect(screen.getByText(/الحد اليومي العام/)).toBeDefined();
@@ -127,5 +127,44 @@ describe('PlatformHelp Component', () => {
         // Trust Shield info
         expect(screen.getByText('درع الحماية وصندوق الحلول (Trust Shield)')).toBeDefined();
         expect(screen.getByText(/عند قيام زبون موثق بتقديم شكوى سلبية/)).toBeDefined();
+    });
+
+    it('hides the tab switcher and shows only the Consumer Guide when role="consumer"', () => {
+        render(<PlatformHelp role="consumer" />);
+
+        // Header Title
+        expect(screen.getByText('Tagdeer Guide | Platform Rules & Equity')).toBeDefined();
+
+        // Tab switcher buttons should NOT be visible
+        expect(screen.queryByText('Consumer Guide')).toBeNull();
+        expect(screen.queryByText('Merchant Guide')).toBeNull();
+
+        // Consumer specific cards should be visible
+        expect(screen.getByText('Gader Wallet')).toBeDefined();
+        expect(screen.getByText('Fair Use & Platform Integrity')).toBeDefined();
+
+        // Merchant specific elements should NOT be visible
+        expect(screen.queryByText('Subscription Tiers & Capabilities')).toBeNull();
+        expect(screen.queryByText('Trust Shield & The Resolution Inbox')).toBeNull();
+    });
+
+    it('hides the tab switcher and shows only the Merchant Guide when role="merchant"', () => {
+        render(<PlatformHelp role="merchant" />);
+
+        // Header Title
+        expect(screen.getByText('Tagdeer Guide | Platform Rules & Equity')).toBeDefined();
+
+        // Tab switcher buttons should NOT be visible
+        expect(screen.queryByText('Consumer Guide')).toBeNull();
+        expect(screen.queryByText('Merchant Guide')).toBeNull();
+
+        // Merchant specific elements should be visible
+        expect(screen.getByText('Gader Index')).toBeDefined();
+        expect(screen.getByText('Subscription Tiers & Capabilities')).toBeDefined();
+        expect(screen.getByText('Trust Shield & The Resolution Inbox')).toBeDefined();
+
+        // Consumer specific elements should NOT be visible
+        expect(screen.queryByText('Gader Wallet')).toBeNull();
+        expect(screen.queryByText('Fair Use & Platform Integrity')).toBeNull();
     });
 });

@@ -23,8 +23,8 @@ const dict = {
     consumerScanTitle: "مسح الكود (QR Scanning)",
     consumerScanDesc: "امسح رمز المحل لكسب نقاط قَدْر: اشتراك مجاني (+5)، اشتراك برو (+15)، اشتراك مؤسسة (+30 + كوبون فوري).",
     
-    consumerAntiCheatTitle: "قواعد مكافحة الغش وأمان المنصة (Anti-Cheat)",
-    consumerAntiCheatDesc: "للحفاظ على مصداقية المنصة وحظر سحب النقاط الاحتيالي، تطبق القيود الصارمة التالية:",
+    consumerAntiCheatTitle: "إرشادات الاستخدام العادل وأمان المنصة",
+    consumerAntiCheatDesc: "لضمان تجربة عادلة وموثوقة لجميع الأعضاء، يرجى مراعاة حدود الاستخدام التالية:",
     cooldownSameBiz: "فترة انتظار المتجر الواحد (7 أيام): لا يمكنك مسح كود نفس المتجر أكثر من مرة كل 7 أيام.",
     cooldownFarming: "حماية التجوال (60 دقيقة): يجب الانتظار 60 دقيقة بين مسح أكواد متاجر مختلفة لمنع مسح الأكواد من المنزل.",
     dailyScanLimit: "الحد اليومي العام: حد أقصى 5 عمليات مسح ناجحة يومياً على مستوى المنصة.",
@@ -95,8 +95,8 @@ const dict = {
     consumerScanTitle: "QR Code Scanning",
     consumerScanDesc: "Scan the in-store placard to earn Gader instantly: Free tier store (+5 Gader), Pro tier store (+15 Gader), Enterprise tier store (+30 Gader & instant coupon drop).",
     
-    consumerAntiCheatTitle: "Anti-Cheat Rules & Platform Integrity",
-    consumerAntiCheatDesc: "To ensure absolute fairness and stop automated point farming, the platform enforces strict limits:",
+    consumerAntiCheatTitle: "Fair Use & Platform Integrity",
+    consumerAntiCheatDesc: "To ensure absolute fairness and a reliable experience for all members, please note the following usage guidelines:",
     cooldownSameBiz: "7-Day Same-Business Cooldown: You can scan the QR code of the same business at most once every 7 days.",
     cooldownFarming: "60-Minute Farming Cooldown: You must wait at least 60 minutes between scanning different businesses.",
     dailyScanLimit: "Global Daily Cap: Limit of 5 unique scans per 24 hours across the entire platform.",
@@ -156,13 +156,20 @@ const dict = {
   }
 };
 
-export function PlatformHelp({ defaultTab = 'consumer' }) {
+export function PlatformHelp({ defaultTab = 'consumer', role = 'both' }) {
     const { lang } = useTagdeer();
     const currentLang = lang === 'ar' ? 'ar' : 'en';
     const t = dict[currentLang];
     const isRTL = currentLang === 'ar';
 
-    const [activeTab, setActiveTab] = useState(defaultTab);
+    const initialTab = role !== 'both' ? role : defaultTab;
+    const [activeTab, setActiveTab] = useState(initialTab);
+
+    React.useEffect(() => {
+        if (role !== 'both') {
+            setActiveTab(role);
+        }
+    }, [role]);
 
     return (
         <Card className="w-full bg-slate-50/50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800 shadow-sm rounded-3xl mt-8 overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -176,30 +183,32 @@ export function PlatformHelp({ defaultTab = 'consumer' }) {
                 </div>
                 
                 {/* Tab switcher */}
-                <div className="flex bg-slate-200/60 dark:bg-slate-800/80 p-1 rounded-xl self-start md:self-auto border border-slate-300/40">
-                    <button
-                        onClick={() => setActiveTab('consumer')}
-                        className={`flex items-center gap-1.5 px-4 py-2 text-xs md:text-sm font-semibold rounded-lg transition-all ${
-                            activeTab === 'consumer'
-                                ? 'bg-white dark:bg-slate-950 text-blue-600 dark:text-blue-400 shadow-sm font-bold'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                    >
-                        <User className="w-3.5 h-3.5" />
-                        <span>{t.tabConsumer}</span>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('merchant')}
-                        className={`flex items-center gap-1.5 px-4 py-2 text-xs md:text-sm font-semibold rounded-lg transition-all ${
-                            activeTab === 'merchant'
-                                ? 'bg-white dark:bg-slate-950 text-blue-600 dark:text-blue-400 shadow-sm font-bold'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                        }`}
-                    >
-                        <Briefcase className="w-3.5 h-3.5" />
-                        <span>{t.tabMerchant}</span>
-                    </button>
-                </div>
+                {role === 'both' && (
+                    <div className="flex bg-slate-200/60 dark:bg-slate-800/80 p-1 rounded-xl self-start md:self-auto border border-slate-300/40">
+                        <button
+                            onClick={() => setActiveTab('consumer')}
+                            className={`flex items-center gap-1.5 px-4 py-2 text-xs md:text-sm font-semibold rounded-lg transition-all ${
+                                activeTab === 'consumer'
+                                    ? 'bg-white dark:bg-slate-950 text-blue-600 dark:text-blue-400 shadow-sm font-bold'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                            }`}
+                        >
+                            <User className="w-3.5 h-3.5" />
+                            <span>{t.tabConsumer}</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('merchant')}
+                            className={`flex items-center gap-1.5 px-4 py-2 text-xs md:text-sm font-semibold rounded-lg transition-all ${
+                                activeTab === 'merchant'
+                                    ? 'bg-white dark:bg-slate-950 text-blue-600 dark:text-blue-400 shadow-sm font-bold'
+                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                            }`}
+                        >
+                            <Briefcase className="w-3.5 h-3.5" />
+                            <span>{t.tabMerchant}</span>
+                        </button>
+                    </div>
+                )}
             </div>
 
             <CardContent className="p-6 md:p-8 space-y-6">
